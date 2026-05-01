@@ -34,6 +34,7 @@ export type ProjectMegapackConfig = {
 
 type MegapackConfiguratorProps = {
   onAddToProject: (config: ProjectMegapackConfig) => void;
+  onConfigChange?: (config: ProjectMegapackConfig) => void;
 };
 
 const packSpecs: Record<PackType, PackSpec> = {
@@ -65,6 +66,9 @@ const packSpecs: Record<PackType, PackSpec> = {
     efficiency: 92.5,
   },
 };
+
+const getSliderValue = (value: number | readonly number[]) =>
+  Array.isArray(value) ? value[0] ?? 0 : value;
 
 function AnimatedValue({
   value,
@@ -134,6 +138,7 @@ function MetricCard({
 
 export default function MegapackConfigurator({
   onAddToProject,
+  onConfigChange,
 }: MegapackConfiguratorProps) {
   const [packType, setPackType] = useState<PackType>("megapack-2-xl");
   const [count, setCount] = useState(12);
@@ -148,6 +153,24 @@ export default function MegapackConfigurator({
       weightTons: selectedPack.weightTons * count,
     };
   }, [count, selectedPack]);
+
+  const liveConfig = useMemo<ProjectMegapackConfig>(
+    () => ({
+      packType,
+      label: selectedPack.label,
+      count,
+      totalPowerMw: totals.totalPowerMw,
+      totalEnergyMwh: totals.totalEnergyMwh,
+      footprintM2: totals.footprintM2,
+      weightTons: totals.weightTons,
+      roundTripEfficiency: selectedPack.efficiency,
+    }),
+    [count, packType, selectedPack.efficiency, selectedPack.label, totals]
+  );
+
+  useEffect(() => {
+    onConfigChange?.(liveConfig);
+  }, [liveConfig, onConfigChange]);
 
   return (
     <Card className="glass-card tesla-glow rounded-3xl border border-white/10 bg-[#111116]/85 p-0">
@@ -209,7 +232,7 @@ export default function MegapackConfigurator({
                 min={1}
                 max={50}
                 step={1}
-                onValueChange={(value) => setCount(value[0] ?? 1)}
+                onValueChange={(value) => setCount(getSliderValue(value))}
                 className="[&_[data-slot=slider-range]]:bg-[#E31937]"
               />
             </div>
@@ -250,18 +273,7 @@ export default function MegapackConfigurator({
               </div>
               <Button
                 className="h-10 rounded-full bg-[#E31937] px-6 font-semibold text-white hover:bg-[#f02445]"
-                onClick={() =>
-                  onAddToProject({
-                    packType,
-                    label: selectedPack.label,
-                    count,
-                    totalPowerMw: totals.totalPowerMw,
-                    totalEnergyMwh: totals.totalEnergyMwh,
-                    footprintM2: totals.footprintM2,
-                    weightTons: totals.weightTons,
-                    roundTripEfficiency: selectedPack.efficiency,
-                  })
-                }
+                onClick={() => onAddToProject(liveConfig)}
               >
                 Add to Project
               </Button>
