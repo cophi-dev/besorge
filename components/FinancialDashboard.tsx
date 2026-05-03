@@ -12,13 +12,14 @@ import {
   YAxis,
 } from "recharts";
 
-import type { ProjectMegapackConfig } from "@/components/MegapackConfigurator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
-
-type FinancialDashboardProps = {
-  config?: ProjectMegapackConfig;
-};
+import {
+  computeEconomics,
+  regulatoryScenarioDescription,
+  type GridRegulatoryScenario,
+} from "@/lib/bessEconomics";
+import { getFinancePhysicalConfig, useProjectStore } from "@/lib/projectStore";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("de-DE", {
   style: "currency",
@@ -36,7 +37,9 @@ const clamp = (value: number, min: number, max: number) =>
 const getSliderValue = (value: number | readonly number[]) =>
   Array.isArray(value) ? value[0] ?? 0 : value;
 
-const formatCurrencyValue = (value: number | string | readonly (number | string)[] | undefined) => {
+const formatCurrencyValue = (
+  value: number | string | readonly (number | string)[] | undefined
+) => {
   if (typeof value === "number") {
     return CURRENCY_FORMATTER.format(value);
   }
@@ -97,77 +100,44 @@ function ChartContainer({
   );
 }
 
-export default function FinancialDashboard({ config }: FinancialDashboardProps) {
-  const [dailyCycles, setDailyCycles] = useState(1);
-  const [priceSpread, setPriceSpread] = useState(85);
-  const [projectLifetimeYears, setProjectLifetimeYears] = useState(20);
-  const [inflationRate, setInflationRate] = useState(2);
+const REGULATORY_OPTIONS: { value: GridRegulatoryScenario; label: string }[] = [
+  { value: "baseline", label: "Baseline" },
+  { value: "moderate_grid_stress", label: "Moderate grid stress" },
+  { value: "elevated_regulatory_risk", label: "Elevated regulatory risk" },
+];
 
-  const powerMw = config?.totalPowerMw ?? 0;
-  const energyMwh = config?.totalEnergyMwh ?? 0;
-  const efficiency = (config?.roundTripEfficiency ?? 0) / 100;
+export default function FinancialDashboard() {
+  const liveConfiguration = useProjectStore((state) => state.liveConfiguration);
+  const selectedConfigurations = useProjectStore((state) => state.selectedConfigurations);
+  const economicsAssumptions = useProjectStore((state) => state.economicsAssumptions);
+  const setEconomicsAssumptions = useProjectStore((state) => state.setEconomicsAssumptions);
+
+  const physical = useMemo(
+    () =>
+      getFinancePhysicalConfig({
+        selectedConfigurations,
+        liveConfiguration,
+      }),
+    [liveConfiguration, selectedConfigurations]
+  );
 
   const metrics = useMemo(() => {
-    const annualEnergyMwh = powerMw * energyMwh * efficiency * dailyCycles * 365;
-    const annualArbitrageRevenue = annualEnergyMwh * priceSpread * 0.6;
-    const annualPeakShavingRevenue = annualEnergyMwh * priceSpread * 0.25;
-    const annualGridServicesRevenue = annualEnergyMwh * priceSpread * 0.15;
-    const annualRevenue =
-      annualArbitrageRevenue + annualPeakShavingRevenue + annualGridServicesRevenue;
+    if (!physical) {
+      return null;
+    }
+    return computeEconomics(physical, economicsAssumptions);
+  }, [economicsAssumptions, physical]);
 
-    const capex = energyMwh * 220_000;
-    const annualOperatingCosts = capex * 0.015;
-    const annualNetCashflow = annualRevenue - annualOperatingCosts;
+  const breakdownData = metrics
+    ? [
+        { name: "Arbitrage", value: metrics.annualArbitrageRevenue },
+        { name: "Peak Shaving", value: metrics.annualPeakShavingRevenue },
+        { name: "Grid Services", value: metrics.annualGridServicesRevenue },
+      ]
+    : [];
 
-    const yearlyRevenues = Array.from({ length: projectLifetimeYears }, (_, idx) => {
-      const year = idx + 1;
-      const inflationMultiplier = (1 + inflationRate / 100) ** idx;
-      const revenue = annualRevenue * inflationMultiplier;
-      return {
-        year,
-        revenue,
-      };
-    });
-
-    const totalRevenueOverLifetime = yearlyRevenues.reduce(
-      (sum, entry) => sum + entry.revenue,
-      0
-    );
-
-    const paybackYears =
-      annualNetCashflow > 0 ? capex / annualNetCashflow : Number.POSITIVE_INFINITY;
-
-    const grossIrr =
-      capex > 0 && totalRevenueOverLifetime > 0
-        ? ((totalRevenueOverLifetime / capex) ** (1 / projectLifetimeYears) - 1) * 100
-        : 0;
-
-    const lifetimeEnergy = annualEnergyMwh * projectLifetimeYears;
-    const lcoe =
-      lifetimeEnergy > 0
-        ? (capex + annualOperatingCosts * projectLifetimeYears) / lifetimeEnergy
-        : 0;
-
-    return {
-      annualRevenue,
-      annualArbitrageRevenue,
-      annualPeakShavingRevenue,
-      annualGridServicesRevenue,
-      yearlyRevenues,
-      totalRevenueOverLifetime,
-      paybackYears: Number.isFinite(paybackYears) ? paybackYears : 0,
-      grossIrr,
-      lcoe,
-    };
-  }, [dailyCycles, efficiency, energyMwh, inflationRate, powerMw, priceSpread, projectLifetimeYears]);
-
-  const breakdownData = [
-    { name: "Arbitrage", value: metrics.annualArbitrageRevenue },
-    { name: "Peak Shaving", value: metrics.annualPeakShavingRevenue },
-    { name: "Grid Services", value: metrics.annualGridServicesRevenue },
-  ];
-
-  const hasConfig = Boolean(config);
+  const hasPhysical = Boolean(physical);
+  const usesAggregatedStack = selectedConfigurations.length > 0;
 
   return (
     <Card className="glass-card rounded-3xl border border-white/10 bg-[#111116]/85">
@@ -177,59 +147,93 @@ export default function FinancialDashboard({ config }: FinancialDashboardProps) 
           Revenue & Economics
         </CardTitle>
         <p className="text-sm text-[#A1A1AA]">
-          Live-Finanzmodell basierend auf deiner aktuellen Megapack-Konfiguration.
+          Indicative DE-market economics tied to your Megapack sizing. Uses aggregated project
+          blocks when you have added configurations; otherwise the live configurator preview.
         </p>
+        {usesAggregatedStack ? (
+          <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-[#D4D4D8]">
+            Finanz-KPIs basieren auf {selectedConfigurations.length} hinzugefügten Block(en)
+            (aggregiert).
+          </p>
+        ) : null}
       </CardHeader>
 
       <CardContent className="space-y-8">
-        {!hasConfig ? (
+        {!hasPhysical ? (
           <p className="rounded-xl border border-[#E31937]/30 bg-[#E31937]/10 p-4 text-sm text-[#F5BDC7]">
             Passe im Konfigurator eine Anlage an, um Live-KPIs und Charts zu sehen.
           </p>
         ) : null}
 
+        <div className="space-y-2 rounded-xl border border-white/10 bg-black/20 p-4">
+          <p className="text-xs font-medium tracking-[0.14em] text-[#A1A1AA] uppercase">
+            DE market / regulatory scenario (illustrative)
+          </p>
+          <p className="text-xs text-[#737373]">
+            Keine Rechts- oder Tarifdatenbank — nur Skalierung für Sensitivität und
+            Gesprächsstruktur (vgl. Stellenprofil: Tarife & Regulatorik).
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {REGULATORY_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() =>
+                  setEconomicsAssumptions({ gridRegulatoryScenario: option.value })
+                }
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                  economicsAssumptions.gridRegulatoryScenario === option.value
+                    ? "border-[#E31937] bg-[#E31937]/20 text-white"
+                    : "border-white/15 bg-white/5 text-[#A1A1AA] hover:border-white/25"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-[#A1A1AA]">
+            {regulatoryScenarioDescription(economicsAssumptions.gridRegulatoryScenario)}
+          </p>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <label className="space-y-2">
             <span className="text-xs tracking-[0.14em] text-[#A1A1AA] uppercase">
-              Expected Daily Cycles
+              Full-cycle equivalents / day
             </span>
             <Slider
-              value={[dailyCycles]}
+              value={[economicsAssumptions.fullCycleEquivalentsPerDay]}
               min={0.5}
               max={2}
               step={0.1}
-              onValueChange={(value) => setDailyCycles(clamp(getSliderValue(value), 0.5, 2))}
+              onValueChange={(value) =>
+                setEconomicsAssumptions({
+                  fullCycleEquivalentsPerDay: clamp(getSliderValue(value), 0.5, 2),
+                })
+              }
               className="[&_[data-slot=slider-range]]:bg-[#E31937]"
             />
-            <p className="text-sm text-white">{NUMBER_FORMATTER.format(dailyCycles)}</p>
+            <p className="text-sm text-white">
+              {NUMBER_FORMATTER.format(economicsAssumptions.fullCycleEquivalentsPerDay)}
+            </p>
+            <p className="text-xs text-[#737373]">
+              Namenleistung MWh × Äquivalente × 365 × RTE — vereinfachtes Lastprofil.
+            </p>
           </label>
 
           <label className="space-y-2">
             <span className="text-xs tracking-[0.14em] text-[#A1A1AA] uppercase">
-              Average Price Spread (EUR/MWh)
+              Average price spread (EUR/MWh)
             </span>
             <input
               type="number"
-              value={priceSpread}
+              value={economicsAssumptions.averagePriceSpreadEurPerMwh}
               min={0}
               step={1}
-              onChange={(event) => setPriceSpread(Math.max(0, Number(event.target.value) || 0))}
-              className="h-10 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-white outline-none transition focus:border-[#E31937]/80"
-            />
-          </label>
-
-          <label className="space-y-2">
-            <span className="text-xs tracking-[0.14em] text-[#A1A1AA] uppercase">
-              Project Lifetime (Jahre)
-            </span>
-            <input
-              type="number"
-              value={projectLifetimeYears}
-              min={1}
-              max={40}
-              step={1}
               onChange={(event) =>
-                setProjectLifetimeYears(clamp(Number(event.target.value) || 1, 1, 40))
+                setEconomicsAssumptions({
+                  averagePriceSpreadEurPerMwh: Math.max(0, Number(event.target.value) || 0),
+                })
               }
               className="h-10 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-white outline-none transition focus:border-[#E31937]/80"
             />
@@ -237,91 +241,134 @@ export default function FinancialDashboard({ config }: FinancialDashboardProps) 
 
           <label className="space-y-2">
             <span className="text-xs tracking-[0.14em] text-[#A1A1AA] uppercase">
-              Electricity Price Inflation (%)
+              Project lifetime (years)
             </span>
             <input
               type="number"
-              value={inflationRate}
+              value={economicsAssumptions.projectLifetimeYears}
+              min={1}
+              max={40}
+              step={1}
+              onChange={(event) =>
+                setEconomicsAssumptions({
+                  projectLifetimeYears: clamp(Number(event.target.value) || 1, 1, 40),
+                })
+              }
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-white outline-none transition focus:border-[#E31937]/80"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-xs tracking-[0.14em] text-[#A1A1AA] uppercase">
+              Revenue inflation (%/year)
+            </span>
+            <input
+              type="number"
+              value={economicsAssumptions.electricityPriceInflationPercent}
               min={0}
               max={12}
               step={0.1}
-              onChange={(event) => setInflationRate(clamp(Number(event.target.value) || 0, 0, 12))}
+              onChange={(event) =>
+                setEconomicsAssumptions({
+                  electricityPriceInflationPercent: clamp(
+                    Number(event.target.value) || 0,
+                    0,
+                    12
+                  ),
+                })
+              }
               className="h-10 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-white outline-none transition focus:border-[#E31937]/80"
             />
           </label>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-          <KpiCard title="Annual Revenue" value={CURRENCY_FORMATTER.format(metrics.annualRevenue)} />
-          <KpiCard
-            title="Total Revenue over Lifetime"
-            value={CURRENCY_FORMATTER.format(metrics.totalRevenueOverLifetime)}
-          />
-          <KpiCard
-            title="Simple Payback"
-            value={`${NUMBER_FORMATTER.format(metrics.paybackYears)} Jahre`}
-          />
-          <KpiCard title="IRR (grob)" value={`${NUMBER_FORMATTER.format(metrics.grossIrr)} %`} />
-          <KpiCard title="LCOE" value={`${NUMBER_FORMATTER.format(metrics.lcoe)} EUR/MWh`} />
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="mb-4 text-sm font-medium text-white">Revenue Development</p>
-            <ChartContainer>
-              {({ width, height }) => (
-                <LineChart width={width} height={height} data={metrics.yearlyRevenues}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.08)" strokeDasharray="4 4" />
-                  <XAxis dataKey="year" stroke="#A1A1AA" />
-                  <YAxis
-                    stroke="#A1A1AA"
-                    tickFormatter={(value) => `${Math.round(value / 1_000_000)}M`}
-                  />
-                  <Tooltip
-                    formatter={(value) => formatCurrencyValue(value)}
-                    contentStyle={{
-                      background: "#121216",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      borderRadius: "10px",
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="revenue"
-                    stroke="#E31937"
-                    strokeWidth={3}
-                    dot={false}
-                  />
-                </LineChart>
-              )}
-            </ChartContainer>
+        {metrics && hasPhysical ? (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+            <KpiCard
+              title="Annual discharged energy"
+              value={`${NUMBER_FORMATTER.format(metrics.annualDischargedMwh)} MWh`}
+            />
+            <KpiCard title="Annual revenue" value={CURRENCY_FORMATTER.format(metrics.annualRevenue)} />
+            <KpiCard
+              title="Lifetime revenue"
+              value={CURRENCY_FORMATTER.format(metrics.totalRevenueOverLifetime)}
+            />
+            <KpiCard
+              title="Simple payback"
+              value={`${NUMBER_FORMATTER.format(metrics.paybackYears)} yrs`}
+            />
+            <KpiCard title="IRR (gross)" value={`${NUMBER_FORMATTER.format(metrics.grossIrr)} %`} />
+            <KpiCard title="LCOE" value={`${NUMBER_FORMATTER.format(metrics.lcoeEurPerMwh)} EUR/MWh`} />
           </div>
+        ) : null}
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="mb-4 text-sm font-medium text-white">Revenue Breakdown</p>
-            <ChartContainer>
-              {({ width, height }) => (
-                <BarChart width={width} height={height} data={breakdownData}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.08)" strokeDasharray="4 4" />
-                  <XAxis dataKey="name" stroke="#A1A1AA" />
-                  <YAxis
-                    stroke="#A1A1AA"
-                    tickFormatter={(value) => `${Math.round(value / 1_000_000)}M`}
-                  />
-                  <Tooltip
-                    formatter={(value) => formatCurrencyValue(value)}
-                    contentStyle={{
-                      background: "#121216",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      borderRadius: "10px",
-                    }}
-                  />
-                  <Bar dataKey="value" fill="#E31937" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              )}
-            </ChartContainer>
+        {metrics && hasPhysical ? (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="mb-4 text-sm font-medium text-white">Revenue development</p>
+              <ChartContainer>
+                {({ width, height }) => (
+                  <LineChart width={width} height={height} data={metrics.yearlyRevenues}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.08)" strokeDasharray="4 4" />
+                    <XAxis dataKey="year" stroke="#A1A1AA" />
+                    <YAxis
+                      stroke="#A1A1AA"
+                      tickFormatter={(value) => `${Math.round(value / 1_000_000)}M`}
+                    />
+                    <Tooltip
+                      formatter={(value) => formatCurrencyValue(value)}
+                      contentStyle={{
+                        background: "#121216",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        borderRadius: "10px",
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="#E31937"
+                      strokeWidth={3}
+                      dot={false}
+                    />
+                  </LineChart>
+                )}
+              </ChartContainer>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="mb-4 text-sm font-medium text-white">Revenue breakdown</p>
+              <ChartContainer>
+                {({ width, height }) => (
+                  <BarChart width={width} height={height} data={breakdownData}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.08)" strokeDasharray="4 4" />
+                    <XAxis dataKey="name" stroke="#A1A1AA" />
+                    <YAxis
+                      stroke="#A1A1AA"
+                      tickFormatter={(value) => `${Math.round(value / 1_000_000)}M`}
+                    />
+                    <Tooltip
+                      formatter={(value) => formatCurrencyValue(value)}
+                      contentStyle={{
+                        background: "#121216",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        borderRadius: "10px",
+                      }}
+                    />
+                    <Bar dataKey="value" fill="#E31937" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                )}
+              </ChartContainer>
+            </div>
           </div>
-        </div>
+        ) : null}
+
+        {metrics ? (
+          <ul className="space-y-1 rounded-xl border border-white/10 bg-black/15 p-4 text-xs text-[#737373]">
+            {metrics.assumptionFootnotes.map((line) => (
+              <li key={line}>• {line}</li>
+            ))}
+          </ul>
+        ) : null}
       </CardContent>
     </Card>
   );

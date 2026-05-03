@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { PackType, ProjectMegapackConfig } from "@/lib/bessEconomics";
 
-type PackType = "megapack-2-xl" | "megapack-2" | "custom";
+export type { ProjectMegapackConfig } from "@/lib/bessEconomics";
 
 type PackSpec = {
   id: PackType;
@@ -19,17 +20,6 @@ type PackSpec = {
   footprintM2: number;
   weightTons: number;
   efficiency: number;
-};
-
-export type ProjectMegapackConfig = {
-  packType: PackType;
-  label: string;
-  count: number;
-  totalPowerMw: number;
-  totalEnergyMwh: number;
-  footprintM2: number;
-  weightTons: number;
-  roundTripEfficiency: number;
 };
 
 type MegapackConfiguratorProps = {

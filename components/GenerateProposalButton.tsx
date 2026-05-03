@@ -11,12 +11,17 @@ import {
 } from "@react-pdf/renderer";
 import { FileDown } from "lucide-react";
 
-import type { ProjectMegapackConfig } from "@/components/MegapackConfigurator";
 import { Button } from "@/components/ui/button";
+import {
+  computeEconomics,
+  regulatoryScenarioDescription,
+  type EconomicsAssumptions,
+  type ProjectMegapackConfig,
+} from "@/lib/bessEconomics";
+import { type SitePlacement, getFinancePhysicalConfig, useProjectStore } from "@/lib/projectStore";
 
 type GenerateProposalButtonProps = {
   projectName: string;
-  config?: ProjectMegapackConfig;
 };
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("de-DE", {
@@ -105,70 +110,35 @@ const proposalStyles = StyleSheet.create({
     color: "#F87171",
     textAlign: "right",
   },
+  bullet: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    marginBottom: 4,
+  },
 });
 
 function sanitizeFilename(value: string) {
   return value.replace(/[^a-zA-Z0-9-_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
 
-function calculateFinancialSummary(config: ProjectMegapackConfig) {
-  const dailyCycles = 1;
-  const priceSpread = 85;
-  const projectLifetimeYears = 20;
-  const inflationRate = 2;
-
-  const powerMw = config.totalPowerMw;
-  const energyMwh = config.totalEnergyMwh;
-  const efficiency = config.roundTripEfficiency / 100;
-
-  const annualEnergyMwh = powerMw * energyMwh * efficiency * dailyCycles * 365;
-  const annualArbitrageRevenue = annualEnergyMwh * priceSpread * 0.6;
-  const annualPeakShavingRevenue = annualEnergyMwh * priceSpread * 0.25;
-  const annualGridServicesRevenue = annualEnergyMwh * priceSpread * 0.15;
-  const annualRevenue =
-    annualArbitrageRevenue + annualPeakShavingRevenue + annualGridServicesRevenue;
-  const capex = energyMwh * 220_000;
-  const annualOperatingCosts = capex * 0.015;
-  const annualNetCashflow = annualRevenue - annualOperatingCosts;
-
-  const yearlyRevenues = Array.from({ length: projectLifetimeYears }, (_, idx) => {
-    const inflationMultiplier = (1 + inflationRate / 100) ** idx;
-    return annualRevenue * inflationMultiplier;
-  });
-
-  const totalRevenueOverLifetime = yearlyRevenues.reduce((sum, value) => sum + value, 0);
-  const paybackYears =
-    annualNetCashflow > 0 ? capex / annualNetCashflow : Number.POSITIVE_INFINITY;
-  const grossIrr =
-    capex > 0 && totalRevenueOverLifetime > 0
-      ? ((totalRevenueOverLifetime / capex) ** (1 / projectLifetimeYears) - 1) * 100
-      : 0;
-
-  return {
-    annualRevenue,
-    totalRevenueOverLifetime,
-    paybackYears: Number.isFinite(paybackYears) ? paybackYears : 0,
-    grossIrr,
-    lcoe:
-      annualEnergyMwh * projectLifetimeYears > 0
-        ? (capex + annualOperatingCosts * projectLifetimeYears) /
-          (annualEnergyMwh * projectLifetimeYears)
-        : 0,
-  };
-}
-
 function ProposalDocument({
   projectName,
-  config,
+  physical,
+  assumptions,
+  selectedConfigurations,
+  sitePlacements,
 }: {
   projectName: string;
-  config: ProjectMegapackConfig;
+  physical: ProjectMegapackConfig;
+  assumptions: EconomicsAssumptions;
+  selectedConfigurations: ProjectMegapackConfig[];
+  sitePlacements: SitePlacement[];
 }) {
-  const financial = calculateFinancialSummary(config);
-  const layoutDescription = `The concept layout places ${config.count} ${config.label} units in ${Math.ceil(
-    config.count / 4
+  const financial = computeEconomics(physical, assumptions);
+  const layoutDescription = `The concept layout places ${physical.count} ${physical.label} units in ${Math.ceil(
+    physical.count / 4
   )} clean rows with service aisles, central inverter access, and safety clearance zones. Total estimated site footprint: ${NUMBER_FORMATTER.format(
-    config.footprintM2
+    physical.footprintM2
   )} m².`;
 
   return (
@@ -178,45 +148,90 @@ function ProposalDocument({
         <Text style={proposalStyles.headerLabel}>Tesla Energy Proposal</Text>
         <Text style={proposalStyles.title}>{projectName}</Text>
         <Text style={proposalStyles.subtitle}>
-          Utility-scale battery proposal generated from live BESS configurator data.
+          Pre-sales technical sizing and indicative economics (aligned with live dashboard inputs).
         </Text>
 
         <View style={proposalStyles.section}>
-          <Text style={proposalStyles.sectionTitle}>Megapack Configuration</Text>
+          <Text style={proposalStyles.sectionTitle}>Megapack configuration</Text>
           <View style={proposalStyles.row}>
-            <Text style={proposalStyles.key}>Model</Text>
-            <Text style={proposalStyles.value}>{config.label}</Text>
+            <Text style={proposalStyles.key}>Model / stack</Text>
+            <Text style={proposalStyles.value}>{physical.label}</Text>
           </View>
           <View style={proposalStyles.row}>
             <Text style={proposalStyles.key}>Units</Text>
-            <Text style={proposalStyles.value}>{config.count}</Text>
+            <Text style={proposalStyles.value}>{physical.count}</Text>
           </View>
           <View style={proposalStyles.row}>
-            <Text style={proposalStyles.key}>Total Power</Text>
-            <Text style={proposalStyles.value}>{NUMBER_FORMATTER.format(config.totalPowerMw)} MW</Text>
+            <Text style={proposalStyles.key}>Total power</Text>
+            <Text style={proposalStyles.value}>{NUMBER_FORMATTER.format(physical.totalPowerMw)} MW</Text>
           </View>
           <View style={proposalStyles.row}>
-            <Text style={proposalStyles.key}>Total Energy</Text>
-            <Text style={proposalStyles.value}>{NUMBER_FORMATTER.format(config.totalEnergyMwh)} MWh</Text>
+            <Text style={proposalStyles.key}>Total energy</Text>
+            <Text style={proposalStyles.value}>{NUMBER_FORMATTER.format(physical.totalEnergyMwh)} MWh</Text>
           </View>
         </View>
 
         <View style={proposalStyles.section}>
-          <Text style={proposalStyles.sectionTitle}>Financial Summary</Text>
+          <Text style={proposalStyles.sectionTitle}>Assumptions & exclusions</Text>
           <View style={proposalStyles.row}>
-            <Text style={proposalStyles.key}>Annual Revenue (est.)</Text>
+            <Text style={proposalStyles.key}>Full-cycle equivalents / day</Text>
+            <Text style={proposalStyles.value}>
+              {NUMBER_FORMATTER.format(assumptions.fullCycleEquivalentsPerDay)}
+            </Text>
+          </View>
+          <View style={proposalStyles.row}>
+            <Text style={proposalStyles.key}>Avg. spread (EUR/MWh)</Text>
+            <Text style={proposalStyles.value}>
+              {NUMBER_FORMATTER.format(assumptions.averagePriceSpreadEurPerMwh)}
+            </Text>
+          </View>
+          <View style={proposalStyles.row}>
+            <Text style={proposalStyles.key}>Project lifetime (yrs)</Text>
+            <Text style={proposalStyles.value}>{assumptions.projectLifetimeYears}</Text>
+          </View>
+          <View style={proposalStyles.row}>
+            <Text style={proposalStyles.key}>Revenue inflation (%/yr)</Text>
+            <Text style={proposalStyles.value}>
+              {NUMBER_FORMATTER.format(assumptions.electricityPriceInflationPercent)}
+            </Text>
+          </View>
+          <View style={proposalStyles.row}>
+            <Text style={proposalStyles.key}>Regulatory scenario</Text>
+            <Text style={proposalStyles.value}>
+              {regulatoryScenarioDescription(assumptions.gridRegulatoryScenario)}
+            </Text>
+          </View>
+          <Text style={[proposalStyles.description, { marginTop: 10 }]}>
+            Exclusions: interconnection studies, permitting, exact tariff stacking, warranty
+            carve-outs, and detailed EPC scope are not represented. Figures are non-binding
+            illustrations for customer alignment.
+          </Text>
+        </View>
+
+        <View style={proposalStyles.section}>
+          <Text style={proposalStyles.sectionTitle}>Financial summary (matches dashboard)</Text>
+          <View style={proposalStyles.row}>
+            <Text style={proposalStyles.key}>Annual discharged energy (est.)</Text>
+            <Text style={proposalStyles.value}>
+              {NUMBER_FORMATTER.format(financial.annualDischargedMwh)} MWh
+            </Text>
+          </View>
+          <View style={proposalStyles.row}>
+            <Text style={proposalStyles.key}>Annual revenue (est.)</Text>
             <Text style={proposalStyles.value}>
               {CURRENCY_FORMATTER.format(financial.annualRevenue)}
             </Text>
           </View>
           <View style={proposalStyles.row}>
-            <Text style={proposalStyles.key}>Lifetime Revenue (20 years)</Text>
+            <Text style={proposalStyles.key}>
+              Lifetime revenue ({assumptions.projectLifetimeYears} yrs)
+            </Text>
             <Text style={proposalStyles.value}>
               {CURRENCY_FORMATTER.format(financial.totalRevenueOverLifetime)}
             </Text>
           </View>
           <View style={proposalStyles.row}>
-            <Text style={proposalStyles.key}>Simple Payback</Text>
+            <Text style={proposalStyles.key}>Simple payback</Text>
             <Text style={proposalStyles.value}>
               {NUMBER_FORMATTER.format(financial.paybackYears)} years
             </Text>
@@ -225,30 +240,119 @@ function ProposalDocument({
             <Text style={proposalStyles.key}>IRR (gross)</Text>
             <Text style={proposalStyles.value}>{NUMBER_FORMATTER.format(financial.grossIrr)} %</Text>
           </View>
+          <View style={proposalStyles.row}>
+            <Text style={proposalStyles.key}>LCOE</Text>
+            <Text style={proposalStyles.value}>
+              {NUMBER_FORMATTER.format(financial.lcoeEurPerMwh)} EUR/MWh
+            </Text>
+          </View>
         </View>
 
         <View style={proposalStyles.section}>
-          <Text style={proposalStyles.sectionTitle}>Layout Visual (Description)</Text>
+          <Text style={proposalStyles.sectionTitle}>Site / preliminary layout</Text>
           <Text style={proposalStyles.description}>{layoutDescription}</Text>
+          {sitePlacements.length > 0 ? (
+            <Text style={[proposalStyles.description, { marginTop: 8 }]}>
+              {`Map markers recorded: ${sitePlacements.length} placement(s). Example coordinate: ${sitePlacements[0]!.lat.toFixed(4)}, ${sitePlacements[0]!.lng.toFixed(4)} (WGS84).`}
+            </Text>
+          ) : (
+            <Text style={[proposalStyles.description, { marginTop: 8 }]}>
+              No map markers captured yet — add placements in the Hamburg/DE map view to enrich
+              the site narrative.
+            </Text>
+          )}
         </View>
 
-        <Text style={proposalStyles.footer}>Prepared for Tesla Energy - Confidential</Text>
+        {financial.assumptionFootnotes.map((line) => (
+          <Text key={line} style={proposalStyles.bullet}>
+            • {line}
+          </Text>
+        ))}
+
+        <Text style={proposalStyles.footer}>Prepared for Tesla Energy — confidential</Text>
       </Page>
+
+      {selectedConfigurations.length > 1 || sitePlacements.length > 0 ? (
+        <Page size="A4" style={proposalStyles.page}>
+          <View style={proposalStyles.topAccent} />
+          <Text style={proposalStyles.headerLabel}>Appendix</Text>
+          <Text style={proposalStyles.title}>Supporting detail</Text>
+          <Text style={proposalStyles.subtitle}>
+            Multi-block stacks and/or map placements captured in the workspace.
+          </Text>
+
+          {selectedConfigurations.length > 1 ? (
+            <>
+              <Text style={[proposalStyles.subtitle, { marginBottom: 12 }]}>
+                Project blocks (Add to Project)
+              </Text>
+              {selectedConfigurations.map((block, index) => (
+                <View key={`${block.label}-${index}`} style={proposalStyles.section}>
+                  <Text style={proposalStyles.sectionTitle}>Block {index + 1}</Text>
+                  <View style={proposalStyles.row}>
+                    <Text style={proposalStyles.key}>Model</Text>
+                    <Text style={proposalStyles.value}>{block.label}</Text>
+                  </View>
+                  <View style={proposalStyles.row}>
+                    <Text style={proposalStyles.key}>Units</Text>
+                    <Text style={proposalStyles.value}>{block.count}</Text>
+                  </View>
+                  <View style={proposalStyles.row}>
+                    <Text style={proposalStyles.key}>Power / Energy</Text>
+                    <Text style={proposalStyles.value}>
+                      {NUMBER_FORMATTER.format(block.totalPowerMw)} MW /{" "}
+                      {NUMBER_FORMATTER.format(block.totalEnergyMwh)} MWh
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </>
+          ) : null}
+
+          {sitePlacements.length > 0 ? (
+            <View style={[proposalStyles.section, { marginTop: 12 }]}>
+              <Text style={proposalStyles.sectionTitle}>Map placements (WGS84)</Text>
+              {sitePlacements.map((placement, index) => (
+                <View key={placement.id} style={proposalStyles.row}>
+                  <Text style={proposalStyles.key}>#{index + 1}</Text>
+                  <Text style={proposalStyles.value}>
+                    {placement.lat.toFixed(4)}, {placement.lng.toFixed(4)} —{" "}
+                    {placement.capacityMwh.toFixed(1)} MWh
+                    {placement.linkedLabel ? ` (${placement.linkedLabel})` : ""}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          <Text style={proposalStyles.footer}>Prepared for Tesla Energy — confidential</Text>
+        </Page>
+      ) : null}
     </Document>
   );
 }
 
-export default function GenerateProposalButton({
-  projectName,
-  config,
-}: GenerateProposalButtonProps) {
+export default function GenerateProposalButton({ projectName }: GenerateProposalButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const trimmedProjectName = useMemo(() => projectName.trim(), [projectName]);
 
-  const disabled = !config || trimmedProjectName.length === 0 || isGenerating;
+  const liveConfiguration = useProjectStore((state) => state.liveConfiguration);
+  const selectedConfigurations = useProjectStore((state) => state.selectedConfigurations);
+  const economicsAssumptions = useProjectStore((state) => state.economicsAssumptions);
+  const sitePlacements = useProjectStore((state) => state.sitePlacements);
+
+  const physical = useMemo(
+    () =>
+      getFinancePhysicalConfig({
+        selectedConfigurations,
+        liveConfiguration,
+      }),
+    [liveConfiguration, selectedConfigurations]
+  );
+
+  const disabled = !physical || trimmedProjectName.length === 0 || isGenerating;
 
   const handleGenerate = async () => {
-    if (!config || trimmedProjectName.length === 0) {
+    if (!physical || trimmedProjectName.length === 0) {
       return;
     }
 
@@ -256,7 +360,13 @@ export default function GenerateProposalButton({
 
     try {
       const document = (
-        <ProposalDocument projectName={trimmedProjectName} config={config} />
+        <ProposalDocument
+          projectName={trimmedProjectName}
+          physical={physical}
+          assumptions={economicsAssumptions}
+          selectedConfigurations={selectedConfigurations}
+          sitePlacements={sitePlacements}
+        />
       );
       const blob = await pdf(document).toBlob();
       const url = URL.createObjectURL(blob);
