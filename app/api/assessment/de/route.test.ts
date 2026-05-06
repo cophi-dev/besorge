@@ -56,6 +56,13 @@ describe("GET /api/assessment/de", () => {
           domesticGenerationMw: 1,
           batteryStorageMw: 1,
         },
+        eveningWindow: null,
+        dailyEnergy: null,
+        recentRenewablePatterns: {
+          windowDays: 3,
+          solarRichDays: null,
+          inferredBatteryReadiness: "unknown",
+        },
       },
       historical: {
         trailing24hAverageMw: 1,

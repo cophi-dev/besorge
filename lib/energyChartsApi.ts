@@ -214,15 +214,40 @@ const findBatteryStorageSeries = (
 const RENEWABLE_GENERATION_SERIES_REGEX =
   /(wind|solar|biomass|geothermal|hydro run-of-river|hydro water reservoir)/i;
 
+const isRenewableGenerationSeries = (name: string): boolean =>
+  !EXCLUDED_FROM_DOMESTIC_GENERATION.has(name) &&
+  !/battery/i.test(name) &&
+  RENEWABLE_GENERATION_SERIES_REGEX.test(name);
+
+const isConventionalGenerationSeries = (name: string): boolean =>
+  !EXCLUDED_FROM_DOMESTIC_GENERATION.has(name) &&
+  !/battery/i.test(name) &&
+  !RENEWABLE_GENERATION_SERIES_REGEX.test(name);
+
+const sumSeriesAtIndex = (
+  productionTypes: { name: string; data: Array<number | null> }[],
+  predicate: (name: string) => boolean,
+  index: number
+): number | null => {
+  let sum: number | null = null;
+  for (const series of productionTypes) {
+    if (!predicate(series.name)) {
+      continue;
+    }
+    const value = series.data[index];
+    if (value !== null && Number.isFinite(value)) {
+      sum = (sum ?? 0) + value;
+    }
+  }
+  return sum;
+};
+
 const deriveRenewableShareOfLoadSeries = (
   productionTypes: { name: string; data: Array<number | null> }[],
   loadSeries: { name: string; data: Array<number | null> }
 ): Array<number | null> => {
-  const renewableGenerationSeries = productionTypes.filter(
-    (series) =>
-      !EXCLUDED_FROM_DOMESTIC_GENERATION.has(series.name) &&
-      !/battery/i.test(series.name) &&
-      RENEWABLE_GENERATION_SERIES_REGEX.test(series.name)
+  const renewableGenerationSeries = productionTypes.filter((series) =>
+    isRenewableGenerationSeries(series.name)
   );
 
   if (renewableGenerationSeries.length === 0) {
@@ -258,6 +283,47 @@ const mergeRenewableShareSeries = (
     return fallback !== null && Number.isFinite(fallback) ? fallback : null;
   });
 
+export type EveningWindowSnapshot = {
+  /** Berlin local date the window samples belong to (YYYY-MM-DD). */
+  dateBerlin: string;
+  /** Number of 15-min samples included in the 17:00-21:00 average. */
+  samplePoints: number;
+  /** Average residual load (Demand - Renewable) across 17-21h, in MW. */
+  avgResidualLoadMw: number;
+  /** Average conventional generation across 17-21h, in MW (null when no conventional series). */
+  avgConventionalGenerationMw: number | null;
+  /** Average renewable generation across 17-21h, in MW (null when no renewable series). */
+  avgRenewableGenerationMw: number | null;
+};
+
+export type DailyEnergySnapshot = {
+  /** Berlin local date the integration covers (YYYY-MM-DD). */
+  dateBerlin: string;
+  /** Number of 15-min samples integrated for this Berlin day so far. */
+  samplePoints: number;
+  /** Coverage of the full 24h day (0..1). 96 quarter-hour samples = 1.0. */
+  pointFractionOfDay: number;
+  /** Total renewable generation integrated as MW * 0.25h / 1000, in GWh. */
+  renewableGenerationGwh: number;
+  /** Total domestic generation (renewable + conventional) integrated in GWh. */
+  totalGenerationGwh: number;
+  /** Total domestic demand integrated as MW * 0.25h / 1000, in GWh. */
+  demandGwh: number;
+  /** renewableGenerationGwh - demandGwh; positive = surplus, negative = deficit. */
+  netBalanceGwh: number;
+  /** totalGenerationGwh - demandGwh; positive = surplus, negative = deficit. */
+  totalNetBalanceGwh: number;
+};
+
+export type RecentRenewablePatternsSnapshot = {
+  /** Lookback window in days (default 3). */
+  windowDays: number;
+  /** Days within the window where average midday solar share >= 25% of load. */
+  solarRichDays: number | null;
+  /** Heuristic readiness of the BESS fleet to discharge in the evening. */
+  inferredBatteryReadiness: "high" | "moderate" | "low" | "unknown";
+};
+
 export type GermanyMarketSnapshot = {
   retrievedAtIso: string;
   energyUsage: {
@@ -283,6 +349,9 @@ export type GermanyMarketSnapshot = {
     residualLoadMw?: number;
     renewableShareOfLoadPct?: number;
   };
+  eveningWindow: EveningWindowSnapshot | null;
+  dailyEnergy: DailyEnergySnapshot | null;
+  recentRenewablePatterns: RecentRenewablePatternsSnapshot;
 };
 
 export type GermanyAssessmentContext = {
@@ -552,6 +621,232 @@ const summarizeRecentRenewablePatterns = (params: {
   };
 };
 
+const EVENING_WINDOW_HOURS_BERLIN = [17, 18, 19, 20] as const;
+const POINTS_PER_DAY_15MIN = 96;
+const QUARTER_HOUR_TO_GWH = 0.25 / 1000;
+const SOLAR_RICH_MIDDAY_SHARE_THRESHOLD_PCT = 25;
+const RECENT_RENEWABLE_PATTERN_WINDOW_DAYS = 3;
+
+type ProductionSeries = { name: string; data: Array<number | null> };
+
+const groupIndicesByBerlinDate = (unixSeconds: number[]): Map<string, number[]> => {
+  const map = new Map<string, number[]>();
+  for (let index = 0; index < unixSeconds.length; index += 1) {
+    const dayKey = getBerlinDateKey(unixSeconds[index]);
+    const existing = map.get(dayKey);
+    if (existing) {
+      existing.push(index);
+    } else {
+      map.set(dayKey, [index]);
+    }
+  }
+  return map;
+};
+
+const computeEveningWindowSnapshot = (params: {
+  unixSeconds: number[];
+  loadSeries: ProductionSeries;
+  productionTypes: ProductionSeries[];
+  residualSeries: ProductionSeries | undefined;
+}): EveningWindowSnapshot | null => {
+  const { unixSeconds, loadSeries, productionTypes, residualSeries } = params;
+  if (unixSeconds.length === 0) {
+    return null;
+  }
+  const indicesByDate = groupIndicesByBerlinDate(unixSeconds);
+  const dateKeys = [...indicesByDate.keys()].sort();
+  for (let i = dateKeys.length - 1; i >= 0; i -= 1) {
+    const dateKey = dateKeys[i];
+    const candidateIndices = (indicesByDate.get(dateKey) ?? []).filter((index) => {
+      const hour = getBerlinHour(unixSeconds[index]);
+      return EVENING_WINDOW_HOURS_BERLIN.includes(hour as 17 | 18 | 19 | 20);
+    });
+    if (candidateIndices.length < 4) {
+      continue;
+    }
+    const residualValues: number[] = [];
+    const conventionalValues: number[] = [];
+    const renewableValues: number[] = [];
+    for (const index of candidateIndices) {
+      const renewableMw = sumSeriesAtIndex(productionTypes, isRenewableGenerationSeries, index);
+      const conventionalMw = sumSeriesAtIndex(productionTypes, isConventionalGenerationSeries, index);
+      const loadMw = loadSeries.data[index];
+      let residualMw: number | null = null;
+      if (residualSeries) {
+        const direct = residualSeries.data[index];
+        if (direct !== null && Number.isFinite(direct)) {
+          residualMw = direct;
+        }
+      }
+      if (residualMw === null && loadMw !== null && Number.isFinite(loadMw) && renewableMw !== null) {
+        residualMw = loadMw - renewableMw;
+      }
+      if (residualMw !== null && Number.isFinite(residualMw)) {
+        residualValues.push(residualMw);
+      }
+      if (conventionalMw !== null) {
+        conventionalValues.push(conventionalMw);
+      }
+      if (renewableMw !== null) {
+        renewableValues.push(renewableMw);
+      }
+    }
+    if (residualValues.length < 4) {
+      continue;
+    }
+    const avg = (values: number[]) =>
+      values.length === 0 ? null : values.reduce((s, v) => s + v, 0) / values.length;
+    return {
+      dateBerlin: dateKey,
+      samplePoints: residualValues.length,
+      avgResidualLoadMw: avg(residualValues) ?? 0,
+      avgConventionalGenerationMw: avg(conventionalValues),
+      avgRenewableGenerationMw: avg(renewableValues),
+    };
+  }
+  return null;
+};
+
+const computeDailyEnergySnapshot = (params: {
+  unixSeconds: number[];
+  loadSeries: ProductionSeries;
+  productionTypes: ProductionSeries[];
+}): DailyEnergySnapshot | null => {
+  const { unixSeconds, loadSeries, productionTypes } = params;
+  if (unixSeconds.length === 0) {
+    return null;
+  }
+  const indicesByDate = groupIndicesByBerlinDate(unixSeconds);
+  const dateKeys = [...indicesByDate.keys()].sort();
+  for (let i = dateKeys.length - 1; i >= 0; i -= 1) {
+    const dateKey = dateKeys[i];
+    const indices = indicesByDate.get(dateKey) ?? [];
+    let renewableGwh = 0;
+    let totalGenerationGwh = 0;
+    let demandGwh = 0;
+    let countedPoints = 0;
+    for (const index of indices) {
+      const loadMw = loadSeries.data[index];
+      const renewableMw = sumSeriesAtIndex(productionTypes, isRenewableGenerationSeries, index);
+      const conventionalMw = sumSeriesAtIndex(productionTypes, isConventionalGenerationSeries, index);
+      if (loadMw === null || !Number.isFinite(loadMw)) {
+        continue;
+      }
+      countedPoints += 1;
+      demandGwh += loadMw * QUARTER_HOUR_TO_GWH;
+      if (renewableMw !== null) {
+        renewableGwh += renewableMw * QUARTER_HOUR_TO_GWH;
+      }
+      const totalGenerationMw = (renewableMw ?? 0) + (conventionalMw ?? 0);
+      totalGenerationGwh += totalGenerationMw * QUARTER_HOUR_TO_GWH;
+    }
+    if (countedPoints === 0) {
+      continue;
+    }
+    return {
+      dateBerlin: dateKey,
+      samplePoints: countedPoints,
+      pointFractionOfDay: Math.min(1, countedPoints / POINTS_PER_DAY_15MIN),
+      renewableGenerationGwh: renewableGwh,
+      totalGenerationGwh,
+      demandGwh,
+      netBalanceGwh: renewableGwh - demandGwh,
+      totalNetBalanceGwh: totalGenerationGwh - demandGwh,
+    };
+  }
+  return null;
+};
+
+const computeRecentSolarStreak = (params: {
+  unixSeconds: number[];
+  loadSeries: ProductionSeries;
+  productionTypes: ProductionSeries[];
+  windowDays?: number;
+}): { solarRichDays: number | null; observedDays: number } => {
+  const windowDays = params.windowDays ?? RECENT_RENEWABLE_PATTERN_WINDOW_DAYS;
+  if (params.unixSeconds.length === 0) {
+    return { solarRichDays: null, observedDays: 0 };
+  }
+  const latestTs = params.unixSeconds[params.unixSeconds.length - 1];
+  const minTs = latestTs - windowDays * 24 * 60 * 60;
+  const dailyMiddaySolarShare = new Map<string, number[]>();
+  for (let index = 0; index < params.unixSeconds.length; index += 1) {
+    const ts = params.unixSeconds[index];
+    if (ts < minTs) {
+      continue;
+    }
+    const hour = getBerlinHour(ts);
+    if (hour < 10 || hour > 15) {
+      continue;
+    }
+    const load = params.loadSeries.data[index];
+    if (load === null || !Number.isFinite(load) || load <= 0) {
+      continue;
+    }
+    const solar = sumSeriesAtIndex(
+      params.productionTypes,
+      (name) => /solar/i.test(name) && !EXCLUDED_FROM_DOMESTIC_GENERATION.has(name),
+      index
+    );
+    if (solar === null) {
+      continue;
+    }
+    const dayKey = getBerlinDateKey(ts);
+    const existing = dailyMiddaySolarShare.get(dayKey) ?? [];
+    existing.push((solar / load) * 100);
+    dailyMiddaySolarShare.set(dayKey, existing);
+  }
+  if (dailyMiddaySolarShare.size === 0) {
+    return { solarRichDays: null, observedDays: 0 };
+  }
+  let solarRichDays = 0;
+  for (const values of dailyMiddaySolarShare.values()) {
+    const avg = values.reduce((s, v) => s + v, 0) / values.length;
+    if (avg >= SOLAR_RICH_MIDDAY_SHARE_THRESHOLD_PCT) {
+      solarRichDays += 1;
+    }
+  }
+  return { solarRichDays, observedDays: dailyMiddaySolarShare.size };
+};
+
+const inferBatteryReadiness = (
+  solarRichDays: number | null,
+  renewableShareForecastP50: number | null
+): RecentRenewablePatternsSnapshot["inferredBatteryReadiness"] => {
+  if (solarRichDays === null) {
+    return "unknown";
+  }
+  if (solarRichDays >= 2 && renewableShareForecastP50 !== null && renewableShareForecastP50 >= 48) {
+    return "high";
+  }
+  if (solarRichDays >= 1 || (renewableShareForecastP50 !== null && renewableShareForecastP50 >= 42)) {
+    return "moderate";
+  }
+  return "low";
+};
+
+const computeRecentRenewablePatternsSnapshot = (params: {
+  unixSeconds: number[];
+  loadSeries: ProductionSeries;
+  productionTypes: ProductionSeries[];
+  renewableShareForecastP50?: number | null;
+}): RecentRenewablePatternsSnapshot => {
+  const { solarRichDays } = computeRecentSolarStreak({
+    unixSeconds: params.unixSeconds,
+    loadSeries: params.loadSeries,
+    productionTypes: params.productionTypes,
+    windowDays: RECENT_RENEWABLE_PATTERN_WINDOW_DAYS,
+  });
+  return {
+    windowDays: RECENT_RENEWABLE_PATTERN_WINDOW_DAYS,
+    solarRichDays,
+    inferredBatteryReadiness: inferBatteryReadiness(
+      solarRichDays,
+      params.renewableShareForecastP50 ?? null
+    ),
+  };
+};
+
 export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot> => {
   const [totalPower, installedPower] = await Promise.all([
     fetchJson("/total_power?country=de", totalPowerResponseSchema, {
@@ -628,6 +923,23 @@ export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot>
     ...(renewableShareValue !== null ? { renewableShareOfLoadPct: renewableShareValue } : {}),
   };
 
+  const eveningWindow = computeEveningWindowSnapshot({
+    unixSeconds: totalPower.unix_seconds,
+    loadSeries,
+    productionTypes: totalPower.production_types,
+    residualSeries,
+  });
+  const dailyEnergy = computeDailyEnergySnapshot({
+    unixSeconds: totalPower.unix_seconds,
+    loadSeries,
+    productionTypes: totalPower.production_types,
+  });
+  const recentRenewablePatterns = computeRecentRenewablePatternsSnapshot({
+    unixSeconds: totalPower.unix_seconds,
+    loadSeries,
+    productionTypes: totalPower.production_types,
+  });
+
   return {
     retrievedAtIso: new Date().toISOString(),
     energyUsage: {
@@ -645,6 +957,9 @@ export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot>
       powerYear: powerPoint.label,
     },
     realtimeSystem,
+    eveningWindow,
+    dailyEnergy,
+    recentRenewablePatterns,
   };
 };
 

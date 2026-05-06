@@ -22,3 +22,10 @@ Economics are **indicative pre-sales** only (see footnotes in UI and PDF). Throu
 - **`selectedConfigurations`**: blocks added via “Add to Project”; finance aggregates these when non-empty.
 - **`economicsAssumptions`**: user inputs validated via zod (`parseEconomicsAssumptions`).
 - **`sitePlacements`**: map markers with optional `linkedLabel` from the live preview.
+
+## Daily Energy Balance KPI Definitions
+
+- **Primary KPI — Daily total net balance:** `Σ(total generation − load)` across all available 15-minute points for the Berlin day. Displayed as `+X,X GWh surplus` or `−X,X GWh deficit`. This is the factual system balance and includes conventional generation plus import-backed coverage.
+- **Secondary KPI — Renewable deficit:** `Σ(renewable generation − load)` across the same available 15-minute points. This remains relevant for BESS charging logic because it indicates how much daytime charging can be attributed to renewable energy alone.
+- **Estimated evening fleet SoC:** rule-based band from live renewable share and recent solar-rich days (`high`, `moderate`, `low`, `unknown`) to avoid opaque black-box inference.
+- **Effective evening gap (SoC-adjusted):** `max(0; gross evening gap − installed power × SoC midpoint)`. This is the dispatch-relevant residual gap after estimated fleet discharge headroom.
