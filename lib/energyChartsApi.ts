@@ -396,7 +396,9 @@ const summarizeRenewableShareForecast = (
 
 export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot> => {
   const [totalPower, installedPower] = await Promise.all([
-    fetchJson("/total_power?country=de", totalPowerResponseSchema),
+    fetchJson("/total_power?country=de", totalPowerResponseSchema, {
+      allowStaleOnFailure: true,
+    }),
     fetchJson("/installed_power?country=de", installedPowerResponseSchema, {
       allowStaleOnFailure: true,
     }),
@@ -486,7 +488,9 @@ export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot>
 export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentContext> => {
   const [snapshot, totalPower] = await Promise.all([
     getGermanyMarketSnapshot(),
-    fetchJson("/total_power?country=de", totalPowerResponseSchema),
+    fetchJson("/total_power?country=de", totalPowerResponseSchema, {
+      allowStaleOnFailure: true,
+    }),
   ]);
 
   const loadSeries = findSeriesOrThrow(

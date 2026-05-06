@@ -10,8 +10,18 @@ type SiteShellProps = {
 };
 
 export function SiteShell({ children }: SiteShellProps) {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window === "undefined") {
+      return "light";
+    }
+    const savedTheme = window.localStorage.getItem("aether-theme");
+    if (savedTheme === "light" || savedTheme === "dark") {
+      return savedTheme;
+    }
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatSeedPrompt, setChatSeedPrompt] = useState<string | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -29,7 +39,13 @@ export function SiteShell({ children }: SiteShellProps) {
         setChatOpen(true);
       }
     };
-    const handleOpen = () => setChatOpen(true);
+    const handleOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<{ prompt?: string }>;
+      if (customEvent.detail?.prompt) {
+        setChatSeedPrompt(customEvent.detail.prompt);
+      }
+      setChatOpen(true);
+    };
     openFromHash();
     window.addEventListener("hashchange", openFromHash);
     window.addEventListener("aether:open-ai-chat", handleOpen);
@@ -102,7 +118,17 @@ export function SiteShell({ children }: SiteShellProps) {
       <main className="pt-[88px]">
         {children}
       </main>
-      <BessAiChatOverlay open={chatOpen} onClose={() => setChatOpen(false)} />
+      <BessAiChatOverlay
+        open={chatOpen}
+        onClose={() => {
+          setChatOpen(false);
+          setChatSeedPrompt(null);
+          if (window.location.hash === "#ai-chat") {
+            window.history.replaceState(null, "", window.location.pathname + window.location.search);
+          }
+        }}
+        seedPrompt={chatSeedPrompt}
+      />
 
       <footer className="border-t border-slate-300/45 bg-[#f8f7f4] dark:border-slate-500/30 dark:bg-slate-950/45">
         <div className="mx-auto max-w-7xl px-8 py-8 text-center text-sm text-slate-600 dark:text-slate-300 lg:px-12">

@@ -11,6 +11,7 @@ type ChatMessage = {
 type BessAiChatOverlayProps = {
   open: boolean;
   onClose: () => void;
+  seedPrompt?: string | null;
 };
 
 const starterMessage: ChatMessage = {
@@ -19,9 +20,13 @@ const starterMessage: ChatMessage = {
     "I am your BESS assistant. Ask me anything about sizing, Germany market signals, risk, or decision trade-offs from your assessment.",
 };
 
-export default function BessAiChatOverlay({ open, onClose }: BessAiChatOverlayProps) {
+export default function BessAiChatOverlay({
+  open,
+  onClose,
+  seedPrompt,
+}: BessAiChatOverlayProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([starterMessage]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(seedPrompt ?? "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
