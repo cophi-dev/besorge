@@ -2,9 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
+import dynamic from "next/dynamic";
 
 import BessAssessmentCenter from "@/components/BessAssessmentCenter";
-import MegapackMap from "@/components/MegapackMap";
+
+const MegapackMap = dynamic(() => import("@/components/MegapackMap"), {
+  ssr: false,
+});
 
 type MarketSnapshot = {
   retrievedAtIso: string;
