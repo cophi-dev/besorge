@@ -297,7 +297,7 @@ export async function getBessChatReplyFromAi(
     {
       role: "system",
       content:
-        "You are Tesla BESSForge Assistant. You only discuss BESS-related topics (technical sizing, market interpretation, risks, project planning, and decision support). If asked unrelated questions, politely redirect to BESS context. Keep responses practical and concise. Use short paragraphs and plain bullets. Do not use markdown headings, bold syntax, or code fences.",
+          "You are Tesla AETHER Assistant. You only discuss BESS-related topics (technical sizing, market interpretation, risks, project planning, and decision support). If asked unrelated questions, politely redirect to BESS context. Keep responses practical and concise. Use short paragraphs and plain bullets. Do not use markdown headings, bold syntax, or code fences.",
     },
     ...(options?.liveContext
       ? [

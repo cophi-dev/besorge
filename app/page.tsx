@@ -1,178 +1,245 @@
 "use client";
 
-import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
-import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
+import { MessageCircle } from "lucide-react";
 
-import FinancialDashboard from "@/components/FinancialDashboard";
 import BessAssessmentCenter from "@/components/BessAssessmentCenter";
-import GermanyMarketSnapshot from "@/components/GermanyMarketSnapshot";
-import GenerateProposalButton from "@/components/GenerateProposalButton";
-import MegapackConfigurator from "@/components/MegapackConfigurator";
-import { getFinancePhysicalConfig, useProjectStore } from "@/lib/projectStore";
 
-const MegapackMap = dynamic(() => import("@/components/MegapackMap"), {
-  ssr: false,
-});
+type MarketSnapshot = {
+  retrievedAtIso: string;
+  bess: {
+    capacityUnit: "GWh";
+    installedCapacityGwh: number;
+    capacityYear: string;
+    powerUnit: "GW";
+    installedPowerGw: number;
+    powerYear: string;
+  };
+  realtimeSystem: {
+    unit: "MW";
+    timestampIso: string;
+    loadMw: number;
+    domesticGenerationMw: number;
+    residualLoadMw?: number;
+    renewableShareOfLoadPct?: number;
+  };
+};
 
-function SectionIntro({
-  label,
-  title,
-  description,
-}: {
-  label: string;
-  title: string;
-  description: string;
-}) {
+type Assessment = {
+  score: number;
+  shortTermSignal: string;
+  verdict: "beneficial_now" | "not_beneficial_now" | "uncertain";
+  scoreBreakdown: {
+    volatility: number;
+    adequacy: number;
+  };
+};
+
+const NUMBER_FORMATTER = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
+const LIVE_UPDATE_LABEL = "Updated live";
+
+function formatAdaptivePower(valueMw: number): string {
+  if (Math.abs(valueMw) >= 1000) {
+    return `${NUMBER_FORMATTER.format(valueMw / 1000)} GW`;
+  }
+  return `${NUMBER_FORMATTER.format(valueMw)} MW`;
+}
+
+export default function Home() {
+  const [market, setMarket] = useState<MarketSnapshot | null>(null);
+  const [assessment, setAssessment] = useState<Assessment | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadData = async () => {
+      const [marketResult, assessmentResult] = await Promise.allSettled([
+        fetch("/api/market/de", { cache: "no-store", signal: controller.signal }),
+        fetch("/api/assessment/de", { cache: "no-store", signal: controller.signal }),
+      ]);
+
+      if (marketResult.status === "fulfilled" && marketResult.value.ok) {
+        setMarket((await marketResult.value.json()) as MarketSnapshot);
+      }
+
+      if (assessmentResult.status === "fulfilled" && assessmentResult.value.ok) {
+        setAssessment((await assessmentResult.value.json()) as Assessment);
+      }
+    };
+    void loadData();
+    return () => controller.abort();
+  }, []);
+
+  const openAiChat = () => {
+    window.dispatchEvent(new Event("aether:open-ai-chat"));
+    window.location.hash = "ai-chat";
+  };
+
+  const renewableShareValue =
+    market?.realtimeSystem.renewableShareOfLoadPct !== undefined
+      ? `${NUMBER_FORMATTER.format(market.realtimeSystem.renewableShareOfLoadPct)}%`
+      : market
+        ? "temporarily unavailable"
+        : "Loading...";
+
+  const residualLoadValue =
+    market?.realtimeSystem.residualLoadMw !== undefined
+      ? formatAdaptivePower(market.realtimeSystem.residualLoadMw)
+      : market
+        ? formatAdaptivePower(market.realtimeSystem.loadMw - market.realtimeSystem.domesticGenerationMw)
+        : "Loading...";
+
+  const liveUpdateLabel = market
+    ? `${LIVE_UPDATE_LABEL} • ${new Date(market.realtimeSystem.timestampIso).toLocaleString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`
+    : `${LIVE_UPDATE_LABEL} • syncing`;
+
   return (
-    <div className="mb-4 md:mb-5">
-      <p className="section-kicker">{label}</p>
-      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white md:text-3xl">
-        {title}
-      </h2>
-      <p className="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-300">{description}</p>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-16 px-8 pb-24 pt-16 lg:px-12">
+      <section id="overview" className="space-y-8 border-b border-slate-300/45 pb-14">
+        <p className="text-xs tracking-[0.12em] text-slate-500 uppercase">{liveUpdateLabel}</p>
+        <h1 className="max-w-5xl text-5xl leading-tight text-slate-900 md:text-7xl [font-family:var(--font-heading)]">
+          AETHER
+        </h1>
+        <p className="max-w-3xl text-xl text-slate-700 md:text-2xl">
+          Clarity for Germany&apos;s energy transition
+        </p>
+        <p className="max-w-3xl text-sm leading-relaxed text-slate-600">
+          Daily high-signal briefing for storage teams tracking demand stress, renewable penetration,
+          and BESS deployment momentum.
+        </p>
+        <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <KpiCard
+            title="Current demand"
+            value={market ? formatAdaptivePower(market.realtimeSystem.loadMw) : "Loading..."}
+            meaning="Live power needed in the grid."
+          />
+          <KpiCard
+            title="Renewable share"
+            value={renewableShareValue}
+            meaning="Portion of demand served by renewables."
+          />
+          <KpiCard
+            title="Residual Load"
+            value={residualLoadValue}
+            meaning="Demand remaining after renewable generation."
+          />
+          <KpiCard
+            title="Installed BESS power"
+            value={
+              market
+                ? `${NUMBER_FORMATTER.format(market.bess.installedPowerGw)} ${market.bess.powerUnit}`
+                : "Loading..."
+            }
+            sublabel={market ? `(${market.bess.capacityYear})` : undefined}
+            meaning="Operational utility-scale BESS power."
+          />
+          <KpiCard
+            title="Installed BESS energy"
+            value={
+              market
+                ? `${NUMBER_FORMATTER.format(market.bess.installedCapacityGwh)} ${market.bess.capacityUnit}`
+                : "Loading..."
+            }
+            sublabel={market ? `(${market.bess.capacityYear})` : undefined}
+            meaning="Available discharge energy capacity."
+          />
+        </div>
+      </section>
+
+      <section id="bess-value" className="space-y-8">
+        <h2 className="text-3xl text-slate-900 md:text-4xl [font-family:var(--font-heading)]">
+          Strategic Signal Review
+        </h2>
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <ValueCard
+            title="Evening Stress"
+            value={residualLoadValue}
+            body="Net evening gap after solar fade."
+          />
+          <ValueCard
+            title="Volatility"
+            value={assessment ? `${Math.round(assessment.scoreBreakdown.volatility)}/100` : "n/a"}
+            body="Short-term spread opportunity signal."
+          />
+          <ValueCard
+            title="Ramps"
+            value={assessment ? `${Math.round(assessment.scoreBreakdown.adequacy)}/100` : "n/a"}
+            body="Fast-response value proxy."
+          />
+          <ValueCard
+            title="Opportunity score"
+            value={assessment ? `${Math.round(assessment.score)}/100` : "n/a"}
+            body="Composite opportunity score now."
+            tag={assessment ? assessment.verdict.replaceAll("_", " ") : undefined}
+          />
+        </div>
+      </section>
+
+      <section id="ai-assessment" className="rounded-3xl border border-slate-300/45 bg-white/65 p-6 md:p-9">
+        <BessAssessmentCenter compact />
+      </section>
+
+      <button
+        type="button"
+        onClick={openAiChat}
+        className="fixed right-6 bottom-6 z-40 inline-flex items-center gap-2 rounded-full border border-slate-300/75 bg-white/95 px-5 py-3 text-sm font-medium text-slate-800 transition hover:-translate-y-0.5 hover:border-primary hover:text-primary"
+      >
+        <MessageCircle className="h-4 w-4" />
+        Ask the AETHER analyst
+      </button>
     </div>
   );
 }
 
-export default function Home() {
-  const [projectName, setProjectName] = useState("Tesla BESS Expansion");
-  const selectedConfigurations = useProjectStore((state) => state.selectedConfigurations);
-  const addConfiguration = useProjectStore((state) => state.addConfiguration);
-  const setLiveConfiguration = useProjectStore((state) => state.setLiveConfiguration);
-  const liveConfiguration = useProjectStore((state) => state.liveConfiguration);
-
-  const physical = getFinancePhysicalConfig({
-    selectedConfigurations,
-    liveConfiguration,
-  });
-  const latestConfig = selectedConfigurations.at(-1) ?? liveConfiguration;
-
+function KpiCard({
+  title,
+  value,
+  meaning,
+  sublabel,
+}: {
+  title: string;
+  value: string;
+  meaning: string;
+  sublabel?: string;
+}) {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 pb-16 pt-14 lg:px-10">
-      <section id="overview" className="hero-block rounded-3xl px-8 py-14 md:px-14 md:py-16">
-        <span className="apple-pill">TESLA BESS PLANNING HUB</span>
-        <h1 className="mt-6 max-w-4xl text-4xl font-semibold leading-tight tracking-tight text-slate-900 dark:text-white md:text-6xl">
-          Plan your battery project with confidence
-        </h1>
-        <p className="mt-6 max-w-2xl text-lg text-slate-600 dark:text-slate-300 md:text-xl">
-          Build your Megapack setup, explore market assumptions, add site context on the map, and
-          export a proposal PDF that stays in sync with your latest numbers.
+    <article className="border-l-2 border-primary/35 pl-4">
+      <p className="text-xs tracking-[0.14em] text-slate-500 uppercase">{title}</p>
+      <p className="mt-2 text-4xl font-black text-slate-900 md:text-5xl [font-family:var(--font-sans)]">
+        {value}
+      </p>
+      {sublabel ? <p className="mt-1 text-xs text-slate-500">{sublabel}</p> : null}
+      <p className="mt-2 text-sm leading-relaxed text-slate-700">{meaning}</p>
+    </article>
+  );
+}
+
+function ValueCard({
+  title,
+  value,
+  body,
+  tag,
+}: {
+  title: string;
+  value: string;
+  body: string;
+  tag?: string;
+}) {
+  return (
+    <article className="rounded-2xl border border-slate-300/50 bg-white/70 p-6">
+      <p className="text-xs tracking-[0.14em] text-slate-500 uppercase">{title}</p>
+      <p className="mt-3 text-4xl font-extrabold text-slate-900 [font-family:var(--font-sans)]">{value}</p>
+      <p className="mt-3 text-sm leading-relaxed text-slate-700">{body}</p>
+      {tag ? (
+        <p className="mt-4 inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">
+          {tag}
         </p>
-        <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <a href="#bess-data" className="jump-card">
-            BESS data
-          </a>
-          <a href="#market-data" className="jump-card">
-            Current energy data
-          </a>
-          <a href="#ai-assessment" className="jump-card">
-            AI assessment
-          </a>
-          <a href="#planning" className="jump-card">
-            Plan your BESS
-          </a>
-        </div>
-      </section>
-
-      <section id="bess-data" className="section-frame section-frame-neutral rounded-3xl p-5 md:p-6">
-        <SectionIntro
-          label="BESS Data"
-          title="Review BESS deployment context"
-          description="Explore mapped utility-scale and distributed BESS context in Germany to ground your project in existing market footprint."
-        />
-        <MegapackMap />
-      </section>
-
-      <section id="market-data" className="section-frame section-frame-neutral rounded-3xl p-5 md:p-6">
-        <SectionIntro
-          label="Current Energy Data"
-          title="Track the latest Germany power context"
-          description="Use current and trailing indicators to align planning discussions with real system conditions."
-        />
-        <GermanyMarketSnapshot />
-      </section>
-
-      <section id="ai-assessment" className="section-frame section-frame-neutral rounded-3xl p-5 md:p-6">
-        <SectionIntro
-          label="AI Insights"
-          title="Review AI-based decision support"
-          description="Get a scored recommendation with key drivers, risks, and next actions based on current and historical market context."
-        />
-        <BessAssessmentCenter />
-      </section>
-
-      <section id="planning" className="section-frame section-frame-primary rounded-3xl p-5 md:p-6">
-        <SectionIntro
-          label="Planning"
-          title="Plan your BESS setup"
-          description="Define technical sizing and test indicative economics together to build your project baseline before export."
-        />
-        <MegapackConfigurator
-          onAddToProject={addConfiguration}
-          onConfigChange={setLiveConfiguration}
-        />
-        <div className="mt-6">
-          <FinancialDashboard />
-        </div>
-      </section>
-
-      <section id="export" className="section-frame section-frame-primary rounded-3xl p-6">
-        <SectionIntro
-          label="Export"
-          title="Finalize and generate your proposal"
-          description="Confirm your current project state, set the proposal name, and export a document synchronized with your latest assumptions."
-        />
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">
-              Project status
-            </p>
-            <h3 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">
-              Configurations added: {selectedConfigurations.length}
-            </h3>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-              {latestConfig
-                ? `${latestConfig.count}x ${latestConfig.label} | ${latestConfig.totalPowerMw.toFixed(2)} MW | ${latestConfig.totalEnergyMwh.toFixed(2)} MWh`
-                : "No configuration yet. Use the configurator to get started."}
-            </p>
-            {physical ? (
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Financials and the PDF currently use{" "}
-                {selectedConfigurations.length > 0
-                  ? "your combined project configurations"
-                  : "your live configurator preview"}
-                .
-              </p>
-            ) : null}
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            {physical ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/55 bg-blue-500/15 px-3 py-1 text-xs font-medium text-blue-600 dark:text-blue-200">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Ready to export
-              </span>
-            ) : null}
-            <GenerateProposalButton projectName={projectName} />
-          </div>
-        </div>
-
-        <div className="mt-5 max-w-md space-y-2">
-          <label
-            htmlFor="project-name"
-            className="text-xs tracking-[0.14em] text-[#A1A1AA] uppercase"
-          >
-            Project name
-          </label>
-          <input
-            id="project-name"
-            value={projectName}
-            onChange={(event) => setProjectName(event.target.value)}
-            placeholder="e.g. Hamburg Grid Support Phase 1"
-            className="apple-input"
-          />
-        </div>
-      </section>
-    </div>
+      ) : null}
+    </article>
   );
 }

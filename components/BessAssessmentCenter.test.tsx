@@ -49,8 +49,6 @@ describe("BessAssessmentCenter", () => {
     expect(screen.getByText("Key Drivers (last 7 days)")).toBeInTheDocument();
     expect(screen.getByLabelText("Volatility impact 80")).toBeInTheDocument();
     expect(screen.getByText("Immediate signal")).toBeInTheDocument();
-    expect(screen.getAllByText("Structural signal").length).toBeGreaterThan(0);
-    expect(screen.getByText("Do now")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /let's talk about it/i })).toBeInTheDocument();
   });
 

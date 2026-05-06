@@ -177,6 +177,13 @@ const valueAtIndexWithFallback = (
   return null;
 };
 
+const pickLatestAvailableValue = (
+  data: Array<number | null>,
+  primaryIndex: number
+): number | null =>
+  valueAtIndexWithFallback(data, primaryIndex, 96) ??
+  valueAtIndexWithFallback(data, data.length - 1, data.length);
+
 const sumDomesticGenerationMw = (
   productionTypes: { name: string; data: Array<number | null> }[],
   loadIndex: number
@@ -426,7 +433,9 @@ export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot>
 
   const residualSeries = totalPower.production_types.find((entry) => entry.name === "Residual load");
   const residualValue =
-    residualSeries === undefined ? null : valueAtIndexWithFallback(residualSeries.data, loadIndex);
+    residualSeries === undefined
+      ? loadPoint.value - domesticGenerationMw
+      : pickLatestAvailableValue(residualSeries.data, loadIndex) ?? (loadPoint.value - domesticGenerationMw);
 
   const renewableShareSeries = totalPower.production_types.find(
     (entry) => entry.name === "Renewable share of load"
@@ -442,7 +451,7 @@ export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot>
   const renewableShareValue =
     mergedRenewableShareSeries.length === 0
       ? null
-      : valueAtIndexWithFallback(mergedRenewableShareSeries, loadIndex);
+      : pickLatestAvailableValue(mergedRenewableShareSeries, loadIndex);
 
   const realtimeSystem: GermanyMarketSnapshot["realtimeSystem"] = {
     unit: "MW",

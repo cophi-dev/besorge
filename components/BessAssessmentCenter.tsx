@@ -44,11 +44,11 @@ const verdictLabel: Record<AssessmentVerdict, string> = {
 
 const verdictTone: Record<AssessmentVerdict, string> = {
   beneficial_now:
-    "border-emerald-400/50 bg-emerald-500/15 text-emerald-100 shadow-[0_0_30px_rgba(16,185,129,0.26)]",
+    "border-emerald-200 bg-emerald-50 text-emerald-800",
   not_beneficial_now:
-    "border-red-400/50 bg-red-500/15 text-red-100 shadow-[0_0_30px_rgba(248,113,113,0.2)]",
+    "border-red-200 bg-red-50 text-red-800",
   uncertain:
-    "border-amber-400/50 bg-amber-500/15 text-amber-100 shadow-[0_0_30px_rgba(251,191,36,0.2)]",
+    "border-amber-200 bg-amber-50 text-amber-800",
 };
 
 const termDefinitions: Record<string, string> = {
@@ -71,11 +71,16 @@ const glossaryPattern = new RegExp(
   "gi"
 );
 
-export default function BessAssessmentCenter() {
+type BessAssessmentCenterProps = {
+  compact?: boolean;
+};
+
+export default function BessAssessmentCenter({ compact = false }: BessAssessmentCenterProps) {
   const [data, setData] = useState<AssessmentResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showDriverBars, setShowDriverBars] = useState(false);
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+  const [showDriverBars] = useState(true);
 
   const loadAssessment = useCallback(async () => {
     try {
@@ -104,17 +109,6 @@ export default function BessAssessmentCenter() {
     }, 0);
     return () => window.clearTimeout(timeoutId);
   }, [loadAssessment]);
-
-  useEffect(() => {
-    setShowDriverBars(false);
-    if (!data) {
-      return;
-    }
-    const timeoutId = window.setTimeout(() => {
-      setShowDriverBars(true);
-    }, 120);
-    return () => window.clearTimeout(timeoutId);
-  }, [data]);
 
   const refreshAssessment = async () => {
     setLoading(true);
@@ -158,41 +152,49 @@ export default function BessAssessmentCenter() {
     ];
   }, [data]);
 
+  const topDriverBars = useMemo(
+    () => [...scoreBreakdown].sort((a, b) => b.value - a.value).slice(0, 3),
+    [scoreBreakdown]
+  );
+
   return (
-    <section className="glass-card relative rounded-3xl p-6 pb-12 md:p-8 md:pb-14">
+    <section className="glass-card relative rounded-4xl p-7 pb-12 md:p-10 md:pb-14">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">
             AI decision support
           </p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white md:text-3xl">
+          <h2 className="mt-2 text-3xl tracking-tight text-slate-900 md:text-4xl [font-family:var(--font-heading)]">
             Should you add more BESS capacity now?
           </h2>
-          <p className="mt-3 max-w-3xl text-sm text-slate-600 dark:text-slate-300">
-            This view blends immediate system conditions with structural 12-36 month signals to
-            produce a fast recommendation. Use it to prioritize decisions, then validate with your
-            project-specific technical and commercial constraints.
-          </p>
+          {!compact ? (
+            <p className="mt-3 max-w-3xl text-sm text-slate-600 dark:text-slate-300">
+              This view blends immediate system conditions with structural 12-36 month signals to
+              produce a fast recommendation. Use it to prioritize decisions, then validate with your
+              project-specific technical and commercial constraints.
+            </p>
+          ) : null}
         </div>
         <div className="ml-auto flex flex-wrap items-start justify-end gap-2">
-          <details className="rounded-full border border-slate-300/60 bg-white/65 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-500/35 dark:bg-slate-900/60 dark:text-slate-300">
-            <summary className="cursor-pointer list-none select-none font-medium">
-              How this works
-            </summary>
-            <div className="mt-2 w-72 space-y-2 rounded-lg border border-slate-300/55 bg-white/90 p-2.5 text-[11px] leading-relaxed text-slate-600 shadow-sm dark:border-slate-500/35 dark:bg-slate-900/90 dark:text-slate-300">
-              <p>
-                How to read this: use <span className="font-semibold">Verdict + Score</span> for
-                quick direction, then check <span className="font-semibold">Immediate</span>,{" "}
-                <span className="font-semibold">Structural</span>, and{" "}
-                <span className="font-semibold">Uncertainty</span> before taking action.
-              </p>
-              <p>
-                AI output is advisory and should be validated with project-specific engineering,
-                permitting, and commercial constraints. This is decision support, not investment
-                advice.
-              </p>
-            </div>
-          </details>
+          {!compact ? (
+            <details className="rounded-full border border-slate-300/60 bg-white/65 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-500/35 dark:bg-slate-900/60 dark:text-slate-300">
+              <summary className="cursor-pointer list-none select-none font-medium">
+                How this works
+              </summary>
+              <div className="mt-2 w-72 space-y-2 rounded-lg border border-slate-300/55 bg-white/90 p-2.5 text-[11px] leading-relaxed text-slate-600 shadow-sm dark:border-slate-500/35 dark:bg-slate-900/90 dark:text-slate-300">
+                <p>
+                  How to read this: use <span className="font-semibold">Verdict + Score</span> for
+                  quick direction, then check <span className="font-semibold">Immediate signal</span>{" "}
+                  and <span className="font-semibold">Uncertainty</span> before taking action.
+                </p>
+                <p>
+                  AI output is advisory and should be validated with project-specific engineering,
+                  permitting, and commercial constraints. This is decision support, not investment
+                  advice.
+                </p>
+              </div>
+            </details>
+          ) : null}
           <button
             type="button"
             onClick={() => void refreshAssessment()}
@@ -201,13 +203,15 @@ export default function BessAssessmentCenter() {
           >
             {loading ? "Refreshing..." : "Refresh assessment"}
           </button>
-          <button
-            type="button"
-            onClick={openAiChat}
-            className="rounded-full border border-blue-400/60 bg-blue-500/10 px-4 py-2 text-xs font-medium text-blue-700 transition hover:border-blue-500 hover:bg-blue-500/20 dark:border-blue-300/50 dark:text-blue-100"
-          >
-            Let&apos;s talk about it
-          </button>
+          {!compact ? (
+            <button
+              type="button"
+              onClick={openAiChat}
+              className="rounded-full border border-blue-400/60 bg-blue-500/10 px-4 py-2 text-xs font-medium text-blue-700 transition hover:border-blue-500 hover:bg-blue-500/20 dark:border-blue-300/50 dark:text-blue-100"
+            >
+              Let&apos;s talk about it
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -225,7 +229,7 @@ export default function BessAssessmentCenter() {
 
       {data ? (
         <div className="mt-10 space-y-8 md:mt-12 md:space-y-8">
-          <Card className="border border-blue-200/20 bg-gradient-to-br from-[#061429] via-[#0A1F3F] to-[#071225] text-white ring-1 ring-emerald-400/20">
+          <Card className="border-0 bg-white/95 text-slate-900 shadow-[0_16px_34px_rgba(15,23,42,0.07)]">
             <CardContent className="space-y-8 py-7">
               <div className="flex items-center justify-center">
                 <Badge
@@ -237,9 +241,15 @@ export default function BessAssessmentCenter() {
                 </Badge>
               </div>
               <div className="grid items-center gap-6 md:grid-cols-[1fr_auto]">
-                <div className="mx-auto flex h-56 w-56 items-center justify-center rounded-full border border-white/10 bg-[#021024]/70 p-4 shadow-[inset_0_0_40px_rgba(34,197,94,0.08)]">
+                <div
+                  className={`mx-auto flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-4 ${
+                    compact ? "h-44 w-44" : "h-56 w-56"
+                  }`}
+                >
                   <div
-                    className="relative flex h-48 w-48 items-center justify-center rounded-full border border-white/5 transition-all duration-700 ease-out"
+                    className={`relative flex items-center justify-center rounded-full border border-slate-100 transition-all duration-700 ease-out ${
+                      compact ? "h-36 w-36" : "h-48 w-48"
+                    }`}
                     style={{
                       background: `conic-gradient(${scoreColor(data.score)} ${Math.max(
                         0,
@@ -249,30 +259,34 @@ export default function BessAssessmentCenter() {
                     role="img"
                     aria-label={`Score gauge ${Math.round(data.score)} out of 100`}
                   >
-                    <div className="absolute inset-5 rounded-full bg-[#071a34]" />
+                    <div className="absolute inset-5 rounded-full bg-white" />
                     <div className="relative text-center">
-                      <p className="text-xs tracking-[0.14em] text-slate-300 uppercase">Score</p>
-                      <p className="mt-1 text-4xl font-semibold text-white">{Math.round(data.score)}</p>
-                      <p className="text-xs text-slate-300">/ 100</p>
+                      <p className="text-xs tracking-[0.14em] text-slate-500 uppercase">Score</p>
+                      <p
+                        className={`${compact ? "text-4xl" : "text-5xl"} mt-1 font-extrabold text-slate-900 [font-family:var(--font-sans)]`}
+                      >
+                        {Math.round(data.score)}
+                      </p>
+                      <p className="text-xs text-slate-500">/ 100</p>
                     </div>
                   </div>
                 </div>
                 <div className="mx-auto flex w-full max-w-xs justify-center md:justify-end">
                   <Badge
                     variant="outline"
-                    className="h-9 rounded-full border-emerald-300/35 bg-emerald-500/12 px-4 text-sm font-medium text-emerald-100"
+                    className="h-9 rounded-full border-emerald-200 bg-emerald-50 px-4 text-sm font-medium text-emerald-800"
                   >
                     <Sparkle className="mr-2 size-4" />
                     Confidence {Math.round(data.confidence)}%
                   </Badge>
                 </div>
               </div>
-              <div className="space-y-4 rounded-xl bg-[#05162E]/55 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                <p className="text-xs tracking-[0.14em] text-slate-200 uppercase">
+              <div className="space-y-4 rounded-2xl bg-slate-50 p-5">
+                <p className="text-xs tracking-[0.14em] text-slate-600 uppercase">
                   Key Drivers (last 7 days)
                 </p>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {scoreBreakdown.map((entry) => (
+                <div className="space-y-3">
+                  {topDriverBars.map((entry) => (
                     <MiniDriverBar
                       key={entry.label}
                       label={entry.label}
@@ -283,66 +297,98 @@ export default function BessAssessmentCenter() {
                   ))}
                 </div>
               </div>
+              <div className="rounded-2xl bg-slate-50 p-5">
+                <p className="text-xs tracking-[0.14em] text-slate-600 uppercase">Recommended next actions</p>
+                <ul className="mt-3 space-y-1.5 text-sm text-slate-700">
+                  {data.recommendedNextActions.slice(0, 3).map((item) => (
+                    <li key={item}>- <InlineGlossaryText text={item} /></li>
+                  ))}
+                </ul>
+              </div>
             </CardContent>
           </Card>
 
-          <div className="h-px bg-gradient-to-r from-transparent via-blue-300/35 to-transparent" />
+          {!compact && showFullAnalysis ? (
+            <>
+              <div className="h-px bg-gradient-to-r from-transparent via-blue-300/35 to-transparent" />
 
-          <div className="grid gap-4 md:gap-6 md:grid-cols-2">
-            <SignalCard
-              title="Immediate signal"
-              icon={<TrendingUp className="size-4 text-emerald-300" />}
-              points={[data.shortTermSignal]}
-              collapseOverflow
-            />
-            <SignalCard
-              title="Structural signal"
-              icon={<Atom className="size-4 text-blue-200" />}
-              points={[data.structuralSignal]}
-            />
-          </div>
+              <div className="grid gap-4 md:gap-6 md:grid-cols-2">
+                <SignalCard
+                  title="Immediate signal"
+                  icon={<TrendingUp className="size-4 text-emerald-300" />}
+                  points={[data.shortTermSignal]}
+                  collapseOverflow
+                />
+              </div>
 
-          <div className="h-px bg-gradient-to-r from-transparent via-slate-300/60 to-transparent dark:via-slate-500/35" />
-          <div className="space-y-6 rounded-2xl bg-white/45 p-4 shadow-sm dark:bg-slate-900/35 md:space-y-8 md:p-5">
-            <AccordionListCard
-              title="Why the confidence is only 55%"
-              items={data.confidenceLimitations}
-              defaultClosed
-            />
-            <ListCard title="Confidence drivers" items={data.confidenceDrivers} />
-            <AccordionListCard title="Key Risks to Consider" items={data.risks} defaultClosed />
-            <ListCard title="Recommended next actions" items={data.recommendedNextActions} />
-          </div>
-          <div className="rounded-xl bg-white/60 p-4 shadow-sm dark:bg-slate-900/50">
-            <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-              Horizon outlook
-            </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <HorizonNode
-                label="Now"
-                verdict={data.horizonOutlook.now.recommendation}
-                summary={firstSentence(data.horizonOutlook.now.rationale)}
-                icon={<Sparkle className="size-3.5" />}
-                current
-                delay={0}
+              <div className="h-px bg-gradient-to-r from-transparent via-slate-300/60 to-transparent dark:via-slate-500/35" />
+              <div className="space-y-6 rounded-2xl bg-white/45 p-4 shadow-sm dark:bg-slate-900/35 md:space-y-8 md:p-5">
+                <AccordionListCard
+                  title="Why the confidence is only 55%"
+                  items={data.confidenceLimitations}
+                  defaultClosed
+                />
+                <ListCard title="Confidence drivers" items={data.confidenceDrivers} />
+                <AccordionListCard title="Key Risks to Consider" items={data.risks} defaultClosed />
+              </div>
+              <div className="rounded-xl bg-white/60 p-4 shadow-sm dark:bg-slate-900/50">
+                <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
+                  Horizon outlook
+                </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                  <HorizonNode
+                    label="Now"
+                    verdict={data.horizonOutlook.now.recommendation}
+                    summary={firstSentence(data.horizonOutlook.now.rationale)}
+                    icon={<Sparkle className="size-3.5" />}
+                    current
+                    delay={0}
+                  />
+                  <HorizonNode
+                    label="Next 12m"
+                    verdict={data.horizonOutlook.next12m.recommendation}
+                    summary={firstSentence(data.horizonOutlook.next12m.rationale)}
+                    icon={<TrendingUp className="size-3.5" />}
+                    delay={0.08}
+                  />
+                  <HorizonNode
+                    label="Next 36m"
+                    verdict={data.horizonOutlook.next36m.recommendation}
+                    summary={firstSentence(data.horizonOutlook.next36m.rationale)}
+                    icon={<Atom className="size-3.5" />}
+                    delay={0.16}
+                  />
+                </div>
+              </div>
+              <AccordionListCard
+                title="Data Limitations & Impact"
+                items={[data.dataGapsImpact]}
+                defaultClosed
               />
-              <HorizonNode
-                label="Next 12m"
-                verdict={data.horizonOutlook.next12m.recommendation}
-                summary={firstSentence(data.horizonOutlook.next12m.rationale)}
-                icon={<TrendingUp className="size-3.5" />}
-                delay={0.08}
-              />
-              <HorizonNode
-                label="Next 36m"
-                verdict={data.horizonOutlook.next36m.recommendation}
-                summary={firstSentence(data.horizonOutlook.next36m.rationale)}
-                icon={<Atom className="size-3.5" />}
-                delay={0.16}
-              />
+            </>
+          ) : null}
+
+          {!compact ? (
+            <div className="flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => setShowFullAnalysis((current) => !current)}
+                className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
+                aria-expanded={showFullAnalysis}
+              >
+                {showFullAnalysis ? "Hide full analysis" : "Show full analysis"}
+              </button>
             </div>
-          </div>
-          <AccordionListCard title="Data Limitations & Impact" items={[data.dataGapsImpact]} defaultClosed />
+          ) : null}
+
+          {compact ? (
+            <div className="rounded-xl bg-white/60 p-4 text-sm text-slate-700 dark:bg-slate-900/50 dark:text-slate-200">
+              <p className="font-medium">Immediate signal</p>
+              <p className="mt-1">
+                <InlineGlossaryText text={firstSentence(data.shortTermSignal)} />
+              </p>
+            </div>
+          ) : null}
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Horizon anchor: {data.timeHorizon.replace("_", " ")}.
           </p>
@@ -374,18 +420,18 @@ function SignalCard({
   collapseOverflow?: boolean;
 }) {
   return (
-    <Card className="bg-gradient-to-b from-[#0A1E3B] to-[#0A1730] text-slate-100 shadow-[0_10px_30px_rgba(2,6,23,0.35)] ring-1 ring-white/6">
+    <Card className="border-0 bg-white/95 text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm tracking-[0.12em] uppercase text-slate-200">
+        <CardTitle className="flex items-center gap-2 text-sm tracking-[0.12em] uppercase text-slate-600">
           {icon}
           {title}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-0">
-        <ul className="space-y-2 text-sm text-slate-200">
+        <ul className="space-y-2 text-sm text-slate-700">
           {points.map((point) => (
             <li key={point} className="flex items-start gap-2">
-              <Activity className="mt-0.5 size-3.5 shrink-0 text-emerald-300" />
+              <Activity className="mt-0.5 size-3.5 shrink-0 text-emerald-600" />
               {collapseOverflow ? (
                 <SignalOverflowText text={point} />
               ) : (
@@ -419,20 +465,20 @@ function MiniDriverBar({
       : "from-amber-400 via-yellow-300 to-orange-200";
 
   return (
-    <div className="rounded-lg bg-[#071B36]/70 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+    <div className="rounded-xl bg-white p-3 shadow-[0_8px_20px_rgba(15,23,42,0.07)]">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold tracking-wide text-slate-100 uppercase">{label}</span>
-        <span className="text-xs font-semibold text-slate-200">{roundedValue}</span>
+        <span className="text-xs font-semibold tracking-wide text-slate-700 uppercase">{label}</span>
+        <span className="text-xs font-semibold text-slate-600">{roundedValue}</span>
         <div className="group relative">
-          <Info className="size-3.5 text-slate-300/90" />
-          <span className="pointer-events-none absolute right-0 bottom-[calc(100%+6px)] z-20 w-52 rounded-md border border-white/10 bg-[#031024] px-2 py-1.5 text-[10px] leading-relaxed text-slate-200 opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100">
+          <Info className="size-3.5 text-slate-500" />
+          <span className="pointer-events-none absolute right-0 bottom-[calc(100%+6px)] z-20 w-52 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[10px] leading-relaxed text-slate-700 opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100">
             {helpText}
           </span>
         </div>
       </div>
-      <div className="mt-2 h-3 rounded-full bg-slate-700/65">
+      <div className="mt-2 h-2.5 rounded-full bg-slate-200">
         <div
-          className={`h-3 rounded-full bg-gradient-to-r ${barColor} shadow-[0_0_14px_rgba(110,231,183,0.25)] transition-all duration-700 ease-out`}
+          className={`h-2.5 rounded-full bg-gradient-to-r ${barColor} shadow-[0_0_14px_rgba(110,231,183,0.25)] transition-all duration-700 ease-out`}
           style={{ width: `${animateIn ? Math.max(6, Math.min(100, roundedValue)) : 0}%` }}
           aria-label={`${label} impact ${roundedValue}`}
         />

@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-inter);
+  --font-heading: var(--font-playfair);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,38 +49,38 @@
 }
 
 :root {
-  --background: #f4f6fb;
+  --background: #f8f7f4;
   --foreground: #101828;
   --card: #ffffff;
   --card-foreground: #101828;
   --popover: #ffffff;
   --popover-foreground: #101828;
-  --primary: #2563eb;
+  --primary: #0f766e;
   --primary-foreground: #ffffff;
-  --secondary: #e9eef9;
+  --secondary: #eaf2f1;
   --secondary-foreground: #1f2937;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #2563eb;
+  --muted: #efede8;
+  --muted-foreground: #5f6b68;
+  --accent: #0f766e;
   --accent-foreground: #ffffff;
   --destructive: #dc2626;
-  --border: rgb(15 23 42 / 12%);
-  --input: rgb(15 23 42 / 16%);
-  --ring: rgb(37 99 235 / 35%);
+  --border: rgb(15 23 42 / 7%);
+  --input: rgb(15 23 42 / 12%);
+  --ring: rgb(15 118 110 / 32%);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: #eff4fd;
+  --sidebar: #eef4f3;
   --sidebar-foreground: #1f2937;
-  --sidebar-primary: #2563eb;
+  --sidebar-primary: #0f766e;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #dbe7fb;
+  --sidebar-accent: #d9ebe8;
   --sidebar-accent-foreground: #1f2937;
   --sidebar-border: rgb(15 23 42 / 10%);
-  --sidebar-ring: rgb(37 99 235 / 35%);
+  --sidebar-ring: rgb(15 118 110 / 32%);
 }
 
 .dark {
@@ -123,11 +123,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    background-image:
-      radial-gradient(circle at 18% 6%, rgb(96 165 250 / 22%), transparent 36%),
-      radial-gradient(circle at 85% 18%, rgb(147 197 253 / 20%), transparent 30%),
-      radial-gradient(circle at 50% 88%, rgb(99 102 241 / 12%), transparent 34%);
-    background-attachment: fixed;
+    background-image: none;
   }
   html {
     @apply font-sans;
@@ -136,16 +132,9 @@
 
 @layer utilities {
   .glass-card {
-    background: linear-gradient(
-      148deg,
-      rgb(255 255 255 / 82%),
-      rgb(241 245 249 / 62%)
-    );
-    border: 1px solid rgb(148 163 184 / 28%);
-    backdrop-filter: blur(24px);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 56%),
-      0 16px 42px rgb(15 23 42 / 18%);
+    background: linear-gradient(150deg, rgb(255 255 255 / 95%), rgb(255 255 255 / 86%));
+    border: 1px solid rgb(148 163 184 / 14%);
+    box-shadow: 0 14px 32px rgb(15 23 42 / 8%);
   }
 
   .dark .glass-card {
@@ -165,55 +154,28 @@
   }
 
   .hero-block {
-    background: linear-gradient(
-      148deg,
-      rgb(255 255 255 / 82%),
-      rgb(241 245 249 / 62%)
-    );
-    border: 1px solid rgb(148 163 184 / 28%);
-    backdrop-filter: blur(24px);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 56%),
-      0 16px 42px rgb(15 23 42 / 18%);
-    border: 1px solid rgb(96 165 250 / 35%);
+    background: linear-gradient(145deg, rgb(255 255 255 / 96%), rgb(249 250 251 / 88%));
+    border: 1px solid rgb(148 163 184 / 12%);
+    box-shadow: 0 20px 40px rgb(15 23 42 / 7%);
   }
 
   .section-frame {
-    border: 1px solid rgb(148 163 184 / 26%);
-    backdrop-filter: blur(24px);
+    border: 1px solid rgb(148 163 184 / 15%);
   }
 
   .section-frame-primary {
-    background: linear-gradient(
-      145deg,
-      rgb(239 246 255 / 78%),
-      rgb(219 234 254 / 42%)
-    );
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 52%),
-      0 14px 30px rgb(15 23 42 / 12%);
+    background: linear-gradient(145deg, rgb(255 255 255 / 94%), rgb(248 250 252 / 90%));
+    box-shadow: 0 14px 32px rgb(15 23 42 / 7%);
   }
 
   .section-frame-secondary {
-    background: linear-gradient(
-      145deg,
-      rgb(255 255 255 / 76%),
-      rgb(241 245 249 / 48%)
-    );
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 48%),
-      0 14px 30px rgb(15 23 42 / 12%);
+    background: linear-gradient(145deg, rgb(255 255 255 / 95%), rgb(248 250 252 / 90%));
+    box-shadow: 0 14px 32px rgb(15 23 42 / 7%);
   }
 
   .section-frame-neutral {
-    background: linear-gradient(
-      145deg,
-      rgb(255 255 255 / 70%),
-      rgb(226 232 240 / 42%)
-    );
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 42%),
-      0 14px 30px rgb(15 23 42 / 10%);
+    background: linear-gradient(145deg, rgb(255 255 255 / 94%), rgb(250 250 250 / 88%));
+    box-shadow: 0 12px 28px rgb(15 23 42 / 6%);
   }
 
   .dark .section-frame {

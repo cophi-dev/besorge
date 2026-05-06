@@ -93,7 +93,7 @@ export default function BessAiChatOverlay({ open, onClose }: BessAiChatOverlayPr
         <div className="flex items-center justify-between border-b border-slate-300/60 px-5 py-4 dark:border-slate-500/35">
           <div>
             <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">
-              BESSForge AI chat
+              AETHER AI chat
             </p>
             <h2 className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
               Let&apos;s talk about your BESS decision
