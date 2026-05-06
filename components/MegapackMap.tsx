@@ -341,7 +341,7 @@ export default function MegapackMap({ compact = false }: { compact?: boolean }) 
           center={DEFAULT_CENTER}
           zoom={DEFAULT_ZOOM}
           className={isFullscreen ? "h-screen w-screen" : "h-[460px] w-full"}
-          scrollWheelZoom
+          scrollWheelZoom={!compact}
         >
           <MapSizeInvalidator resizeSignal={mapResizeSignal} />
           <TileLayer

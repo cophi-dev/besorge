@@ -162,17 +162,19 @@ export default function Home() {
         ? (market.realtimeSystem.loadMw * market.realtimeSystem.renewableShareOfLoadPct) / 100
         : null
     : null;
-  const renewableShareValue =
-    market && renewableGenerationValue !== null
-      ? `${NUMBER_FORMATTER.format((renewableGenerationValue / market.realtimeSystem.loadMw) * 100)}%`
-      : market
-        ? "temporarily unavailable"
-        : "Loading...";
   const conventionalGenerationValue =
     market && renewableGenerationValue !== null
       ? Math.max(0, market.realtimeSystem.domesticGenerationMw - renewableGenerationValue)
       : null;
   const netPositionMw = market ? market.realtimeSystem.domesticGenerationMw - market.realtimeSystem.loadMw : null;
+  const renewableGenerationDisplay =
+    renewableGenerationValue !== null ? formatAdaptivePower(renewableGenerationValue) : market ? "temporarily unavailable" : "Loading...";
+  const conventionalGenerationDisplay =
+    conventionalGenerationValue !== null
+      ? formatAdaptivePower(conventionalGenerationValue)
+      : market
+        ? "temporarily unavailable"
+        : "Loading...";
 
   const residualLoadValue =
     market?.realtimeSystem.residualLoadMw !== undefined
@@ -253,48 +255,35 @@ export default function Home() {
           Daily high-signal briefing for storage teams tracking demand stress, renewable penetration,
           and BESS deployment momentum.
         </p>
-        <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <KpiCard
-            title="Total generation"
-            value={market ? formatAdaptivePower(market.realtimeSystem.domesticGenerationMw) : "Loading..."}
-            meaning="Current domestic electricity generation."
-          />
-          <KpiCard
-            title="Renewable generation"
-            value={renewableGenerationValue !== null ? formatAdaptivePower(renewableGenerationValue) : "Loading..."}
-            sublabel={renewableShareValue}
-            meaning="Renewable output and share of current demand."
-          />
-          <KpiCard
-            title="Conventional generation"
-            value={
-              conventionalGenerationValue !== null
-                ? formatAdaptivePower(conventionalGenerationValue)
-                : market
-                  ? "temporarily unavailable"
+        <div className="mt-10 space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <KpiCard
+              title="Total generation"
+              value={market ? formatAdaptivePower(market.realtimeSystem.domesticGenerationMw) : "Loading..."}
+              meaning="Current domestic electricity generation."
+              detailRows={[
+                { label: "Renewable", value: renewableGenerationDisplay },
+                { label: "Conventional", value: conventionalGenerationDisplay },
+              ]}
+            />
+            <KpiCard
+              title="Current demand"
+              value={market ? formatAdaptivePower(market.realtimeSystem.loadMw) : "Loading..."}
+              meaning="Live power needed in the grid."
+            />
+          </div>
+          <div className="flex justify-center">
+            <KpiCard
+              className="w-full md:max-w-md"
+              title="Net position"
+              value={
+                netPositionMw !== null
+                  ? `${netPositionMw >= 0 ? "Surplus" : "Deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}`
                   : "Loading..."
-            }
-            meaning="Dispatchable and thermal generation currently online."
-          />
-          <KpiCard
-            title="Current demand"
-            value={market ? formatAdaptivePower(market.realtimeSystem.loadMw) : "Loading..."}
-            meaning="Live power needed in the grid."
-          />
-          <KpiCard
-            title="Residual Load"
-            value={residualLoadValue}
-            meaning="Demand remaining after renewable generation."
-          />
-          <KpiCard
-            title="Net position"
-            value={
-              netPositionMw !== null
-                ? `${netPositionMw >= 0 ? "Surplus" : "Deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}`
-                : "Loading..."
-            }
-            meaning="Domestic generation balance vs current demand."
-          />
+              }
+              meaning="Domestic generation balance vs current demand."
+            />
+          </div>
         </div>
         <article className="rounded-2xl border border-slate-300/45 bg-white/75 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
           <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
@@ -416,7 +405,7 @@ export default function Home() {
       <button
         type="button"
         onClick={openAiChat}
-        className="group fixed right-6 bottom-6 z-40 w-[min(330px,calc(100vw-3rem))] rounded-2xl border border-blue-400/35 bg-white/95 px-5 py-4 text-left text-slate-900 shadow-[0_14px_34px_rgba(37,99,235,0.14)] transition hover:-translate-y-0.5 hover:border-blue-500/65 hover:shadow-[0_18px_40px_rgba(37,99,235,0.2)] dark:border-blue-300/35 dark:bg-slate-900/95 dark:text-slate-100 dark:hover:border-blue-300/70"
+        className="group fixed right-6 bottom-6 z-[1000] w-[min(330px,calc(100vw-3rem))] rounded-2xl border border-blue-400/35 bg-white/95 px-5 py-4 text-left text-slate-900 shadow-[0_14px_34px_rgba(37,99,235,0.14)] transition hover:-translate-y-0.5 hover:border-blue-500/65 hover:shadow-[0_18px_40px_rgba(37,99,235,0.2)] dark:border-blue-300/35 dark:bg-slate-900/95 dark:text-slate-100 dark:hover:border-blue-300/70"
         aria-label="Ask AETHER anything"
       >
         <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.14em] text-blue-700 uppercase dark:text-blue-200">
@@ -438,18 +427,32 @@ function KpiCard({
   value,
   meaning,
   sublabel,
+  className,
+  detailRows,
 }: {
   title: string;
   value: string;
   meaning: string;
   sublabel?: string;
+  className?: string;
+  detailRows?: Array<{ label: string; value: string }>;
 }) {
   return (
-    <article className="rounded-2xl border border-slate-300/55 bg-white/80 p-5 dark:border-slate-500/40 dark:bg-slate-900/65">
+    <article className={`relative rounded-2xl border border-slate-300/55 bg-white/80 p-5 dark:border-slate-500/40 dark:bg-slate-900/65 ${className ?? ""}`}>
       <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">{title}</p>
       <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white md:text-4xl [font-family:var(--font-sans)]">
         {value}
       </p>
+      {detailRows?.length ? (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 dark:text-slate-200">
+          {detailRows.map((detail) => (
+            <p key={detail.label} className="inline-flex items-center gap-1.5">
+              <span className="text-slate-500 dark:text-slate-300">{detail.label}:</span>
+              <span className="font-semibold text-slate-900 dark:text-white">{detail.value}</span>
+            </p>
+          ))}
+        </div>
+      ) : null}
       {sublabel ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{sublabel}</p> : null}
       <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{meaning}</p>
     </article>

@@ -62,7 +62,7 @@ export function SiteShell({ children }: SiteShellProps) {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-300/45 bg-[#f8f7f4]/92 backdrop-blur-lg dark:border-slate-500/35 dark:bg-slate-950/55">
+      <header className="fixed inset-x-0 top-0 z-[1200] border-b border-slate-300/45 bg-[#f8f7f4]/92 backdrop-blur-lg dark:border-slate-500/35 dark:bg-slate-950/55">
         <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-8 py-5 lg:px-12">
           <Link href="/" className="group flex items-center gap-3">
             <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-primary/40 text-primary">

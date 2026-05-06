@@ -120,7 +120,7 @@ export default function BessAiChatOverlay({
 
   return (
     <div className="fixed inset-0 z-[70] overscroll-none bg-slate-950/75 backdrop-blur-sm">
-      <div className="flex h-full w-full touch-pan-y flex-col overflow-hidden bg-white dark:bg-slate-950">
+      <div className="flex h-[100dvh] w-full touch-pan-y flex-col overflow-hidden bg-white dark:bg-slate-950">
         <div className="flex items-center justify-between border-b border-slate-300/60 px-5 py-4 dark:border-slate-500/35">
           <div>
             <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">
@@ -176,7 +176,7 @@ export default function BessAiChatOverlay({
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder="Ask about sizing, drivers, risks, or next actions..."
-              className="flex-1 rounded-xl border border-slate-300/70 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-400 dark:border-slate-500/50 dark:bg-slate-900 dark:text-slate-100"
+              className="flex-1 rounded-xl border border-slate-300/70 bg-white px-4 py-3 text-base text-slate-900 outline-none transition focus:border-blue-400 dark:border-slate-500/50 dark:bg-slate-900 dark:text-slate-100 md:text-sm"
             />
             <button
               type="submit"
