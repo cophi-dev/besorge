@@ -101,9 +101,9 @@ function ChartContainer({
 }
 
 const REGULATORY_OPTIONS: { value: GridRegulatoryScenario; label: string }[] = [
-  { value: "baseline", label: "Baseline" },
+  { value: "baseline", label: "Stable market conditions" },
   { value: "moderate_grid_stress", label: "Moderate grid stress" },
-  { value: "elevated_regulatory_risk", label: "Elevated regulatory risk" },
+  { value: "elevated_regulatory_risk", label: "Higher regulatory pressure" },
 ];
 
 export default function FinancialDashboard() {
@@ -140,38 +140,40 @@ export default function FinancialDashboard() {
   const usesAggregatedStack = selectedConfigurations.length > 0;
 
   return (
-    <Card className="glass-card rounded-3xl border border-white/10 bg-[#111116]/85">
+    <Card className="glass-card rounded-3xl">
       <CardHeader className="space-y-2">
-        <p className="text-xs tracking-[0.2em] text-[#E31937] uppercase">Financial Dashboard</p>
-        <CardTitle className="text-3xl font-semibold tracking-tight text-white">
-          Revenue & Economics
+        <p className="text-xs tracking-[0.2em] text-blue-600 uppercase dark:text-blue-300">
+          Financial dashboard
+        </p>
+        <CardTitle className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
+          Revenue and project outlook
         </CardTitle>
-        <p className="text-sm text-[#A1A1AA]">
-          Indicative DE-market economics tied to your Megapack sizing. Uses aggregated project
-          blocks when you have added configurations; otherwise the live configurator preview.
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          Explore indicative Germany-focused economics based on your current Megapack sizing.
+          We use your added configurations when available, otherwise your live preview.
         </p>
         {usesAggregatedStack ? (
-          <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-[#D4D4D8]">
-            Finanz-KPIs basieren auf {selectedConfigurations.length} hinzugefügten Block(en)
-            (aggregiert).
+          <p className="rounded-lg border border-slate-300/60 bg-white/60 px-3 py-2 text-xs text-slate-700 dark:border-slate-500/35 dark:bg-slate-900/50 dark:text-slate-200">
+            KPIs are based on {selectedConfigurations.length} added configuration block(s),
+            combined into one project view.
           </p>
         ) : null}
       </CardHeader>
 
       <CardContent className="space-y-8">
         {!hasPhysical ? (
-          <p className="rounded-xl border border-[#E31937]/30 bg-[#E31937]/10 p-4 text-sm text-[#F5BDC7]">
-            Passe im Konfigurator eine Anlage an, um Live-KPIs und Charts zu sehen.
+          <p className="rounded-xl border border-blue-400/45 bg-blue-500/10 p-4 text-sm text-blue-700 dark:text-blue-200">
+            Adjust your setup in the configurator to unlock live KPIs and charts.
           </p>
         ) : null}
 
-        <div className="space-y-2 rounded-xl border border-white/10 bg-black/20 p-4">
-          <p className="text-xs font-medium tracking-[0.14em] text-[#A1A1AA] uppercase">
+        <div className="space-y-2 rounded-xl border border-slate-300/60 bg-white/55 p-4 dark:border-slate-500/30 dark:bg-slate-900/45">
+          <p className="text-xs font-medium tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
             DE market / regulatory scenario (illustrative)
           </p>
-          <p className="text-xs text-[#737373]">
-            Keine Rechts- oder Tarifdatenbank — nur Skalierung für Sensitivität und
-            Gesprächsstruktur (vgl. Stellenprofil: Tarife & Regulatorik).
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            This is an illustrative scenario tool, not a legal or tariff database. Use it to test
+            sensitivity and support customer discussions.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {REGULATORY_OPTIONS.map((option) => (
@@ -183,15 +185,15 @@ export default function FinancialDashboard() {
                 }
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                   economicsAssumptions.gridRegulatoryScenario === option.value
-                    ? "border-[#E31937] bg-[#E31937]/20 text-white"
-                    : "border-white/15 bg-white/5 text-[#A1A1AA] hover:border-white/25"
+                    ? "border-blue-400 bg-blue-500/20 text-slate-900 dark:text-white"
+                    : "border-slate-300/60 bg-white/70 text-slate-600 hover:border-slate-400 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-slate-400"
                 }`}
               >
                 {option.label}
               </button>
             ))}
           </div>
-          <p className="text-xs text-[#A1A1AA]">
+          <p className="text-xs text-slate-500 dark:text-slate-300">
             {regulatoryScenarioDescription(economicsAssumptions.gridRegulatoryScenario)}
           </p>
         </div>
@@ -211,13 +213,13 @@ export default function FinancialDashboard() {
                   fullCycleEquivalentsPerDay: clamp(getSliderValue(value), 0.5, 2),
                 })
               }
-              className="[&_[data-slot=slider-range]]:bg-[#E31937]"
+              className="[&_[data-slot=slider-range]]:bg-blue-500 dark:[&_[data-slot=slider-range]]:bg-blue-300"
             />
-            <p className="text-sm text-white">
+            <p className="text-sm text-slate-900 dark:text-white">
               {NUMBER_FORMATTER.format(economicsAssumptions.fullCycleEquivalentsPerDay)}
             </p>
-            <p className="text-xs text-[#737373]">
-              Namenleistung MWh × Äquivalente × 365 × RTE — vereinfachtes Lastprofil.
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Nameplate MWh x cycle equivalents x 365 x RTE. Simplified operating profile.
             </p>
           </label>
 
@@ -235,7 +237,7 @@ export default function FinancialDashboard() {
                   averagePriceSpreadEurPerMwh: Math.max(0, Number(event.target.value) || 0),
                 })
               }
-              className="h-10 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-white outline-none transition focus:border-[#E31937]/80"
+              className="apple-input"
             />
           </label>
 
@@ -254,7 +256,7 @@ export default function FinancialDashboard() {
                   projectLifetimeYears: clamp(Number(event.target.value) || 1, 1, 40),
                 })
               }
-              className="h-10 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-white outline-none transition focus:border-[#E31937]/80"
+              className="apple-input"
             />
           </label>
 
@@ -277,7 +279,7 @@ export default function FinancialDashboard() {
                   ),
                 })
               }
-              className="h-10 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-white outline-none transition focus:border-[#E31937]/80"
+              className="apple-input"
             />
           </label>
         </div>
@@ -304,8 +306,10 @@ export default function FinancialDashboard() {
 
         {metrics && hasPhysical ? (
           <div className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="mb-4 text-sm font-medium text-white">Revenue development</p>
+            <div className="rounded-2xl border border-slate-300/60 bg-white/55 p-4 dark:border-slate-500/30 dark:bg-slate-900/45">
+              <p className="mb-4 text-sm font-medium text-slate-900 dark:text-white">
+                Revenue over time
+              </p>
               <ChartContainer>
                 {({ width, height }) => (
                   <LineChart width={width} height={height} data={metrics.yearlyRevenues}>
@@ -326,7 +330,7 @@ export default function FinancialDashboard() {
                     <Line
                       type="monotone"
                       dataKey="revenue"
-                      stroke="#E31937"
+                      stroke="#3b82f6"
                       strokeWidth={3}
                       dot={false}
                     />
@@ -335,8 +339,10 @@ export default function FinancialDashboard() {
               </ChartContainer>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="mb-4 text-sm font-medium text-white">Revenue breakdown</p>
+            <div className="rounded-2xl border border-slate-300/60 bg-white/55 p-4 dark:border-slate-500/30 dark:bg-slate-900/45">
+              <p className="mb-4 text-sm font-medium text-slate-900 dark:text-white">
+                Revenue mix
+              </p>
               <ChartContainer>
                 {({ width, height }) => (
                   <BarChart width={width} height={height} data={breakdownData}>
@@ -354,7 +360,7 @@ export default function FinancialDashboard() {
                         borderRadius: "10px",
                       }}
                     />
-                    <Bar dataKey="value" fill="#E31937" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 )}
               </ChartContainer>
@@ -363,7 +369,7 @@ export default function FinancialDashboard() {
         ) : null}
 
         {metrics ? (
-          <ul className="space-y-1 rounded-xl border border-white/10 bg-black/15 p-4 text-xs text-[#737373]">
+          <ul className="space-y-1 rounded-xl border border-slate-300/60 bg-white/55 p-4 text-xs text-slate-600 dark:border-slate-500/30 dark:bg-slate-900/45 dark:text-slate-300">
             {metrics.assumptionFootnotes.map((line) => (
               <li key={line}>• {line}</li>
             ))}
@@ -376,9 +382,9 @@ export default function FinancialDashboard() {
 
 function KpiCard({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <p className="text-xs tracking-[0.14em] text-[#A1A1AA] uppercase">{title}</p>
-      <p className="mt-2 text-xl font-semibold text-white">{value}</p>
+    <div className="rounded-xl border border-slate-300/60 bg-white/65 p-4 dark:border-slate-500/30 dark:bg-slate-900/55">
+      <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">{title}</p>
+      <p className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">{value}</p>
     </div>
   );
 }

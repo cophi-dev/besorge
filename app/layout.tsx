@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "BESSForge",
-  description: "Interactive planning tool for Tesla BESS Project Engineers",
+  description: "Friendly planning workspace for Tesla BESS projects",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-[#0A0A0A] text-white">
+      <body className="min-h-full bg-background text-foreground">
         <SiteShell>{children}</SiteShell>
       </body>
     </html>

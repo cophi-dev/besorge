@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
 import dynamic from "next/dynamic";
 
 import FinancialDashboard from "@/components/FinancialDashboard";
+import GermanyMarketSnapshot from "@/components/GermanyMarketSnapshot";
 import GenerateProposalButton from "@/components/GenerateProposalButton";
 import MegapackConfigurator from "@/components/MegapackConfigurator";
 import { getFinancePhysicalConfig, useProjectStore } from "@/lib/projectStore";
@@ -29,78 +29,65 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 pb-16 pt-14 lg:px-10">
-      <motion.section
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.75, ease: "easeOut" }}
-        className="glass-card tesla-glow rounded-3xl px-8 py-16 md:px-14"
-      >
-        <span className="inline-flex rounded-full border border-[#E31937]/45 bg-[#E31937]/15 px-4 py-2 text-xs tracking-[0.18em] text-[#E31937]">
-          TESLA BESS PRE-SALES HUB
-        </span>
-        <h1 className="tesla-glow-text mt-6 max-w-4xl text-4xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
-          Technical sizing & indicative economics
+      <section className="glass-card rounded-3xl px-8 py-16 md:px-14">
+        <span className="apple-pill">TESLA BESS PLANNING HUB</span>
+        <h1 className="mt-6 max-w-4xl text-4xl font-semibold leading-tight tracking-tight text-slate-900 dark:text-white md:text-6xl">
+          Plan your battery project with confidence
         </h1>
-        <p className="mt-6 max-w-2xl text-lg text-[#A1A1AA] md:text-xl">
-          Hamburg / EMEA-oriented workflow: stack Megapacks, stress DE-market assumptions,
-          capture map context, and export a proposal PDF aligned with the live financial model.
+        <p className="mt-6 max-w-2xl text-lg text-slate-600 dark:text-slate-300 md:text-xl">
+          Build your Megapack setup, explore market assumptions, add site context on the map, and
+          export a proposal PDF that stays in sync with your latest numbers.
         </p>
-      </motion.section>
+      </section>
 
-      <motion.section
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }}
-      >
+      <section>
         <MegapackConfigurator
           onAddToProject={addConfiguration}
           onConfigChange={setLiveConfiguration}
         />
-      </motion.section>
+      </section>
 
-      <motion.section
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: "easeOut", delay: 0.2 }}
-      >
+      <section>
+        <GermanyMarketSnapshot />
+      </section>
+
+      <section>
         <FinancialDashboard />
-      </motion.section>
+      </section>
 
-      <motion.section
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: "easeOut", delay: 0.3 }}
-      >
+      <section>
         <MegapackMap />
-      </motion.section>
+      </section>
 
-      <section className="glass-card rounded-2xl border border-white/10 p-6">
+      <section className="glass-card rounded-2xl p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs tracking-[0.18em] text-[#E31937] uppercase">Project state</p>
-            <h3 className="mt-2 text-2xl font-semibold text-white">
-              Added configurations: {selectedConfigurations.length}
+            <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">
+              Project status
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">
+              Configurations added: {selectedConfigurations.length}
             </h3>
-            <p className="mt-2 text-sm text-[#A1A1AA]">
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               {latestConfig
                 ? `${latestConfig.count}x ${latestConfig.label} | ${latestConfig.totalPowerMw.toFixed(2)} MW | ${latestConfig.totalEnergyMwh.toFixed(2)} MWh`
-                : "No configuration preview yet — adjust the configurator."}
+                : "No configuration yet. Use the configurator to get started."}
             </p>
             {physical ? (
-              <p className="mt-2 text-xs text-[#737373]">
-                Finance / PDF use{" "}
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Financials and the PDF currently use{" "}
                 {selectedConfigurations.length > 0
-                  ? "aggregated project blocks"
-                  : "the live configurator preview"}
+                  ? "your combined project configurations"
+                  : "your live configurator preview"}
                 .
               </p>
             ) : null}
           </div>
           <div className="flex flex-col items-end gap-2">
             {physical ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#E31937]/50 bg-[#E31937]/15 px-3 py-1 text-xs font-medium text-[#E31937]">
+              <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/55 bg-blue-500/15 px-3 py-1 text-xs font-medium text-blue-600 dark:text-blue-200">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Ready
+                Ready to export
               </span>
             ) : null}
             <GenerateProposalButton projectName={projectName} />
@@ -118,8 +105,8 @@ export default function Home() {
             id="project-name"
             value={projectName}
             onChange={(event) => setProjectName(event.target.value)}
-            placeholder="Enter project name"
-            className="h-10 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-white outline-none transition focus:border-[#E31937]/80"
+            placeholder="e.g. Hamburg Grid Support Phase 1"
+            className="apple-input"
           />
         </div>
       </section>

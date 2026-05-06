@@ -385,10 +385,10 @@ export default function GenerateProposalButton({ projectName }: GenerateProposal
     <Button
       disabled={disabled}
       onClick={handleGenerate}
-      className="h-10 rounded-full bg-[#E31937] px-5 font-semibold text-white hover:bg-[#f02445] disabled:cursor-not-allowed disabled:opacity-60"
+      className="h-10 rounded-full bg-blue-500 px-5 font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-300 dark:text-slate-900 dark:hover:bg-blue-200"
     >
       <FileDown className="mr-2 h-4 w-4" />
-      {isGenerating ? "Generating..." : "Generate Proposal"}
+      {isGenerating ? "Preparing PDF..." : "Download proposal PDF"}
     </Button>
   );
 }

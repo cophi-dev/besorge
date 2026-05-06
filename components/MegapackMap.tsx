@@ -2,26 +2,150 @@
 
 import "leaflet/dist/leaflet.css";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, Rectangle, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 
+import type { GermanyBessProject } from "@/lib/germanyBessProjects";
 import { useProjectStore } from "@/lib/projectStore";
 
 const DEFAULT_CENTER: [number, number] = [53.5511, 9.9937];
 const DEFAULT_ZOOM = 6;
 const FALLBACK_CAPACITY_MWH = 3.9;
 
+type Rgb = [number, number, number];
+
+const HEAT_COLOR_STOPS: Array<{ at: number; color: Rgb }> = [
+  { at: 0, color: [12, 34, 94] },
+  { at: 0.18, color: [29, 78, 216] },
+  { at: 0.38, color: [8, 145, 178] },
+  { at: 0.56, color: [34, 197, 94] },
+  { at: 0.74, color: [250, 204, 21] },
+  { at: 0.9, color: [249, 115, 22] },
+  { at: 1, color: [220, 38, 38] },
+];
+
 const megapackIcon = L.divIcon({
   className: "megapack-marker",
   html: `
-    <div style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9999px;background:rgba(227,25,55,0.95);border:2px solid rgba(255,255,255,0.9);color:#fff;font-size:16px;box-shadow:0 8px 20px rgba(0,0,0,0.35);">
-      ⚡
+    <div style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9999px;background:radial-gradient(circle at 32% 28%, #38bdf8 0%, #2563eb 48%, #1e40af 100%);border:2px solid rgba(255,255,255,0.98);box-shadow:0 12px 24px rgba(15,23,42,0.45);backdrop-filter:blur(1.5px);">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="4.5" y="7" width="13.5" height="10" rx="2.2" stroke="#f8fafc" stroke-width="2"/>
+        <rect x="18.8" y="10.1" width="1.8" height="3.8" rx="0.6" fill="#f8fafc"/>
+        <path d="M10.7 8.8l-2.8 4.1h2.6l-1.2 2.3 3.6-4.9h-2.2l1.1-1.5z" fill="#f8fafc"/>
+      </svg>
     </div>
   `,
-  iconSize: [30, 30],
-  iconAnchor: [15, 15],
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
 });
+
+const knownProjectIcon = L.divIcon({
+  className: "known-bess-marker",
+  html: `
+    <div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9999px;background:radial-gradient(circle at 30% 24%, #fde68a 0%, #f59e0b 48%, #b45309 100%);border:2px solid rgba(255,255,255,0.98);box-shadow:0 10px 20px rgba(15,23,42,0.35);backdrop-filter:blur(1.5px);">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="4" y="7" width="13.2" height="10" rx="2.1" fill="#1f2937"/>
+        <rect x="17.8" y="10.4" width="1.8" height="3.2" rx="0.6" fill="#1f2937"/>
+        <rect x="6.1" y="9.2" width="2.2" height="5.6" rx="0.8" fill="#f8fafc"/>
+        <rect x="9.3" y="9.2" width="2.2" height="5.6" rx="0.8" fill="#f8fafc"/>
+        <rect x="12.5" y="9.2" width="2.2" height="5.6" rx="0.8" fill="#f8fafc"/>
+      </svg>
+    </div>
+  `,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+});
+
+const CAPACITY_FORMATTER = new Intl.NumberFormat("de-DE", {
+  maximumFractionDigits: 2,
+});
+const POWER_GW_DIVISOR = 1_000;
+const CURATED_MAP_MIN_MW = 10;
+const MASTR_MAP_MARKER_MIN_MW = 10;
+const MAP_PROJECTS_FETCH_MS = 45_000;
+const HEATMAP_GRID_DEGREES = 0.2;
+
+const lerp = (start: number, end: number, t: number) => start + (end - start) * t;
+const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
+
+const heatColorForIntensity = (intensity: number) => {
+  const clamped = Math.max(0, Math.min(1, intensity));
+  for (let index = 0; index < HEAT_COLOR_STOPS.length - 1; index += 1) {
+    const start = HEAT_COLOR_STOPS[index];
+    const end = HEAT_COLOR_STOPS[index + 1];
+    if (clamped >= start.at && clamped <= end.at) {
+      const localT = (clamped - start.at) / (end.at - start.at || 1);
+      const eased = easeOutCubic(localT);
+      return `rgb(${Math.round(lerp(start.color[0], end.color[0], eased))}, ${Math.round(
+        lerp(start.color[1], end.color[1], eased)
+      )}, ${Math.round(lerp(start.color[2], end.color[2], eased))})`;
+    }
+  }
+  const fallback = HEAT_COLOR_STOPS[HEAT_COLOR_STOPS.length - 1].color;
+  return `rgb(${fallback[0]}, ${fallback[1]}, ${fallback[2]})`;
+};
+
+// Coarse Germany outline for client-side clipping of gradient cells.
+const GERMANY_POLYGON: Array<[number, number]> = [
+  [54.9, 8.0],
+  [54.6, 8.6],
+  [54.5, 10.2],
+  [54.7, 12.0],
+  [54.4, 13.7],
+  [53.7, 14.2],
+  [52.9, 14.6],
+  [51.8, 14.7],
+  [50.9, 14.2],
+  [50.2, 12.9],
+  [49.5, 12.5],
+  [48.9, 13.0],
+  [47.7, 12.4],
+  [47.5, 10.5],
+  [47.6, 9.6],
+  [47.6, 8.4],
+  [48.2, 7.6],
+  [49.0, 7.6],
+  [49.6, 6.3],
+  [50.3, 6.0],
+  [50.9, 6.2],
+  [51.4, 6.1],
+  [51.7, 6.6],
+  [52.3, 7.1],
+  [53.0, 7.1],
+  [53.6, 7.0],
+  [54.2, 7.6],
+  [54.9, 8.0],
+];
+
+const isPointInPolygon = (lat: number, lng: number, polygon: Array<[number, number]>) => {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [latI, lngI] = polygon[i];
+    const [latJ, lngJ] = polygon[j];
+    const intersects =
+      lngI > lng !== lngJ > lng &&
+      lat < ((latJ - latI) * (lng - lngI)) / (lngJ - lngI + Number.EPSILON) + latI;
+    if (intersects) {
+      inside = !inside;
+    }
+  }
+  return inside;
+};
+
+const formatAdaptivePower = (powerMw: number) => {
+  if (powerMw >= POWER_GW_DIVISOR) {
+    return `${CAPACITY_FORMATTER.format(powerMw / POWER_GW_DIVISOR)} GW`;
+  }
+  return `${CAPACITY_FORMATTER.format(powerMw)} MW`;
+};
+
+const formatAdaptiveEnergy = (energyMwh: number) => {
+  if (energyMwh >= POWER_GW_DIVISOR) {
+    return `${CAPACITY_FORMATTER.format(energyMwh / POWER_GW_DIVISOR)} GWh`;
+  }
+  return `${CAPACITY_FORMATTER.format(energyMwh)} MWh`;
+};
 
 function MapClickHandler({ onPlace }: { onPlace: (lat: number, lng: number) => void }) {
   useMapEvents({
@@ -33,16 +157,151 @@ function MapClickHandler({ onPlace }: { onPlace: (lat: number, lng: number) => v
   return null;
 }
 
+function MapSizeInvalidator({ resizeSignal }: { resizeSignal: number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      map.invalidateSize(true);
+    }, 120);
+    return () => window.clearTimeout(timeoutId);
+  }, [map, resizeSignal]);
+
+  return null;
+}
+
 export default function MegapackMap() {
+  const [showCommercialProjects, setShowCommercialProjects] = useState(true);
+  const [showResidentialDensity, setShowResidentialDensity] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [mapResizeSignal, setMapResizeSignal] = useState(0);
+  const [knownProjects, setKnownProjects] = useState<GermanyBessProject[]>([]);
+  const [knownProjectsSource, setKnownProjectsSource] = useState<"mastr_zenodo" | "fallback" | null>(null);
+  const [knownProjectsCacheNote, setKnownProjectsCacheNote] = useState<string | null>(null);
+  const [knownProjectsFallbackReason, setKnownProjectsFallbackReason] = useState<string | null>(null);
+  const [knownProjectsError, setKnownProjectsError] = useState<string | null>(null);
+  const [knownProjectsLoading, setKnownProjectsLoading] = useState(true);
+  const [smallProjectsSummary, setSmallProjectsSummary] = useState({
+    count: 0,
+    powerMw: 0,
+    energyMwh: 0,
+  });
+  const [smallProjectsHeatmap, setSmallProjectsHeatmap] = useState<
+    Array<{ lat: number; lng: number; count: number; powerMw: number; energyMwh: number }>
+  >([]);
+  const [nationalInstalledEnergyGwh, setNationalInstalledEnergyGwh] = useState<number | null>(null);
+  const [nationalInstalledPowerGw, setNationalInstalledPowerGw] = useState<number | null>(null);
   const liveConfiguration = useProjectStore((state) => state.liveConfiguration);
   const sitePlacements = useProjectStore((state) => state.sitePlacements);
   const addSitePlacement = useProjectStore((state) => state.addSitePlacement);
   const clearSitePlacements = useProjectStore((state) => state.clearSitePlacements);
+  const mapWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const totalCapacityMwh = useMemo(
     () => sitePlacements.reduce((sum, placement) => sum + placement.capacityMwh, 0),
     [sitePlacements]
   );
+  const visibleKnownProjects = useMemo(() => knownProjects, [knownProjects]);
+  const mapVisibleMinMw =
+    knownProjectsSource === "mastr_zenodo" ? MASTR_MAP_MARKER_MIN_MW : CURATED_MAP_MIN_MW;
+  const aggregatedBucketLabel =
+    knownProjectsSource === "mastr_zenodo" ? "<10 MW MaStR units" : "Hidden smaller sites (0-10 MW)";
+  const maxHeatCellPowerMw = useMemo(
+    () => smallProjectsHeatmap.reduce((max, cell) => Math.max(max, cell.powerMw), 0),
+    [smallProjectsHeatmap]
+  );
+  const gradientCells = useMemo(
+    () =>
+      smallProjectsHeatmap.filter((cell) => isPointInPolygon(cell.lat, cell.lng, GERMANY_POLYGON)),
+    [smallProjectsHeatmap]
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), MAP_PROJECTS_FETCH_MS);
+
+    const loadKnownProjects = async () => {
+      try {
+        const response = await fetch("/api/map/bess-projects/de", {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error(`Request failed: ${response.status}`);
+        }
+        const payload = (await response.json()) as {
+          source: "mastr_zenodo" | "fallback";
+          projects: GermanyBessProject[];
+          smallProjectsSummary?: { count: number; powerMw: number; energyMwh: number };
+          smallProjectsHeatmap?: Array<{
+            lat: number;
+            lng: number;
+            count: number;
+            powerMw: number;
+            energyMwh: number;
+          }>;
+          fallbackReason?: string;
+          cache?: { fromDisk?: boolean; note?: string; ageMs?: number };
+        };
+        if (!controller.signal.aborted) {
+          setKnownProjects(payload.projects);
+          setKnownProjectsSource(payload.source);
+          setKnownProjectsCacheNote(payload.cache?.note ?? null);
+          setKnownProjectsFallbackReason(payload.fallbackReason ?? null);
+          setSmallProjectsSummary(
+            payload.smallProjectsSummary ?? { count: 0, powerMw: 0, energyMwh: 0 }
+          );
+          setSmallProjectsHeatmap(payload.smallProjectsHeatmap ?? []);
+          setKnownProjectsError(null);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setKnownProjectsError(error instanceof Error ? error.message : "Unknown error");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setKnownProjectsLoading(false);
+        }
+      }
+    };
+
+    void loadKnownProjects();
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadNationalCapacity = async () => {
+      try {
+        const response = await fetch("/api/market/de", {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as {
+          bess?: { installedCapacityGwh?: number; installedPowerGw?: number };
+        };
+        const capacityGwh = payload.bess?.installedCapacityGwh;
+        const powerGw = payload.bess?.installedPowerGw;
+        if (!controller.signal.aborted && typeof capacityGwh === "number" && Number.isFinite(capacityGwh)) {
+          setNationalInstalledEnergyGwh(capacityGwh);
+        }
+        if (!controller.signal.aborted && typeof powerGw === "number" && Number.isFinite(powerGw)) {
+          setNationalInstalledPowerGw(powerGw);
+        }
+      } catch {
+        // Keep rendering map layer even if national reference cannot be loaded.
+      }
+    };
+    loadNationalCapacity();
+    return () => controller.abort();
+  }, []);
 
   const perUnitMwh = useMemo(() => {
     if (liveConfiguration && liveConfiguration.count > 0) {
@@ -60,41 +319,153 @@ export default function MegapackMap() {
     });
   };
 
+  const handleToggleFullscreen = async () => {
+    const wrapperElement = mapWrapperRef.current;
+    if (!wrapperElement) {
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement === wrapperElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      await wrapperElement.requestFullscreen();
+    } catch {
+      // Ignore browser-specific fullscreen failures and keep map interactive.
+    }
+  };
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const fullscreenActive = document.fullscreenElement === mapWrapperRef.current;
+      setIsFullscreen(fullscreenActive);
+      setMapResizeSignal((current) => current + 1);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
   return (
-    <section className="glass-card rounded-2xl border border-white/10 p-6">
+    <section className="glass-card rounded-2xl p-6">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-[#E31937]">Standortplanung</p>
-          <h2 className="mt-2 text-2xl font-semibold text-white">
-            Interaktive Deutschland / Hamburg Karte
+          <p className="text-xs uppercase tracking-[0.18em] text-blue-600 dark:text-blue-300">
+            Site planning
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">
+            Interactive Germany and Hamburg map
           </h2>
-          <p className="mt-2 text-sm text-[#A1A1AA]">
-            Klick auf die Karte, um einen Standort-Marker zu setzen. Kapazität pro Marker folgt
-            der aktuellen Konfigurator-Vorschau ({perUnitMwh.toFixed(2)} MWh pro Einheit).
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            Click anywhere on the map to add a site marker. Capacity per marker follows your
+            current configurator preview ({perUnitMwh.toFixed(2)} MWh per unit).
           </p>
         </div>
         <button
           type="button"
           onClick={() => clearSitePlacements()}
           disabled={sitePlacements.length === 0}
-          className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-medium text-white transition hover:border-[#E31937]/60 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
         >
-          Marker zurücksetzen
+          Clear markers
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowCommercialProjects((current) => !current)}
+          className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-amber-400 hover:text-amber-700 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-amber-300 dark:hover:text-amber-200"
+        >
+          {showCommercialProjects ? "Hide" : "Show"} commercial BESS projects
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowResidentialDensity((current) => !current)}
+          className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-cyan-500 hover:text-cyan-700 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-cyan-300 dark:hover:text-cyan-200"
+        >
+          {showResidentialDensity ? "Hide" : "Show"} residential density
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleToggleFullscreen()}
+          className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-indigo-300 dark:hover:text-indigo-200"
+        >
+          {isFullscreen ? "Exit fullscreen" : "Fullscreen map"}
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-white/10">
+      <div
+        ref={mapWrapperRef}
+        className={`overflow-hidden rounded-xl border border-slate-300/60 bg-slate-950 dark:border-slate-500/30 ${isFullscreen ? "h-screen w-screen rounded-none border-none" : ""}`}
+      >
         <MapContainer
           center={DEFAULT_CENTER}
           zoom={DEFAULT_ZOOM}
-          className="h-[460px] w-full"
+          className={isFullscreen ? "h-screen w-screen" : "h-[460px] w-full"}
           scrollWheelZoom
         >
+          <MapSizeInvalidator resizeSignal={mapResizeSignal} />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <MapClickHandler onPlace={handlePlaceMegapack} />
+          {showResidentialDensity && knownProjectsSource === "mastr_zenodo"
+            ? gradientCells.map((cell, index) => {
+                const intensity =
+                  maxHeatCellPowerMw > 0 ? Math.sqrt(cell.powerMw / maxHeatCellPowerMw) : 0;
+                const color = heatColorForIntensity(intensity);
+                const half = HEATMAP_GRID_DEGREES / 2;
+                return (
+                  <Rectangle
+                    key={`small-cell-${index}-${cell.lat}-${cell.lng}`}
+                    bounds={[
+                      [cell.lat - half, cell.lng - half],
+                      [cell.lat + half, cell.lng + half],
+                    ]}
+                    pathOptions={{
+                      stroke: intensity > 0.35,
+                      color: "rgba(255,255,255,0.28)",
+                      weight: 0.7,
+                      fillColor: color,
+                      fillOpacity: 0.2 + intensity * 0.74,
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -8]} opacity={1}>
+                      {aggregatedBucketLabel}
+                      <br />
+                      {cell.count.toLocaleString("de-DE")} units
+                      <br />
+                      {formatAdaptivePower(cell.powerMw)} / {formatAdaptiveEnergy(cell.energyMwh)}
+                    </Tooltip>
+                  </Rectangle>
+                );
+              })
+            : null}
+          {showCommercialProjects
+            ? visibleKnownProjects.map((project) => (
+                <Marker key={project.id} icon={knownProjectIcon} position={[project.lat, project.lng]}>
+                  <Tooltip direction="top" offset={[0, -12]} opacity={1}>
+                    {project.name} — {project.city}
+                    <br />
+                    {project.operator} |{" "}
+                    {project.powerMw > 0
+                      ? formatAdaptivePower(project.powerMw)
+                      : "Power n/a"}
+                    {" / "}
+                    {project.energyMwh > 0
+                      ? `${formatAdaptiveEnergy(project.energyMwh)}${project.energySource === "estimated" ? " (est. 2h)" : ""}`
+                      : "Energy n/a"}
+                    <br />
+                    {project.coordinateQuality === "bundesland_approx" ? (
+                      <>
+                        Location: approximate (Bundesland centroid)
+                        <br />
+                      </>
+                    ) : null}
+                    Status: {project.status}
+                  </Tooltip>
+                </Marker>
+              ))
+            : null}
           {sitePlacements.map((placement, index) => (
             <Marker
               key={placement.id}
@@ -110,31 +481,154 @@ export default function MegapackMap() {
           ))}
         </MapContainer>
       </div>
-
-      <div className="mt-5 grid gap-4 rounded-xl border border-white/10 bg-black/20 p-4 md:grid-cols-[1fr_auto] md:items-center">
-        <div>
-          <p className="text-sm text-[#A1A1AA]">Platzierte Marker</p>
-          <p className="text-2xl font-semibold text-white">{sitePlacements.length}</p>
+      {showResidentialDensity && knownProjectsSource === "mastr_zenodo" ? (
+        <div className="mt-2 rounded-lg border border-slate-300/60 bg-white/75 px-3 py-2 text-xs text-slate-700 dark:border-slate-500/30 dark:bg-slate-900/60 dark:text-slate-200">
+          <p className="font-medium">Small-unit density (&lt;10 MW) legend</p>
+          <div
+            className="mt-1 h-2 w-full rounded"
+            style={{
+              background:
+                "linear-gradient(90deg, rgb(12,34,94) 0%, rgb(29,78,216) 18%, rgb(8,145,178) 38%, rgb(34,197,94) 56%, rgb(250,204,21) 74%, rgb(249,115,22) 90%, rgb(220,38,38) 100%)",
+            }}
+          />
+          <div className="mt-1 flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300">
+            <span>Low density</span>
+            <span>High density</span>
+          </div>
         </div>
-        <div className="rounded-lg border border-[#E31937]/35 bg-[#E31937]/10 px-4 py-2 text-right">
-          <p className="text-xs uppercase tracking-[0.14em] text-[#E31937]">Summe Marker-MWh</p>
-          <p className="text-xl font-semibold text-white">{totalCapacityMwh.toFixed(1)} MWh</p>
+      ) : null}
+
+      <div className="mt-5 grid gap-4 rounded-xl border border-slate-300/60 bg-white/55 p-4 dark:border-slate-500/30 dark:bg-slate-900/45 md:grid-cols-[1fr_auto] md:items-center">
+        <div>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Placed markers</p>
+          <p className="text-2xl font-semibold text-slate-900 dark:text-white">{sitePlacements.length}</p>
+        </div>
+        <div className="rounded-lg border border-blue-400/45 bg-blue-500/10 px-4 py-2 text-right dark:border-blue-300/45 dark:bg-blue-300/12">
+          <p className="text-xs uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
+            Total mapped MWh
+          </p>
+          <p className="text-xl font-semibold text-slate-900 dark:text-white">{totalCapacityMwh.toFixed(1)} MWh</p>
         </div>
       </div>
 
+      {showCommercialProjects || showResidentialDensity ? (
+        <div className="mt-4 rounded-xl border border-amber-400/35 bg-amber-500/10 p-4 text-sm text-slate-700 dark:text-slate-200">
+          <p className="text-xs uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+            Mapped DE BESS layer (
+            {knownProjectsSource === "mastr_zenodo"
+              ? "MaStR extract"
+              : knownProjectsSource === "fallback"
+                ? "curated fallback"
+                : "live layer"}
+            )
+          </p>
+          <div className="mt-3 grid gap-2 lg:grid-cols-2">
+            <div className="rounded-lg border border-amber-400/40 bg-white/70 p-3 dark:bg-slate-900/50">
+              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+                National reference (Energy-Charts)
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-300">Installed capacity</p>
+                  <p className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                    {nationalInstalledEnergyGwh !== null
+                      ? `${CAPACITY_FORMATTER.format(nationalInstalledEnergyGwh)} GWh`
+                      : "n/a"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-300">Installed power</p>
+                  <p className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                    {nationalInstalledPowerGw !== null
+                      ? `${CAPACITY_FORMATTER.format(nationalInstalledPowerGw)} GW`
+                      : "n/a"}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-lg border border-amber-400/40 bg-white/70 p-3 dark:bg-slate-900/50">
+              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+                Mapped layer (MaStR geolocation only)
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-300">
+                    Small-unit heat layer (&lt;10 MW)
+                  </p>
+                  <p className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                    {smallProjectsSummary.count.toLocaleString("de-DE")}
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-300">
+                    geolocated units in heat layer
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-300">
+                    Utility-scale pinned sites (≥{mapVisibleMinMw} MW)
+                  </p>
+                  <p className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                    {visibleKnownProjects.length.toLocaleString("de-DE")}
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-300">
+                    geolocated utility-scale markers
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 rounded-lg border border-amber-300/35 bg-white/60 p-3 dark:bg-slate-900/40">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-300">
+              Capacity source policy
+            </p>
+            <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
+              Energy-Charts for capacity/power
+            </p>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              MaStR is used in this panel for geolocation and spatial context only (heat layer +
+              site pins), not as a capacity benchmark.
+            </p>
+          </div>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+            Data source:{" "}
+            {knownProjectsLoading
+              ? "Loading mapped projects…"
+              : knownProjectsSource === "mastr_zenodo"
+                ? "Bundled MaStR extract (data/mastr-bess-de.snapshot.json.gz)"
+                : knownProjectsSource === "fallback"
+                  ? "Fallback curated list"
+                  : knownProjectsError
+                    ? "Unavailable (request timed out or network error)"
+                    : "Unknown"}
+          </p>
+          {knownProjectsCacheNote ? (
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Cache: {knownProjectsCacheNote}</p>
+          ) : null}
+          {knownProjectsSource === "fallback" && knownProjectsFallbackReason ? (
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+              Fallback reason: {knownProjectsFallbackReason}
+            </p>
+          ) : null}
+          {knownProjectsError ? (
+            <p className="mt-1 text-xs text-red-700 dark:text-red-200">
+              Could not refresh live project layer: {knownProjectsError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="mt-4">
-        <h3 className="text-lg font-medium text-white">Marker-Liste</h3>
+        <h3 className="text-lg font-medium text-slate-900 dark:text-white">Marker list</h3>
         {sitePlacements.length === 0 ? (
-          <p className="mt-2 text-sm text-[#A1A1AA]">
-            Noch keine Platzierung vorhanden. Setze den ersten Marker per Klick — Daten erscheinen
-            im Proposal-Appendix.
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            No markers yet. Add your first one with a click, and it will appear in the proposal
+            appendix.
           </p>
         ) : (
           <ul className="mt-2 space-y-2">
             {sitePlacements.map((placement, index) => (
               <li
                 key={placement.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-[#D4D4D8]"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-300/60 bg-white/65 px-3 py-2 text-sm text-slate-700 dark:border-slate-500/30 dark:bg-slate-900/50 dark:text-slate-200"
               >
                 <span>Marker #{index + 1}</span>
                 <span>
@@ -142,7 +636,7 @@ export default function MegapackMap() {
                 </span>
                 <span>{placement.capacityMwh.toFixed(1)} MWh</span>
                 {placement.linkedLabel ? (
-                  <span className="text-xs text-[#A1A1AA]">{placement.linkedLabel}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-300">{placement.linkedLabel}</span>
                 ) : null}
               </li>
             ))}

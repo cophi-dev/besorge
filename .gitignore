@@ -22,6 +22,12 @@
 
 # misc
 .DS_Store
+
+# MaStR / local API caches (writable at runtime)
+/.cache/
+
+# Intermediate JSON — committed artifact is gzip only (see npm run data:mastr)
+/data/mastr-bess-de.snapshot.json
 *.pem
 
 # debug

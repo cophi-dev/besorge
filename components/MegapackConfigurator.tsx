@@ -1,7 +1,6 @@
 "use client";
 
 import { type ComponentType, useEffect, useMemo, useState } from "react";
-import { animate, motion } from "framer-motion";
 import { BatteryCharging, LayoutGrid, Weight, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -67,18 +66,7 @@ function AnimatedValue({
   value: number;
   decimals?: number;
 }) {
-  const [displayValue, setDisplayValue] = useState(0);
-
-  useEffect(() => {
-    const controls = animate(displayValue, value, {
-      duration: 0.6,
-      ease: "easeOut",
-      onUpdate: (latest) => setDisplayValue(latest),
-    });
-    return () => controls.stop();
-  }, [displayValue, value]);
-
-  return <span>{displayValue.toFixed(decimals)}</span>;
+  return <span>{value.toFixed(decimals)}</span>;
 }
 
 function MetricCard({
@@ -95,34 +83,22 @@ function MetricCard({
   decimals?: number;
 }) {
   return (
-    <motion.div
-      key={`${title}-${value}`}
-      initial={{ boxShadow: "0 0 0 0 rgba(227, 25, 55, 0)" }}
-      animate={{
-        boxShadow: [
-          "0 0 0 0 rgba(227, 25, 55, 0)",
-          "0 0 30px 2px rgba(227, 25, 55, 0.35)",
-          "0 0 0 0 rgba(227, 25, 55, 0)",
-        ],
-      }}
-      transition={{ duration: 0.8, ease: "easeOut" }}
-      className="rounded-xl"
-    >
-      <Card className="glass-card rounded-xl border border-white/10 bg-[#121216]/80">
+    <div className="rounded-xl">
+      <Card className="glass-card rounded-xl border-slate-300/60 dark:border-slate-500/30">
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-xs tracking-[0.16em] text-[#A1A1AA] uppercase">
-            <Icon className="h-3.5 w-3.5 text-[#E31937]" />
+          <CardTitle className="flex items-center gap-2 text-xs tracking-[0.16em] text-slate-500 uppercase dark:text-slate-300">
+            <Icon className="h-3.5 w-3.5 text-blue-500 dark:text-blue-300" />
             {title}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
+          <p className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white md:text-4xl">
             <AnimatedValue value={value} decimals={decimals} />{" "}
-            <span className="text-base font-medium text-[#A1A1AA]">{unit}</span>
+            <span className="text-base font-medium text-slate-500 dark:text-slate-300">{unit}</span>
           </p>
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -163,59 +139,54 @@ export default function MegapackConfigurator({
   }, [liveConfig, onConfigChange]);
 
   return (
-    <Card className="glass-card tesla-glow rounded-3xl border border-white/10 bg-[#111116]/85 p-0">
+    <Card className="glass-card rounded-3xl p-0">
       <CardContent className="space-y-8 p-6 md:p-8">
         <div className="space-y-3">
-          <p className="text-xs tracking-[0.2em] text-[#E31937] uppercase">
+          <p className="text-xs tracking-[0.2em] text-blue-600 uppercase dark:text-blue-300">
             Megapack Configurator
           </p>
-          <h2 className="text-3xl font-semibold tracking-tight text-white">
-            Utility-Scale Battery Sizing
+          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
+            Configure your battery system
           </h2>
-          <p className="text-sm text-[#A1A1AA]">
-            Tesla-like sizing workflow with live technical preview.
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Pick a Megapack type and quantity to see live technical totals.
           </p>
         </div>
 
         <Tabs value={packType} onValueChange={(value) => setPackType(value as PackType)}>
           <TabsList
-            className="h-auto w-full rounded-xl border border-white/10 bg-white/5 p-1"
+            className="h-auto w-full rounded-xl border border-slate-300/60 bg-white/55 p-1 dark:border-slate-500/30 dark:bg-slate-900/45"
             variant="default"
           >
             <TabsTrigger
               value="megapack-2-xl"
-              className="data-active:bg-[#E31937] data-active:text-white"
+              className="data-active:bg-blue-500 data-active:text-white dark:data-active:bg-blue-400 dark:data-active:text-slate-900"
             >
               Megapack 2 XL
             </TabsTrigger>
             <TabsTrigger
               value="megapack-2"
-              className="data-active:bg-[#E31937] data-active:text-white"
+              className="data-active:bg-blue-500 data-active:text-white dark:data-active:bg-blue-400 dark:data-active:text-slate-900"
             >
               Megapack 2
             </TabsTrigger>
             <TabsTrigger
               value="custom"
-              className="data-active:bg-[#E31937] data-active:text-white"
+              className="data-active:bg-blue-500 data-active:text-white dark:data-active:bg-blue-400 dark:data-active:text-slate-900"
             >
               Custom
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value={packType} className="mt-6 space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="rounded-2xl border border-slate-300/60 bg-white/55 p-5 dark:border-slate-500/30 dark:bg-slate-900/45">
               <div className="mb-4 flex items-center justify-between">
-                <span className="text-xs tracking-[0.16em] text-[#A1A1AA] uppercase">
-                  Number of Megapacks
+                <span className="text-xs tracking-[0.16em] text-slate-500 uppercase dark:text-slate-300">
+                  Number of units
                 </span>
-                <motion.span
-                  key={count}
-                  initial={{ scale: 1.08, color: "#E31937" }}
-                  animate={{ scale: 1, color: "#FFFFFF" }}
-                  className="text-xl font-semibold"
-                >
+                <span className="text-xl font-semibold">
                   {count}
-                </motion.span>
+                </span>
               </div>
               <Slider
                 value={[count]}
@@ -223,7 +194,7 @@ export default function MegapackConfigurator({
                 max={50}
                 step={1}
                 onValueChange={(value) => setCount(getSliderValue(value))}
-                className="[&_[data-slot=slider-range]]:bg-[#E31937]"
+                className="[&_[data-slot=slider-range]]:bg-blue-500 dark:[&_[data-slot=slider-range]]:bg-blue-300"
               />
             </div>
 
@@ -252,20 +223,20 @@ export default function MegapackConfigurator({
               />
             </div>
 
-            <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#E31937]/35 bg-[#E31937]/10 p-5 md:flex-row md:items-center">
+            <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-blue-400/45 bg-blue-500/10 p-5 md:flex-row md:items-center dark:border-blue-300/45 dark:bg-blue-300/12">
               <div className="space-y-1">
-                <p className="text-xs tracking-[0.16em] text-[#E31937] uppercase">
+                <p className="text-xs tracking-[0.16em] text-blue-600 uppercase dark:text-blue-300">
                   Round-trip Efficiency
                 </p>
-                <p className="text-lg font-semibold text-white">
+                <p className="text-lg font-semibold text-slate-900 dark:text-white">
                   {selectedPack.efficiency.toFixed(1)}%
                 </p>
               </div>
               <Button
-                className="h-10 rounded-full bg-[#E31937] px-6 font-semibold text-white hover:bg-[#f02445]"
+                className="h-10 rounded-full bg-blue-500 px-6 font-semibold text-white hover:bg-blue-600 dark:bg-blue-300 dark:text-slate-900 dark:hover:bg-blue-200"
                 onClick={() => onAddToProject(liveConfig)}
               >
-                Add to Project
+                Add configuration
               </Button>
             </div>
           </TabsContent>
