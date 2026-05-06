@@ -143,7 +143,7 @@ export default function FinancialDashboard() {
     <Card className="glass-card rounded-3xl">
       <CardHeader className="space-y-2">
         <p className="text-xs tracking-[0.2em] text-blue-600 uppercase dark:text-blue-300">
-          Financial dashboard
+          Indicative economics
         </p>
         <CardTitle className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
           Revenue and project outlook
@@ -151,6 +151,10 @@ export default function FinancialDashboard() {
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Explore indicative Germany-focused economics based on your current Megapack sizing.
           We use your added configurations when available, otherwise your live preview.
+        </p>
+        <p className="rounded-lg border border-blue-400/45 bg-blue-500/10 px-3 py-2 text-xs text-blue-700 dark:text-blue-200">
+          Pre-sales model only: results are directional and not a dispatch optimization, tariff
+          quote, or investment recommendation.
         </p>
         {usesAggregatedStack ? (
           <p className="rounded-lg border border-slate-300/60 bg-white/60 px-3 py-2 text-xs text-slate-700 dark:border-slate-500/35 dark:bg-slate-900/50 dark:text-slate-200">

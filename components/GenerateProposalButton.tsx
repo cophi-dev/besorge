@@ -18,7 +18,7 @@ import {
   type EconomicsAssumptions,
   type ProjectMegapackConfig,
 } from "@/lib/bessEconomics";
-import { type SitePlacement, getFinancePhysicalConfig, useProjectStore } from "@/lib/projectStore";
+import { getFinancePhysicalConfig, useProjectStore } from "@/lib/projectStore";
 
 type GenerateProposalButtonProps = {
   projectName: string;
@@ -126,13 +126,11 @@ function ProposalDocument({
   physical,
   assumptions,
   selectedConfigurations,
-  sitePlacements,
 }: {
   projectName: string;
   physical: ProjectMegapackConfig;
   assumptions: EconomicsAssumptions;
   selectedConfigurations: ProjectMegapackConfig[];
-  sitePlacements: SitePlacement[];
 }) {
   const financial = computeEconomics(physical, assumptions);
   const layoutDescription = `The concept layout places ${physical.count} ${physical.label} units in ${Math.ceil(
@@ -251,16 +249,9 @@ function ProposalDocument({
         <View style={proposalStyles.section}>
           <Text style={proposalStyles.sectionTitle}>Site / preliminary layout</Text>
           <Text style={proposalStyles.description}>{layoutDescription}</Text>
-          {sitePlacements.length > 0 ? (
-            <Text style={[proposalStyles.description, { marginTop: 8 }]}>
-              {`Map markers recorded: ${sitePlacements.length} placement(s). Example coordinate: ${sitePlacements[0]!.lat.toFixed(4)}, ${sitePlacements[0]!.lng.toFixed(4)} (WGS84).`}
-            </Text>
-          ) : (
-            <Text style={[proposalStyles.description, { marginTop: 8 }]}>
-              No map markers captured yet — add placements in the Hamburg/DE map view to enrich
-              the site narrative.
-            </Text>
-          )}
+          <Text style={[proposalStyles.description, { marginTop: 8 }]}>
+            Geographic context is provided by the Germany map layer in the interactive dashboard.
+          </Text>
         </View>
 
         {financial.assumptionFootnotes.map((line) => (
@@ -272,13 +263,13 @@ function ProposalDocument({
         <Text style={proposalStyles.footer}>Prepared for Tesla Energy — confidential</Text>
       </Page>
 
-      {selectedConfigurations.length > 1 || sitePlacements.length > 0 ? (
+      {selectedConfigurations.length > 1 ? (
         <Page size="A4" style={proposalStyles.page}>
           <View style={proposalStyles.topAccent} />
           <Text style={proposalStyles.headerLabel}>Appendix</Text>
           <Text style={proposalStyles.title}>Supporting detail</Text>
           <Text style={proposalStyles.subtitle}>
-            Multi-block stacks and/or map placements captured in the workspace.
+            Multi-block stacks captured in the workspace.
           </Text>
 
           {selectedConfigurations.length > 1 ? (
@@ -309,21 +300,6 @@ function ProposalDocument({
             </>
           ) : null}
 
-          {sitePlacements.length > 0 ? (
-            <View style={[proposalStyles.section, { marginTop: 12 }]}>
-              <Text style={proposalStyles.sectionTitle}>Map placements (WGS84)</Text>
-              {sitePlacements.map((placement, index) => (
-                <View key={placement.id} style={proposalStyles.row}>
-                  <Text style={proposalStyles.key}>#{index + 1}</Text>
-                  <Text style={proposalStyles.value}>
-                    {placement.lat.toFixed(4)}, {placement.lng.toFixed(4)} —{" "}
-                    {placement.capacityMwh.toFixed(1)} MWh
-                    {placement.linkedLabel ? ` (${placement.linkedLabel})` : ""}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
           <Text style={proposalStyles.footer}>Prepared for Tesla Energy — confidential</Text>
         </Page>
       ) : null}
@@ -338,7 +314,6 @@ export default function GenerateProposalButton({ projectName }: GenerateProposal
   const liveConfiguration = useProjectStore((state) => state.liveConfiguration);
   const selectedConfigurations = useProjectStore((state) => state.selectedConfigurations);
   const economicsAssumptions = useProjectStore((state) => state.economicsAssumptions);
-  const sitePlacements = useProjectStore((state) => state.sitePlacements);
 
   const physical = useMemo(
     () =>
@@ -365,7 +340,6 @@ export default function GenerateProposalButton({ projectName }: GenerateProposal
           physical={physical}
           assumptions={economicsAssumptions}
           selectedConfigurations={selectedConfigurations}
-          sitePlacements={sitePlacements}
         />
       );
       const blob = await pdf(document).toBlob();

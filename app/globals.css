@@ -163,4 +163,109 @@
   .apple-input {
     @apply h-11 w-full rounded-xl border border-slate-300/60 bg-white/70 px-3 text-slate-900 outline-none transition focus:border-blue-400 dark:border-slate-500/40 dark:bg-slate-900/70 dark:text-slate-100 dark:focus:border-blue-300;
   }
+
+  .hero-block {
+    background: linear-gradient(
+      148deg,
+      rgb(255 255 255 / 82%),
+      rgb(241 245 249 / 62%)
+    );
+    border: 1px solid rgb(148 163 184 / 28%);
+    backdrop-filter: blur(24px);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 56%),
+      0 16px 42px rgb(15 23 42 / 18%);
+    border: 1px solid rgb(96 165 250 / 35%);
+  }
+
+  .section-frame {
+    border: 1px solid rgb(148 163 184 / 26%);
+    backdrop-filter: blur(24px);
+  }
+
+  .section-frame-primary {
+    background: linear-gradient(
+      145deg,
+      rgb(239 246 255 / 78%),
+      rgb(219 234 254 / 42%)
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 52%),
+      0 14px 30px rgb(15 23 42 / 12%);
+  }
+
+  .section-frame-secondary {
+    background: linear-gradient(
+      145deg,
+      rgb(255 255 255 / 76%),
+      rgb(241 245 249 / 48%)
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 48%),
+      0 14px 30px rgb(15 23 42 / 12%);
+  }
+
+  .section-frame-neutral {
+    background: linear-gradient(
+      145deg,
+      rgb(255 255 255 / 70%),
+      rgb(226 232 240 / 42%)
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 42%),
+      0 14px 30px rgb(15 23 42 / 10%);
+  }
+
+  .dark .section-frame {
+    border: 1px solid rgb(148 163 184 / 22%);
+  }
+
+  .dark .hero-block {
+    background: linear-gradient(152deg, rgb(17 24 39 / 80%), rgb(9 13 22 / 72%));
+    border: 1px solid rgb(96 165 250 / 42%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 8%),
+      0 20px 44px rgb(0 0 0 / 42%);
+  }
+
+  .dark .section-frame-primary {
+    background: linear-gradient(
+      145deg,
+      rgb(15 23 42 / 84%),
+      rgb(30 58 138 / 30%)
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 6%),
+      0 16px 34px rgb(0 0 0 / 38%);
+  }
+
+  .dark .section-frame-secondary {
+    background: linear-gradient(
+      145deg,
+      rgb(17 24 39 / 80%),
+      rgb(15 23 42 / 64%)
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 6%),
+      0 16px 34px rgb(0 0 0 / 36%);
+  }
+
+  .dark .section-frame-neutral {
+    background: linear-gradient(
+      145deg,
+      rgb(2 6 23 / 82%),
+      rgb(15 23 42 / 66%)
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 5%),
+      0 16px 34px rgb(0 0 0 / 34%);
+  }
+
+  .section-kicker {
+    @apply text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300;
+  }
+
+  .jump-card {
+    @apply rounded-xl border border-slate-300/60 bg-white/70 px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-slate-500/40 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200;
+  }
 }

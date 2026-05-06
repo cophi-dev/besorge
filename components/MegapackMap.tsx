@@ -4,14 +4,11 @@ import "leaflet/dist/leaflet.css";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, Rectangle, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, Rectangle, TileLayer, Tooltip, useMap } from "react-leaflet";
 
 import type { GermanyBessProject } from "@/lib/germanyBessProjects";
-import { useProjectStore } from "@/lib/projectStore";
-
 const DEFAULT_CENTER: [number, number] = [53.5511, 9.9937];
 const DEFAULT_ZOOM = 6;
-const FALLBACK_CAPACITY_MWH = 3.9;
 
 type Rgb = [number, number, number];
 
@@ -24,21 +21,6 @@ const HEAT_COLOR_STOPS: Array<{ at: number; color: Rgb }> = [
   { at: 0.9, color: [249, 115, 22] },
   { at: 1, color: [220, 38, 38] },
 ];
-
-const megapackIcon = L.divIcon({
-  className: "megapack-marker",
-  html: `
-    <div style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9999px;background:radial-gradient(circle at 32% 28%, #38bdf8 0%, #2563eb 48%, #1e40af 100%);border:2px solid rgba(255,255,255,0.98);box-shadow:0 12px 24px rgba(15,23,42,0.45);backdrop-filter:blur(1.5px);">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <rect x="4.5" y="7" width="13.5" height="10" rx="2.2" stroke="#f8fafc" stroke-width="2"/>
-        <rect x="18.8" y="10.1" width="1.8" height="3.8" rx="0.6" fill="#f8fafc"/>
-        <path d="M10.7 8.8l-2.8 4.1h2.6l-1.2 2.3 3.6-4.9h-2.2l1.1-1.5z" fill="#f8fafc"/>
-      </svg>
-    </div>
-  `,
-  iconSize: [34, 34],
-  iconAnchor: [17, 17],
-});
 
 const knownProjectIcon = L.divIcon({
   className: "known-bess-marker",
@@ -147,16 +129,6 @@ const formatAdaptiveEnergy = (energyMwh: number) => {
   return `${CAPACITY_FORMATTER.format(energyMwh)} MWh`;
 };
 
-function MapClickHandler({ onPlace }: { onPlace: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(event) {
-      onPlace(event.latlng.lat, event.latlng.lng);
-    },
-  });
-
-  return null;
-}
-
 function MapSizeInvalidator({ resizeSignal }: { resizeSignal: number }) {
   const map = useMap();
 
@@ -191,16 +163,7 @@ export default function MegapackMap() {
   >([]);
   const [nationalInstalledEnergyGwh, setNationalInstalledEnergyGwh] = useState<number | null>(null);
   const [nationalInstalledPowerGw, setNationalInstalledPowerGw] = useState<number | null>(null);
-  const liveConfiguration = useProjectStore((state) => state.liveConfiguration);
-  const sitePlacements = useProjectStore((state) => state.sitePlacements);
-  const addSitePlacement = useProjectStore((state) => state.addSitePlacement);
-  const clearSitePlacements = useProjectStore((state) => state.clearSitePlacements);
   const mapWrapperRef = useRef<HTMLDivElement | null>(null);
-
-  const totalCapacityMwh = useMemo(
-    () => sitePlacements.reduce((sum, placement) => sum + placement.capacityMwh, 0),
-    [sitePlacements]
-  );
   const visibleKnownProjects = useMemo(() => knownProjects, [knownProjects]);
   const mapVisibleMinMw =
     knownProjectsSource === "mastr_zenodo" ? MASTR_MAP_MARKER_MIN_MW : CURATED_MAP_MIN_MW;
@@ -303,22 +266,6 @@ export default function MegapackMap() {
     return () => controller.abort();
   }, []);
 
-  const perUnitMwh = useMemo(() => {
-    if (liveConfiguration && liveConfiguration.count > 0) {
-      return liveConfiguration.totalEnergyMwh / liveConfiguration.count;
-    }
-    return FALLBACK_CAPACITY_MWH;
-  }, [liveConfiguration]);
-
-  const handlePlaceMegapack = (lat: number, lng: number) => {
-    addSitePlacement({
-      lat,
-      lng,
-      capacityMwh: perUnitMwh,
-      linkedLabel: liveConfiguration?.label,
-    });
-  };
-
   const handleToggleFullscreen = async () => {
     const wrapperElement = mapWrapperRef.current;
     if (!wrapperElement) {
@@ -351,24 +298,16 @@ export default function MegapackMap() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-blue-600 dark:text-blue-300">
-            Site planning
+            Site and deployment context
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">
             Interactive Germany and Hamburg map
           </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Click anywhere on the map to add a site marker. Capacity per marker follows your
-            current configurator preview ({perUnitMwh.toFixed(2)} MWh per unit).
+            Explore utility-scale and residential BESS density across Germany with an interactive
+            geographic layer.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => clearSitePlacements()}
-          disabled={sitePlacements.length === 0}
-          className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
-        >
-          Clear markers
-        </button>
         <button
           type="button"
           onClick={() => setShowCommercialProjects((current) => !current)}
@@ -407,7 +346,6 @@ export default function MegapackMap() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <MapClickHandler onPlace={handlePlaceMegapack} />
           {showResidentialDensity && knownProjectsSource === "mastr_zenodo"
             ? gradientCells.map((cell, index) => {
                 const intensity =
@@ -466,19 +404,6 @@ export default function MegapackMap() {
                 </Marker>
               ))
             : null}
-          {sitePlacements.map((placement, index) => (
-            <Marker
-              key={placement.id}
-              icon={megapackIcon}
-              position={[placement.lat, placement.lng]}
-            >
-              <Tooltip direction="top" offset={[0, -12]} opacity={1}>
-                #{index + 1}
-                {placement.linkedLabel ? ` — ${placement.linkedLabel}` : ""} (
-                {placement.capacityMwh.toFixed(1)} MWh)
-              </Tooltip>
-            </Marker>
-          ))}
         </MapContainer>
       </div>
       {showResidentialDensity && knownProjectsSource === "mastr_zenodo" ? (
@@ -498,23 +423,10 @@ export default function MegapackMap() {
         </div>
       ) : null}
 
-      <div className="mt-5 grid gap-4 rounded-xl border border-slate-300/60 bg-white/55 p-4 dark:border-slate-500/30 dark:bg-slate-900/45 md:grid-cols-[1fr_auto] md:items-center">
-        <div>
-          <p className="text-sm text-slate-600 dark:text-slate-300">Placed markers</p>
-          <p className="text-2xl font-semibold text-slate-900 dark:text-white">{sitePlacements.length}</p>
-        </div>
-        <div className="rounded-lg border border-blue-400/45 bg-blue-500/10 px-4 py-2 text-right dark:border-blue-300/45 dark:bg-blue-300/12">
-          <p className="text-xs uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
-            Total mapped MWh
-          </p>
-          <p className="text-xl font-semibold text-slate-900 dark:text-white">{totalCapacityMwh.toFixed(1)} MWh</p>
-        </div>
-      </div>
-
       {showCommercialProjects || showResidentialDensity ? (
         <div className="mt-4 rounded-xl border border-amber-400/35 bg-amber-500/10 p-4 text-sm text-slate-700 dark:text-slate-200">
-          <p className="text-xs uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
-            Mapped DE BESS layer (
+          <p className="text-[11px] uppercase tracking-[0.1em] text-amber-700/85 dark:text-amber-300/85">
+            DE BESS map (
             {knownProjectsSource === "mastr_zenodo"
               ? "MaStR extract"
               : knownProjectsSource === "fallback"
@@ -524,8 +436,8 @@ export default function MegapackMap() {
           </p>
           <div className="mt-3 grid gap-2 lg:grid-cols-2">
             <div className="rounded-lg border border-amber-400/40 bg-white/70 p-3 dark:bg-slate-900/50">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
-                National reference (Energy-Charts)
+              <p className="text-[11px] uppercase tracking-[0.08em] text-slate-600/85 dark:text-slate-300/85">
+                National benchmark (Energy-Charts)
               </p>
               <div className="mt-2 grid grid-cols-2 gap-3">
                 <div>
@@ -547,8 +459,8 @@ export default function MegapackMap() {
               </div>
             </div>
             <div className="rounded-lg border border-amber-400/40 bg-white/70 p-3 dark:bg-slate-900/50">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
-                Mapped layer (MaStR geolocation only)
+              <p className="text-[11px] uppercase tracking-[0.08em] text-slate-600/85 dark:text-slate-300/85">
+                Map layer (MaStR geolocation)
               </p>
               <div className="mt-2 grid grid-cols-2 gap-3">
                 <div>
@@ -564,28 +476,27 @@ export default function MegapackMap() {
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-300">
-                    Utility-scale pinned sites (≥{mapVisibleMinMw} MW)
+                    Utility-scale sites (≥{mapVisibleMinMw} MW)
                   </p>
                   <p className="text-3xl font-extrabold text-slate-900 dark:text-white">
                     {visibleKnownProjects.length.toLocaleString("de-DE")}
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-300">
-                    geolocated utility-scale markers
+                    geolocated utility-scale sites
                   </p>
                 </div>
               </div>
             </div>
           </div>
-          <div className="mt-3 rounded-lg border border-amber-300/35 bg-white/60 p-3 dark:bg-slate-900/40">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-300">
-              Capacity source policy
+          <div className="mt-3 rounded-lg border border-amber-300/30 bg-white/55 p-3 dark:bg-slate-900/35">
+            <p className="text-[10px] uppercase tracking-[0.08em] text-slate-500/90 dark:text-slate-300/85">
+              Source note
             </p>
-            <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-              Energy-Charts for capacity/power
+            <p className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">
+              Capacity and power from Energy-Charts
             </p>
             <p className="text-xs text-slate-600 dark:text-slate-300">
-              MaStR is used in this panel for geolocation and spatial context only (heat layer +
-              site pins), not as a capacity benchmark.
+              MaStR provides location context only (heatmap and pins).
             </p>
           </div>
           <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
@@ -593,7 +504,7 @@ export default function MegapackMap() {
             {knownProjectsLoading
               ? "Loading mapped projects…"
               : knownProjectsSource === "mastr_zenodo"
-                ? "Bundled MaStR extract (data/mastr-bess-de.snapshot.json.gz)"
+                ? "Bundled MaStR snapshot"
                 : knownProjectsSource === "fallback"
                   ? "Fallback curated list"
                   : knownProjectsError
@@ -616,33 +527,6 @@ export default function MegapackMap() {
         </div>
       ) : null}
 
-      <div className="mt-4">
-        <h3 className="text-lg font-medium text-slate-900 dark:text-white">Marker list</h3>
-        {sitePlacements.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            No markers yet. Add your first one with a click, and it will appear in the proposal
-            appendix.
-          </p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {sitePlacements.map((placement, index) => (
-              <li
-                key={placement.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-300/60 bg-white/65 px-3 py-2 text-sm text-slate-700 dark:border-slate-500/30 dark:bg-slate-900/50 dark:text-slate-200"
-              >
-                <span>Marker #{index + 1}</span>
-                <span>
-                  {placement.lat.toFixed(4)}, {placement.lng.toFixed(4)}
-                </span>
-                <span>{placement.capacityMwh.toFixed(1)} MWh</span>
-                {placement.linkedLabel ? (
-                  <span className="text-xs text-slate-500 dark:text-slate-300">{placement.linkedLabel}</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
     </section>
   );
 }

@@ -143,13 +143,14 @@ export default function MegapackConfigurator({
       <CardContent className="space-y-8 p-6 md:p-8">
         <div className="space-y-3">
           <p className="text-xs tracking-[0.2em] text-blue-600 uppercase dark:text-blue-300">
-            Megapack Configurator
+            Planning workspace
           </p>
           <h2 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Configure your battery system
+            Configure your BESS sizing
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            Pick a Megapack type and quantity to see live technical totals.
+            Pick a Megapack type and quantity to generate the technical baseline used across the
+            rest of this page.
           </p>
         </div>
 
