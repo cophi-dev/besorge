@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useLanguage } from "@/components/language-context";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -14,18 +15,22 @@ type BessAiChatOverlayProps = {
   seedPrompt?: string | null;
 };
 
-const starterMessage: ChatMessage = {
-  role: "assistant",
-  content:
-    "I am your BESS assistant. Ask me anything about sizing, Germany market signals, risk, or decision trade-offs from your assessment.",
-};
-
 export default function BessAiChatOverlay({
   open,
   onClose,
   seedPrompt,
 }: BessAiChatOverlayProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([starterMessage]);
+  const { language } = useLanguage();
+  const starterMessageContent =
+    language === "de"
+      ? "Ich bin Ihr BESS-Assistent. Fragen Sie mich zu Auslegung, deutschen Marktsignalen, Risiken oder Entscheidungs-Trade-offs aus Ihrem Assessment."
+      : "I am your BESS assistant. Ask me anything about sizing, Germany market signals, risk, or decision trade-offs from your assessment.";
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      content: starterMessageContent,
+    },
+  ]);
   const [input, setInput] = useState(seedPrompt ?? "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +140,7 @@ export default function BessAiChatOverlay({
       const payload = (await response.json()) as { reply: string };
       setMessages((current) => current.concat({ role: "assistant", content: payload.reply }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unknown error");
+      setError(caught instanceof Error ? caught.message : language === "de" ? "Unbekannter Fehler" : "Unknown error");
     } finally {
       setSending(false);
     }
@@ -154,14 +159,14 @@ export default function BessAiChatOverlay({
               AETHER AI chat
             </p>
             <h2 className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
-              Let&apos;s talk about your BESS decision
+              {language === "de" ? "Lassen Sie uns über Ihre BESS-Entscheidung sprechen" : "Let&apos;s talk about your BESS decision"}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300/70 text-slate-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-slate-500/40 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
-            aria-label="Close BESS chat"
+            aria-label={language === "de" ? "BESS-Chat schließen" : "Close BESS chat"}
           >
             <X className="h-4 w-4" />
           </button>
@@ -181,7 +186,7 @@ export default function BessAiChatOverlay({
             </div>
           ))}
           {sending ? (
-            <p className="text-sm text-slate-500 dark:text-slate-300">AI is thinking...</p>
+            <p className="text-sm text-slate-500 dark:text-slate-300">{language === "de" ? "KI denkt nach..." : "AI is thinking..."}</p>
           ) : null}
           {error ? (
             <p className="rounded-lg border border-red-400/45 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">
@@ -195,7 +200,7 @@ export default function BessAiChatOverlay({
           className="border-t border-slate-300/60 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-500/35 md:px-8 md:pt-4 md:pb-4"
         >
           <label htmlFor="bess-chat-input" className="sr-only">
-            Ask a BESS question
+            {language === "de" ? "BESS-Frage stellen" : "Ask a BESS question"}
           </label>
           <div className="flex gap-3">
             <input
@@ -206,7 +211,11 @@ export default function BessAiChatOverlay({
               onFocus={() => {
                 requestAnimationFrame(scrollToBottom);
               }}
-              placeholder="Ask about sizing, drivers, risks, or next actions..."
+              placeholder={
+                language === "de"
+                  ? "Fragen Sie zu Auslegung, Treibern, Risiken oder nächsten Maßnahmen..."
+                  : "Ask about sizing, drivers, risks, or next actions..."
+              }
               className="flex-1 rounded-xl border border-slate-300/70 bg-white px-4 py-3 text-base text-slate-900 outline-none transition focus:border-blue-400 dark:border-slate-500/50 dark:bg-slate-900 dark:text-slate-100 md:text-sm"
             />
             <button
@@ -214,7 +223,7 @@ export default function BessAiChatOverlay({
               disabled={sending || input.trim().length === 0}
               className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Send
+              {language === "de" ? "Senden" : "Send"}
             </button>
           </div>
         </form>

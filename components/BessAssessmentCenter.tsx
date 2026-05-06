@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { useLanguage } from "@/components/language-context";
 
 type AssessmentVerdict = "beneficial_now" | "not_beneficial_now" | "uncertain";
 
@@ -38,10 +39,17 @@ type AssessmentResponse = {
   asOf: string;
 };
 
-const verdictLabel: Record<AssessmentVerdict, string> = {
-  beneficial_now: "Beneficial now",
-  not_beneficial_now: "Not beneficial now",
-  uncertain: "Uncertain",
+const verdictLabel: Record<"en" | "de", Record<AssessmentVerdict, string>> = {
+  en: {
+    beneficial_now: "Beneficial now",
+    not_beneficial_now: "Not beneficial now",
+    uncertain: "Uncertain",
+  },
+  de: {
+    beneficial_now: "Aktuell vorteilhaft",
+    not_beneficial_now: "Aktuell nicht vorteilhaft",
+    uncertain: "Unklar",
+  },
 };
 
 const verdictTone: Record<AssessmentVerdict, string> = {
@@ -62,6 +70,7 @@ const sleep = (ms: number) =>
   });
 
 export default function BessAssessmentCenter({ compact = false }: BessAssessmentCenterProps) {
+  const { language } = useLanguage();
   const [data, setData] = useState<AssessmentResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,12 +102,12 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
       setData(payload);
       setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unknown error");
+      setError(caught instanceof Error ? caught.message : language === "de" ? "Unbekannter Fehler" : "Unknown error");
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -120,13 +129,15 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">AI decision support</p>
+          <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">
+            {language === "de" ? "KI-Entscheidungsunterstützung" : "AI decision support"}
+          </p>
           <h2
             className={`mt-2 tracking-tight text-slate-900 [font-family:var(--font-heading)] ${
               compact ? "text-2xl md:text-3xl" : "text-3xl md:text-4xl"
             }`}
           >
-            Should you add more BESS capacity now?
+            {language === "de" ? "Sollten Sie jetzt zusätzliche BESS-Kapazität aufbauen?" : "Should you add more BESS capacity now?"}
           </h2>
         </div>
         <button
@@ -135,19 +146,19 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
           className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
           disabled={loading}
         >
-          {loading ? "Refreshing..." : "Refresh assessment"}
+          {loading ? (language === "de" ? "Aktualisiert..." : "Refreshing...") : language === "de" ? "Assessment aktualisieren" : "Refresh assessment"}
         </button>
       </div>
 
       {loading ? (
         <p className="mt-5 rounded-xl border border-slate-300/60 bg-white/60 p-4 text-sm text-slate-700 dark:border-slate-500/35 dark:bg-slate-900/50 dark:text-slate-200">
-          Running assessment...
+          {language === "de" ? "Assessment wird berechnet..." : "Running assessment..."}
         </p>
       ) : null}
 
       {error ? (
         <p className="mt-5 rounded-xl border border-red-400/45 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-200">
-          Could not run assessment: {error}
+          {language === "de" ? "Assessment konnte nicht berechnet werden:" : "Could not run assessment:"} {error}
         </p>
       ) : null}
 
@@ -165,11 +176,17 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
                     )}%, rgba(148, 163, 184, 0.2) 0%)`,
                   }}
                   role="img"
-                  aria-label={`Score gauge ${Math.round(data.score)} out of 100`}
+                  aria-label={
+                    language === "de"
+                      ? `Score-Anzeige ${Math.round(data.score)} von 100`
+                      : `Score gauge ${Math.round(data.score)} out of 100`
+                  }
                 >
                   <div className="absolute inset-2 rounded-full bg-white" />
                   <div className="relative text-center">
-                    <p className="text-[10px] tracking-[0.12em] text-slate-500 uppercase">Score</p>
+                    <p className="text-[10px] tracking-[0.12em] text-slate-500 uppercase">
+                      {language === "de" ? "Score" : "Score"}
+                    </p>
                     <p className="text-2xl font-extrabold text-slate-900 [font-family:var(--font-sans)]">
                       {Math.round(data.score)}
                     </p>
@@ -182,7 +199,7 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
                     className={`rounded-full border px-4 py-1.5 text-xs font-semibold tracking-[0.12em] uppercase ${verdictTone[data.verdict]}`}
                   >
                     <ShieldCheck className="mr-1.5 size-3.5" />
-                    Verdict: {verdictLabel[data.verdict]}
+                    {language === "de" ? "Fazit" : "Verdict"}: {verdictLabel[language][data.verdict]}
                   </Badge>
                   <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
                     {data.analystSummary}
@@ -194,7 +211,7 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
                   className="h-8 rounded-full border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-800"
                 >
                   <Sparkle className="mr-1.5 size-3.5" />
-                  Confidence {Math.round(data.confidence)}%
+                  {language === "de" ? "Konfidenz" : "Confidence"} {Math.round(data.confidence)}%
                 </Badge>
               </div>
             </CardContent>
@@ -207,9 +224,9 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
               </p>
 
               <div className="mt-5 grid gap-4 md:grid-cols-3">
-                <BriefList title="Key Drivers" items={data.keyDrivers.slice(0, 3)} />
-                <BriefList title="Main Risks" items={data.risks.slice(0, 3)} />
-                <BriefList title="Recommended Actions" items={data.recommendedNextActions.slice(0, 3)} />
+                <BriefList title={language === "de" ? "Haupttreiber" : "Key Drivers"} items={data.keyDrivers.slice(0, 3)} />
+                <BriefList title={language === "de" ? "Wesentliche Risiken" : "Main Risks"} items={data.risks.slice(0, 3)} />
+                <BriefList title={language === "de" ? "Empfohlene Maßnahmen" : "Recommended Actions"} items={data.recommendedNextActions.slice(0, 3)} />
               </div>
             </article>
           ) : null}
@@ -221,15 +238,23 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
               className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
               aria-expanded={showFullAnalysis}
             >
-              {showFullAnalysis ? "Hide analyst note" : "View full analysis"}
+              {showFullAnalysis
+                ? language === "de"
+                  ? "Analystennotiz ausblenden"
+                  : "Hide analyst note"
+                : language === "de"
+                  ? "Vollständige Analyse anzeigen"
+                  : "View full analysis"}
             </button>
           </div>
 
           <div className="rounded-xl bg-white/60 p-4 shadow-sm dark:bg-slate-900/50">
-            <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">Horizon outlook</p>
+            <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
+              {language === "de" ? "Horizont-Ausblick" : "Horizon outlook"}
+            </p>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <HorizonNode
-                label="Now"
+                label={language === "de" ? "Jetzt" : "Now"}
                 verdict={data.horizonOutlook.now.recommendation}
                 summary={firstSentence(data.horizonOutlook.now.rationale)}
                 icon={<Sparkle className="size-3.5" />}
@@ -237,14 +262,14 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
                 delay={0}
               />
               <HorizonNode
-                label="Next 12m"
+                label={language === "de" ? "Nächste 12M" : "Next 12m"}
                 verdict={data.horizonOutlook.next12m.recommendation}
                 summary={firstSentence(data.horizonOutlook.next12m.rationale)}
                 icon={<TrendingUp className="size-3.5" />}
                 delay={0.08}
               />
               <HorizonNode
-                label="Next 36m"
+                label={language === "de" ? "Nächste 36M" : "Next 36m"}
                 verdict={data.horizonOutlook.next36m.recommendation}
                 summary={firstSentence(data.horizonOutlook.next36m.rationale)}
                 icon={<Atom className="size-3.5" />}
@@ -254,7 +279,7 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
           </div>
 
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            As of:{" "}
+            {language === "de" ? "Stand:" : "As of:"}{" "}
             {new Date(data.asOf).toLocaleString("de-DE", {
               dateStyle: "medium",
               timeStyle: "short",
@@ -264,7 +289,9 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
       ) : null}
 
       <p className="pointer-events-none absolute right-6 bottom-4 left-6 text-center text-[10px] text-slate-400 dark:text-slate-500">
-        AI output is advisory and should be validated with project-specific constraints.
+        {language === "de"
+          ? "KI-Ausgaben sind beratend und müssen mit projektspezifischen Randbedingungen validiert werden."
+          : "AI output is advisory and should be validated with project-specific constraints."}
       </p>
     </section>
   );
