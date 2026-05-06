@@ -45,6 +45,32 @@ export default function BessAiChatOverlay({
   }, [onClose, open]);
 
   useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const { body } = document;
+    const previousOverflow = body.style.overflow;
+    const previousPosition = body.style.position;
+    const previousWidth = body.style.width;
+    const previousTop = body.style.top;
+    const scrollY = window.scrollY;
+
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.width = "100%";
+    body.style.top = `-${scrollY}px`;
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.position = previousPosition;
+      body.style.width = previousWidth;
+      body.style.top = previousTop;
+      window.scrollTo(0, scrollY);
+    };
+  }, [open]);
+
+  useEffect(() => {
     if (!open || !viewportRef.current) {
       return;
     }
@@ -93,8 +119,8 @@ export default function BessAiChatOverlay({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-950/75 backdrop-blur-sm">
-      <div className="flex h-full w-full flex-col bg-white dark:bg-slate-950">
+    <div className="fixed inset-0 z-[70] overscroll-none bg-slate-950/75 backdrop-blur-sm">
+      <div className="flex h-full w-full touch-pan-y flex-col overflow-hidden bg-white dark:bg-slate-950">
         <div className="flex items-center justify-between border-b border-slate-300/60 px-5 py-4 dark:border-slate-500/35">
           <div>
             <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">
@@ -114,7 +140,7 @@ export default function BessAiChatOverlay({
           </button>
         </div>
 
-        <div ref={viewportRef} className="flex-1 space-y-4 overflow-y-auto px-5 py-5 md:px-8">
+        <div ref={viewportRef} className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-5 md:px-8">
           {messages.map((message, idx) => (
             <div
               key={`${message.role}-${idx}`}
@@ -137,7 +163,10 @@ export default function BessAiChatOverlay({
           ) : null}
         </div>
 
-        <form onSubmit={onSubmit} className="border-t border-slate-300/60 p-4 dark:border-slate-500/35 md:px-8">
+        <form
+          onSubmit={onSubmit}
+          className="border-t border-slate-300/60 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-500/35 md:px-8 md:pt-4 md:pb-4"
+        >
           <label htmlFor="bess-chat-input" className="sr-only">
             Ask a BESS question
           </label>
