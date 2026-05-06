@@ -527,7 +527,7 @@ export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentCo
   const eveningStressPeriods7d =
     residualSeries === undefined || renewableShareValues.length === 0
       ? null
-      : residualSeries.data.slice(-trailing7dPoints).reduce((count, value, index) => {
+      : residualSeries.data.slice(-trailing7dPoints).reduce<number>((count, value, index) => {
           const renewable = renewableShareValues.slice(-trailing7dPoints)[index];
           if (value === null || renewable === null) {
             return count;
@@ -539,7 +539,7 @@ export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentCo
       ? null
       : residualSeries.data
           .slice(-trailing7dPoints)
-          .reduce((count, value) => (value !== null && value < 0 ? count + 1 : count), 0);
+          .reduce<number>((count, value) => (value !== null && value < 0 ? count + 1 : count), 0);
   const missingSignals: string[] = [];
   if (residualSeries === undefined) {
     missingSignals.push("Residual load series unavailable");
