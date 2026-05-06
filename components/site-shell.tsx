@@ -11,25 +11,10 @@ type SiteShellProps = {
 };
 
 export function SiteShell({ children }: SiteShellProps) {
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") {
-      return "light";
-    }
-    const savedTheme = window.localStorage.getItem("aether-theme");
-    if (savedTheme === "light" || savedTheme === "dark") {
-      return savedTheme;
-    }
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  });
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSeedPrompt, setChatSeedPrompt] = useState<string | null>(null);
-  const [language, setLanguage] = useState<AppLanguage>(() => {
-    if (typeof window === "undefined") {
-      return "en";
-    }
-    const savedLanguage = window.localStorage.getItem("aether-language");
-    return savedLanguage === "de" ? "de" : "en";
-  });
+  const [language, setLanguage] = useState<AppLanguage>("en");
 
   useEffect(() => {
     const root = document.documentElement;
@@ -76,50 +61,50 @@ export function SiteShell({ children }: SiteShellProps) {
   return (
     <LanguageContext.Provider value={{ language, setLanguage }}>
       <div className="relative min-h-screen overflow-x-hidden">
-      <header className="fixed inset-x-0 top-0 z-[1200] border-b border-slate-300/45 bg-[#f8f7f4]/92 backdrop-blur-lg dark:border-slate-500/35 dark:bg-slate-950/55">
-        <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-8 py-5 lg:px-12">
+      <header className="fixed inset-x-0 top-0 z-[1200] border-b border-slate-300/45 bg-[#f8f7f4]/95 backdrop-blur-xl dark:border-slate-500/35 dark:bg-slate-950/60">
+        <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 lg:px-12">
           <Link href="/" className="group flex items-center gap-3">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-primary/40 text-primary">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-primary/35 text-primary shadow-[0_6px_14px_rgba(15,118,110,0.12)]">
               <span className="h-3 w-3 rounded-full border border-current" />
             </span>
             <div>
-              <p className="text-lg text-slate-900 [font-family:var(--font-heading)] dark:text-white">AETHER</p>
-              <p className="text-[10px] tracking-[0.14em] text-slate-600 uppercase dark:text-slate-300">
+              <p className="text-lg tracking-[0.02em] text-slate-900 [font-family:var(--font-heading)] dark:text-white">AETHER</p>
+              <p className="text-[10px] tracking-[0.16em] text-slate-600 uppercase dark:text-slate-300">
                 {language === "de"
                   ? "Klarheit für Deutschlands Energiewende"
                   : "Clarity for Germany&apos;s energy transition"}
               </p>
             </div>
           </Link>
-          <div className="hidden items-center gap-2 text-xs md:flex">
-            <a href="#overview" className="rounded-full px-3 py-1.5 text-slate-600 transition hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-emerald-200">
+          <div className="hidden items-center gap-1.5 text-xs md:flex">
+            <a href="#overview" className="rounded-full px-3.5 py-2 text-slate-600 transition hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-emerald-200">
               {language === "de" ? "Briefing" : "Briefing"}
             </a>
-            <a href="#bess-value" className="rounded-full px-3 py-1.5 text-slate-600 transition hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-emerald-200">
+            <a href="#bess-value" className="rounded-full px-3.5 py-2 text-slate-600 transition hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-emerald-200">
               {language === "de" ? "Signale" : "Insights"}
             </a>
-            <a href="#ai-assessment" className="rounded-full px-3 py-1.5 text-slate-600 transition hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-emerald-200">
+            <a href="#ai-assessment" className="rounded-full px-3.5 py-2 text-slate-600 transition hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-emerald-200">
               {language === "de" ? "Analysten-KI" : "Analyst AI"}
             </a>
             <button
               type="button"
               onClick={() => setChatOpen(true)}
-              className="rounded-full bg-primary/10 px-3 py-1.5 text-primary transition hover:bg-primary/15 dark:text-emerald-100"
+              className="rounded-full border border-primary/35 bg-primary/10 px-4 py-2 font-medium text-primary shadow-[0_6px_16px_rgba(15,118,110,0.16)] transition hover:-translate-y-0.5 hover:bg-primary/15 dark:border-emerald-200/25 dark:text-emerald-100"
             >
-              {language === "de" ? "Briefing-Assistent öffnen" : "Open Briefing Assistant"}
+              {language === "de" ? "Chat öffnen" : "Open chat"}
             </button>
           </div>
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-3 text-sm">
             <span className="hidden text-slate-600 dark:text-slate-300 sm:inline">
               {language === "de" ? "Premium-Marktintelligenz" : "Premium market intelligence"}
             </span>
-            <div className="inline-flex items-center rounded-full border border-slate-300/70 bg-white/90 p-1 dark:border-slate-500/40 dark:bg-slate-900/70">
+            <div className="inline-flex items-center rounded-full border border-slate-300/75 bg-white/95 p-1 shadow-[0_5px_14px_rgba(15,23,42,0.08)] dark:border-slate-500/45 dark:bg-slate-900/70">
               <button
                 type="button"
                 onClick={() => setLanguage("en")}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase transition ${
                   language === "en"
-                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                    ? "bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.2)] dark:bg-slate-100 dark:text-slate-900"
                     : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
                 }`}
                 aria-label="Switch website language to English"
@@ -130,9 +115,9 @@ export function SiteShell({ children }: SiteShellProps) {
               <button
                 type="button"
                 onClick={() => setLanguage("de")}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase transition ${
                   language === "de"
-                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                    ? "bg-slate-900 text-white shadow-[0_4px_10px_rgba(15,23,42,0.2)] dark:bg-slate-100 dark:text-slate-900"
                     : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
                 }`}
                 aria-label="Switch website language to German"
@@ -144,7 +129,7 @@ export function SiteShell({ children }: SiteShellProps) {
             <button
               type="button"
               onClick={toggleTheme}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300/70 bg-white/90 text-slate-700 transition hover:text-primary dark:border-slate-500/40 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:text-emerald-200"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300/75 bg-white/95 text-slate-700 shadow-[0_5px_14px_rgba(15,23,42,0.08)] transition hover:text-primary dark:border-slate-500/45 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:text-emerald-200"
               aria-label={language === "de" ? "Farbmodus wechseln" : "Toggle color theme"}
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -153,7 +138,7 @@ export function SiteShell({ children }: SiteShellProps) {
               href="https://github.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-full border border-slate-300/70 bg-white/90 px-4 py-2 text-slate-700 transition hover:text-primary dark:border-slate-500/40 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:text-emerald-200"
+              className="rounded-full border border-slate-300/75 bg-white/95 px-4 py-2 text-slate-700 shadow-[0_5px_14px_rgba(15,23,42,0.08)] transition hover:text-primary dark:border-slate-500/45 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:text-emerald-200"
             >
               GitHub
             </a>

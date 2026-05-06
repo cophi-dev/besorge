@@ -504,18 +504,20 @@ export default function Home() {
       <button
         type="button"
         onClick={openAiChat}
-        className="group fixed right-6 bottom-6 z-[1000] w-[min(330px,calc(100vw-3rem))] rounded-2xl border border-blue-400/35 bg-white/95 px-5 py-4 text-left text-slate-900 shadow-[0_14px_34px_rgba(37,99,235,0.14)] transition hover:-translate-y-0.5 hover:border-blue-500/65 hover:shadow-[0_18px_40px_rgba(37,99,235,0.2)] dark:border-blue-300/35 dark:bg-slate-900/95 dark:text-slate-100 dark:hover:border-blue-300/70"
+        className="group fixed right-6 bottom-6 z-[1000] w-[min(340px,calc(100vw-3rem))] rounded-3xl border border-primary/35 bg-[#fbfaf8]/95 px-5 py-4 text-left text-slate-900 shadow-[0_18px_42px_rgba(15,118,110,0.16)] backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-[0_22px_48px_rgba(15,118,110,0.24)] dark:border-emerald-200/30 dark:bg-slate-900/95 dark:text-slate-100 dark:hover:border-emerald-200/60"
         aria-label={language === "de" ? "Frage AETHER alles" : "Ask AETHER anything"}
       >
-        <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.14em] text-blue-700 uppercase dark:text-blue-200">
+        <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.14em] text-primary uppercase dark:text-emerald-200">
           <MessageCircle className="h-4 w-4" />
-          {language === "de" ? "Insight-Modus" : "Insight mode"}
+          {language === "de" ? "AETHER Chat" : "AETHER Chat"}
         </span>
         <span className="mt-1 block text-sm font-semibold md:text-base">
-          {language === "de" ? "Frag AETHER alles." : "Ask AETHER anything."}
+          {language === "de" ? "Sprechen Sie mit AETHER." : "Talk with AETHER."}
         </span>
         <span className="mt-1 block text-xs text-slate-600 dark:text-slate-300">
-          {language === "de" ? "Trends, Risiken und nächste Schritte." : "Trends, risks, and what to do next."}
+          {language === "de"
+            ? "Trends, Risiken und nächste Schritte auf einen Blick."
+            : "Trends, risks, and next steps in one conversation."}
         </span>
       </button>
 
