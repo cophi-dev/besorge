@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
 
 import BessAssessmentCenter from "@/components/BessAssessmentCenter";
+import MegapackMap from "@/components/MegapackMap";
 
 type MarketSnapshot = {
   retrievedAtIso: string;
@@ -35,22 +36,21 @@ type Assessment = {
   };
 };
 
-type BessProject = {
-  powerMw: number;
-  energyMwh: number;
-};
-
-type BessProjectsSnapshot = {
-  projects: BessProject[];
-  smallProjectsSummary: {
-    powerMw: number;
-    energyMwh: number;
-  };
-};
-
 const NUMBER_FORMATTER = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 const LIVE_UPDATE_LABEL = "Updated live";
 const DATA_FETCH_RETRIES = 2;
+const BESS_OVERVIEW = {
+  power: {
+    totalGw: 18.3,
+    utilityScaleGw: 15.2,
+    smallScaleGw: 3.1,
+  },
+  energy: {
+    totalGwh: 27.9,
+    utilityScaleGwh: 23.1,
+    smallScaleGwh: 4.8,
+  },
+};
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -98,7 +98,6 @@ function buildTodaysKeyStory({
 export default function Home() {
   const [market, setMarket] = useState<MarketSnapshot | null>(null);
   const [assessment, setAssessment] = useState<Assessment | null>(null);
-  const [bessProjectsSnapshot, setBessProjectsSnapshot] = useState<BessProjectsSnapshot | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -123,10 +122,9 @@ export default function Home() {
     };
 
     const loadData = async () => {
-      const [marketResult, assessmentResult, bessProjectsResult] = await Promise.allSettled([
+      const [marketResult, assessmentResult] = await Promise.allSettled([
         fetchJsonWithRetry<MarketSnapshot>("/api/market/de"),
         fetchJsonWithRetry<Assessment>("/api/assessment/de"),
-        fetchJsonWithRetry<BessProjectsSnapshot>("/api/map/bess-projects/de"),
       ]);
 
       if (marketResult.status === "fulfilled") {
@@ -137,9 +135,6 @@ export default function Home() {
         setAssessment(assessmentResult.value);
       }
 
-      if (bessProjectsResult.status === "fulfilled") {
-        setBessProjectsSnapshot(bessProjectsResult.value);
-      }
     };
     void loadData();
     return () => controller.abort();
@@ -156,52 +151,32 @@ export default function Home() {
     window.location.hash = "ai-chat";
   };
 
+  const renewableGenerationValue = market
+    ? market.realtimeSystem.residualLoadMw !== undefined
+      ? Math.max(0, market.realtimeSystem.loadMw - market.realtimeSystem.residualLoadMw)
+      : market.realtimeSystem.renewableShareOfLoadPct !== undefined
+        ? (market.realtimeSystem.loadMw * market.realtimeSystem.renewableShareOfLoadPct) / 100
+        : null
+    : null;
   const renewableShareValue =
-    market?.realtimeSystem.renewableShareOfLoadPct !== undefined
-      ? `${NUMBER_FORMATTER.format(market.realtimeSystem.renewableShareOfLoadPct)}%`
+    market && renewableGenerationValue !== null
+      ? `${NUMBER_FORMATTER.format((renewableGenerationValue / market.realtimeSystem.loadMw) * 100)}%`
       : market
         ? "temporarily unavailable"
         : "Loading...";
-
-  const renewableGenerationValue = market
-    ? market.realtimeSystem.renewableShareOfLoadPct !== undefined
-      ? (market.realtimeSystem.loadMw * market.realtimeSystem.renewableShareOfLoadPct) / 100
-      : null
-    : null;
   const conventionalGenerationValue =
     market && renewableGenerationValue !== null
       ? Math.max(0, market.realtimeSystem.domesticGenerationMw - renewableGenerationValue)
       : null;
   const netPositionMw = market ? market.realtimeSystem.domesticGenerationMw - market.realtimeSystem.loadMw : null;
 
-  const bessInstalledPowerTotal = market?.bess.installedPowerGw ?? null;
-  const bessInstalledEnergyTotal = market?.bess.installedCapacityGwh ?? null;
-  const bessUtilityScalePowerMw =
-    bessProjectsSnapshot?.projects.reduce((sum, project) => {
-      if (project.powerMw > 10) {
-        return sum + project.powerMw;
-      }
-      return sum;
-    }, 0) ?? null;
-  const bessUtilityScaleEnergyMwh =
-    bessProjectsSnapshot?.projects.reduce((sum, project) => {
-      if (project.powerMw > 10) {
-        return sum + project.energyMwh;
-      }
-      return sum;
-    }, 0) ?? null;
-  const bessSmallScalePowerMw = bessProjectsSnapshot?.smallProjectsSummary.powerMw ?? null;
-  const bessSmallScaleEnergyMwh = bessProjectsSnapshot?.smallProjectsSummary.energyMwh ?? null;
-  const bessUtilityScalePower = bessUtilityScalePowerMw !== null ? bessUtilityScalePowerMw / 1000 : null;
-  const bessSmallScalePower = bessSmallScalePowerMw !== null ? bessSmallScalePowerMw / 1000 : null;
-  const bessUtilityScaleEnergy = bessUtilityScaleEnergyMwh !== null ? bessUtilityScaleEnergyMwh / 1000 : null;
-  const bessSmallScaleEnergy = bessSmallScaleEnergyMwh !== null ? bessSmallScaleEnergyMwh / 1000 : null;
-
   const residualLoadValue =
     market?.realtimeSystem.residualLoadMw !== undefined
       ? formatAdaptivePower(market.realtimeSystem.residualLoadMw)
       : market
-        ? formatAdaptivePower(market.realtimeSystem.loadMw - market.realtimeSystem.domesticGenerationMw)
+        ? renewableGenerationValue !== null
+          ? formatAdaptivePower(market.realtimeSystem.loadMw - renewableGenerationValue)
+          : "temporarily unavailable"
         : "Loading...";
 
   const liveUpdateLabel = market
@@ -329,19 +304,19 @@ export default function Home() {
               <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
                 <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Installed Power Total</p>
                 <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {bessInstalledPowerTotal !== null ? formatInstalledValue(bessInstalledPowerTotal, "GW") : "Loading..."}
+                  {formatInstalledValue(BESS_OVERVIEW.power.totalGw, "GW")}
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
                 <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Utility-scale (&gt;10 MW)</p>
                 <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {bessUtilityScalePower !== null ? formatInstalledValue(bessUtilityScalePower, "GW") : "Loading..."}
+                  {formatInstalledValue(BESS_OVERVIEW.power.utilityScaleGw, "GW")}
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
                 <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Small-scale (&lt;10 MW)</p>
                 <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {bessSmallScalePower !== null ? formatInstalledValue(bessSmallScalePower, "GW") : "Loading..."}
+                  {formatInstalledValue(BESS_OVERVIEW.power.smallScaleGw, "GW")}
                 </p>
               </div>
             </div>
@@ -349,22 +324,39 @@ export default function Home() {
               <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
                 <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Installed Energy Total</p>
                 <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {bessInstalledEnergyTotal !== null ? formatInstalledValue(bessInstalledEnergyTotal, "GWh") : "Loading..."}
+                  {formatInstalledValue(BESS_OVERVIEW.energy.totalGwh, "GWh")}
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
                 <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Utility-scale (&gt;10 MW)</p>
                 <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {bessUtilityScaleEnergy !== null ? formatInstalledValue(bessUtilityScaleEnergy, "GWh") : "Loading..."}
+                  {formatInstalledValue(BESS_OVERVIEW.energy.utilityScaleGwh, "GWh")}
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
                 <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Small-scale (&lt;10 MW)</p>
                 <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {bessSmallScaleEnergy !== null ? formatInstalledValue(bessSmallScaleEnergy, "GWh") : "Loading..."}
+                  {formatInstalledValue(BESS_OVERVIEW.energy.smallScaleGwh, "GWh")}
                 </p>
               </div>
             </div>
+          </div>
+        </article>
+        <article className="rounded-2xl border border-slate-300/45 bg-white/75 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
+          <div className="flex flex-wrap items-center gap-2 text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
+            <span>BESS Deployment Map</span>
+            <span className="inline-flex items-center rounded-full border border-blue-300/60 bg-blue-50/90 px-2 py-0.5 text-[10px] tracking-[0.1em] text-blue-700 dark:border-blue-300/35 dark:bg-blue-400/10 dark:text-blue-200">
+              Utility-scale pins
+            </span>
+            <span className="inline-flex items-center rounded-full border border-cyan-300/60 bg-cyan-50/90 px-2 py-0.5 text-[10px] tracking-[0.1em] text-cyan-700 dark:border-cyan-300/35 dark:bg-cyan-400/10 dark:text-cyan-200">
+              Small-scale density
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            Utility-scale and small-scale BESS locations across Germany (MaStR data).
+          </p>
+          <div className="mt-4">
+            <MegapackMap compact />
           </div>
         </article>
         <article className="rounded-2xl border border-slate-300/45 bg-white/70 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">

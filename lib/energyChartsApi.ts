@@ -608,10 +608,15 @@ export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot>
     renewableShareSeries === undefined
       ? derivedRenewableShareSeries
       : mergeRenewableShareSeries(renewableShareSeries.data, derivedRenewableShareSeries);
-  const renewableShareValue =
+  const renewableShareFromResidual =
+    residualValue !== null && loadPoint.value > 0
+      ? ((loadPoint.value - residualValue) / loadPoint.value) * 100
+      : null;
+  const renewableShareFromSeries =
     mergedRenewableShareSeries.length === 0
       ? null
       : pickLatestAvailableValue(mergedRenewableShareSeries, loadIndex);
+  const renewableShareValue = renewableShareFromResidual ?? renewableShareFromSeries;
 
   const realtimeSystem: GermanyMarketSnapshot["realtimeSystem"] = {
     unit: "MW",

@@ -142,7 +142,7 @@ function MapSizeInvalidator({ resizeSignal }: { resizeSignal: number }) {
   return null;
 }
 
-export default function MegapackMap() {
+export default function MegapackMap({ compact = false }: { compact?: boolean }) {
   const [showCommercialProjects, setShowCommercialProjects] = useState(true);
   const [showResidentialDensity, setShowResidentialDensity] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -294,7 +294,8 @@ export default function MegapackMap() {
   }, []);
 
   return (
-    <section className="glass-card rounded-2xl p-6">
+    <section className={compact ? "rounded-2xl border border-slate-300/45 bg-white/70 p-4 dark:border-slate-500/35 dark:bg-slate-900/40" : "glass-card rounded-2xl p-6"}>
+      {!compact ? (
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-blue-600 dark:text-blue-300">
@@ -330,6 +331,7 @@ export default function MegapackMap() {
           {isFullscreen ? "Exit fullscreen" : "Fullscreen map"}
         </button>
       </div>
+      ) : null}
 
       <div
         ref={mapWrapperRef}
@@ -423,7 +425,7 @@ export default function MegapackMap() {
         </div>
       ) : null}
 
-      {showCommercialProjects || showResidentialDensity ? (
+      {!compact && (showCommercialProjects || showResidentialDensity) ? (
         <div className="mt-4 rounded-xl border border-amber-400/35 bg-amber-500/10 p-4 text-sm text-slate-700 dark:text-slate-200">
           <p className="text-[11px] uppercase tracking-[0.1em] text-amber-700/85 dark:text-amber-300/85">
             DE BESS map (
