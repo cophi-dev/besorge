@@ -30,6 +30,14 @@ export default function BessAiChatOverlay({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const scrollToBottom = () => {
+    if (!viewportRef.current) {
+      return;
+    }
+    viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+  };
 
   useEffect(() => {
     if (!open) {
@@ -74,8 +82,27 @@ export default function BessAiChatOverlay({
     if (!open || !viewportRef.current) {
       return;
     }
-    viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+    scrollToBottom();
   }, [messages, open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      return;
+    }
+    const onViewportChange = () => {
+      requestAnimationFrame(scrollToBottom);
+    };
+    viewport.addEventListener("resize", onViewportChange);
+    viewport.addEventListener("scroll", onViewportChange);
+    return () => {
+      viewport.removeEventListener("resize", onViewportChange);
+      viewport.removeEventListener("scroll", onViewportChange);
+    };
+  }, [open]);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -120,7 +147,7 @@ export default function BessAiChatOverlay({
 
   return (
     <div className="fixed inset-0 z-[70] overscroll-none bg-slate-950/75 backdrop-blur-sm">
-      <div className="flex h-[100dvh] w-full touch-pan-y flex-col overflow-hidden bg-white dark:bg-slate-950">
+      <div className="flex h-full w-full touch-pan-y flex-col overflow-hidden bg-white dark:bg-slate-950">
         <div className="flex items-center justify-between border-b border-slate-300/60 px-5 py-4 dark:border-slate-500/35">
           <div>
             <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">
@@ -172,9 +199,13 @@ export default function BessAiChatOverlay({
           </label>
           <div className="flex gap-3">
             <input
+              ref={inputRef}
               id="bess-chat-input"
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onFocus={() => {
+                requestAnimationFrame(scrollToBottom);
+              }}
               placeholder="Ask about sizing, drivers, risks, or next actions..."
               className="flex-1 rounded-xl border border-slate-300/70 bg-white px-4 py-3 text-base text-slate-900 outline-none transition focus:border-blue-400 dark:border-slate-500/50 dark:bg-slate-900 dark:text-slate-100 md:text-sm"
             />
