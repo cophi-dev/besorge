@@ -311,6 +311,21 @@ export type GermanyAssessmentContext = {
     renewableSharePctP50Next24h: number | null;
     renewableSharePctMinNext24h: number | null;
     renewableSharePctMaxNext24h: number | null;
+    renewableSharePctP50Next48h: number | null;
+    renewableSharePctMinNext48h: number | null;
+    renewableSharePctMaxNext48h: number | null;
+    renewableSharePctP50Day2: number | null;
+  };
+  renewablePatterns: {
+    recentWindowDays: number;
+    recentSolarShareOfLoadPctAvg: number | null;
+    recentWindShareOfLoadPctAvg: number | null;
+    recentMiddaySolarMwAvg: number | null;
+    recentEveningResidualMwAvg: number | null;
+    recentOversupplyPeriods: number | null;
+    recentSolarRichDays: number | null;
+    inferredBatteryReadiness: "high" | "moderate" | "low" | "unknown";
+    note: string;
   };
   dataQuality: {
     missingSignals: string[];
@@ -353,19 +368,59 @@ const percentile = (values: number[], p: number): number => {
   return sorted[index];
 };
 
+const berlinHourFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Berlin",
+  hour: "2-digit",
+  hour12: false,
+});
+
+const berlinDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Berlin",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const getBerlinHour = (timestampSeconds: number): number =>
+  Number.parseInt(berlinHourFormatter.format(new Date(timestampSeconds * 1000)), 10);
+
+const getBerlinDateKey = (timestampSeconds: number): string =>
+  berlinDateFormatter.format(new Date(timestampSeconds * 1000));
+
 const summarizeRenewableShareForecast = (
   payload: z.infer<typeof renewableShareForecastResponseSchema>,
   snapshotTimestampIso: string
 ): GermanyAssessmentContext["forecast"] => {
   const nowSeconds = Math.floor(new Date(snapshotTimestampIso).getTime() / 1000);
-  const horizonSeconds = 24 * 60 * 60;
+  const horizon24Seconds = 24 * 60 * 60;
+  const horizon48Seconds = 48 * 60 * 60;
 
   const next24hValues = payload.unix_seconds
     .map((timestamp, index) => ({ timestamp, value: payload.ren_share[index] }))
     .filter(
       (point): point is { timestamp: number; value: number } =>
         point.timestamp > nowSeconds &&
-        point.timestamp <= nowSeconds + horizonSeconds &&
+        point.timestamp <= nowSeconds + horizon24Seconds &&
+        point.value !== null &&
+        Number.isFinite(point.value)
+    )
+    .map((point) => point.value);
+  const next48hValues = payload.unix_seconds
+    .map((timestamp, index) => ({ timestamp, value: payload.ren_share[index] }))
+    .filter(
+      (point): point is { timestamp: number; value: number } =>
+        point.timestamp > nowSeconds &&
+        point.timestamp <= nowSeconds + horizon48Seconds &&
+        point.value !== null &&
+        Number.isFinite(point.value)
+    )
+    .map((point) => point.value);
+  const day2Values = payload.unix_seconds
+    .map((timestamp, index) => ({ timestamp, value: payload.ren_share[index] }))
+    .filter(
+      (point): point is { timestamp: number; value: number } =>
+        point.timestamp > nowSeconds + horizon24Seconds &&
+        point.timestamp <= nowSeconds + horizon48Seconds &&
         point.value !== null &&
         Number.isFinite(point.value)
     )
@@ -380,17 +435,120 @@ const summarizeRenewableShareForecast = (
       renewableSharePctP50Next24h: null,
       renewableSharePctMinNext24h: null,
       renewableSharePctMaxNext24h: null,
+      renewableSharePctP50Next48h: null,
+      renewableSharePctMinNext48h: null,
+      renewableSharePctMaxNext48h: null,
+      renewableSharePctP50Day2: null,
     };
   }
 
   return {
     available: true,
-    note: "Renewable-share forecast integrated from Energy-Charts for the next 24h window.",
+    note: "Renewable-share forecast integrated from Energy-Charts for the next 24-48h windows.",
     source: "energy-charts.ren_share_forecast",
-    horizonHours: 24,
+    horizonHours: next48hValues.length > 0 ? 48 : 24,
     renewableSharePctP50Next24h: percentile(next24hValues, 0.5),
     renewableSharePctMinNext24h: Math.min(...next24hValues),
     renewableSharePctMaxNext24h: Math.max(...next24hValues),
+    renewableSharePctP50Next48h: next48hValues.length > 0 ? percentile(next48hValues, 0.5) : null,
+    renewableSharePctMinNext48h: next48hValues.length > 0 ? Math.min(...next48hValues) : null,
+    renewableSharePctMaxNext48h: next48hValues.length > 0 ? Math.max(...next48hValues) : null,
+    renewableSharePctP50Day2: day2Values.length > 0 ? percentile(day2Values, 0.5) : null,
+  };
+};
+
+const summarizeRecentRenewablePatterns = (params: {
+  unixSeconds: number[];
+  loadValues: Array<number | null>;
+  residualValues: Array<number | null> | null;
+  solarValues: Array<number | null>;
+  windValues: Array<number | null>;
+  forecast: GermanyAssessmentContext["forecast"];
+}): GermanyAssessmentContext["renewablePatterns"] => {
+  const { unixSeconds, loadValues, residualValues, solarValues, windValues, forecast } = params;
+  const recentWindowDays = 3;
+  const latestTimestamp = unixSeconds[unixSeconds.length - 1];
+  const minTimestamp = latestTimestamp - recentWindowDays * 24 * 60 * 60;
+  const dailyMiddaySolarShare = new Map<string, number[]>();
+  const recentSolarShareValues: number[] = [];
+  const recentWindShareValues: number[] = [];
+  const recentMiddaySolarMwValues: number[] = [];
+  const recentEveningResidualMwValues: number[] = [];
+  let recentOversupplyPeriods = 0;
+
+  for (let index = 0; index < unixSeconds.length; index += 1) {
+    const timestamp = unixSeconds[index];
+    if (timestamp < minTimestamp) {
+      continue;
+    }
+    const load = loadValues[index];
+    if (load === null || load <= 0) {
+      continue;
+    }
+    const solar = solarValues[index];
+    const wind = windValues[index];
+    const residual = residualValues?.[index] ?? null;
+    const hourBerlin = getBerlinHour(timestamp);
+    const dayKey = getBerlinDateKey(timestamp);
+
+    if (solar !== null && Number.isFinite(solar)) {
+      const solarShare = (solar / load) * 100;
+      recentSolarShareValues.push(solarShare);
+      if (hourBerlin >= 10 && hourBerlin <= 15) {
+        recentMiddaySolarMwValues.push(solar);
+        const existing = dailyMiddaySolarShare.get(dayKey) ?? [];
+        existing.push(solarShare);
+        dailyMiddaySolarShare.set(dayKey, existing);
+      }
+    }
+
+    if (wind !== null && Number.isFinite(wind)) {
+      recentWindShareValues.push((wind / load) * 100);
+    }
+
+    if (residual !== null && Number.isFinite(residual)) {
+      if (hourBerlin >= 17 && hourBerlin <= 22) {
+        recentEveningResidualMwValues.push(residual);
+      }
+      if (residual < 0) {
+        recentOversupplyPeriods += 1;
+      }
+    }
+  }
+
+  const recentSolarRichDays = [...dailyMiddaySolarShare.values()].reduce((count, values) => {
+    const middayAvg = values.reduce((sum, value) => sum + value, 0) / values.length;
+    return middayAvg >= 25 ? count + 1 : count;
+  }, 0);
+  const renewableTailwind =
+    forecast.renewableSharePctP50Day2 ?? forecast.renewableSharePctP50Next24h ?? null;
+
+  const inferredBatteryReadiness: GermanyAssessmentContext["renewablePatterns"]["inferredBatteryReadiness"] =
+    recentSolarShareValues.length === 0
+      ? "unknown"
+      : recentSolarRichDays >= 2 && renewableTailwind !== null && renewableTailwind >= 48
+        ? "high"
+        : recentSolarRichDays >= 1 || (renewableTailwind !== null && renewableTailwind >= 42)
+          ? "moderate"
+          : "low";
+
+  return {
+    recentWindowDays,
+    recentSolarShareOfLoadPctAvg:
+      recentSolarShareValues.length > 0 ? averageLast(recentSolarShareValues, recentSolarShareValues.length) : null,
+    recentWindShareOfLoadPctAvg:
+      recentWindShareValues.length > 0 ? averageLast(recentWindShareValues, recentWindShareValues.length) : null,
+    recentMiddaySolarMwAvg:
+      recentMiddaySolarMwValues.length > 0 ? averageLast(recentMiddaySolarMwValues, recentMiddaySolarMwValues.length) : null,
+    recentEveningResidualMwAvg:
+      recentEveningResidualMwValues.length > 0
+        ? averageLast(recentEveningResidualMwValues, recentEveningResidualMwValues.length)
+        : null,
+    recentOversupplyPeriods: residualValues === null ? null : recentOversupplyPeriods,
+    recentSolarRichDays: recentSolarShareValues.length > 0 ? recentSolarRichDays : null,
+    inferredBatteryReadiness,
+    note:
+      "Recent 3-day renewable behavior combines with the 24-48h renewable-share forecast to infer likely fleet charge readiness.",
   };
 };
 
@@ -515,6 +673,26 @@ export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentCo
       ? derivedRenewableShareSeries
       : mergeRenewableShareSeries(renewableShareSeries.data, derivedRenewableShareSeries);
   const nonNullRenewableShare = renewableShareValues.filter((value): value is number => value !== null);
+  const solarSeries = totalPower.production_types.filter((entry) => /solar/i.test(entry.name));
+  const windSeries = totalPower.production_types.filter((entry) => /wind/i.test(entry.name));
+  const solarValues = totalPower.unix_seconds.map((_, index) =>
+    solarSeries.reduce<number | null>((sum, series) => {
+      const value = series.data[index];
+      if (value === null || !Number.isFinite(value)) {
+        return sum;
+      }
+      return (sum ?? 0) + value;
+    }, null)
+  );
+  const windValues = totalPower.unix_seconds.map((_, index) =>
+    windSeries.reduce<number | null>((sum, series) => {
+      const value = series.data[index];
+      if (value === null || !Number.isFinite(value)) {
+        return sum;
+      }
+      return (sum ?? 0) + value;
+    }, null)
+  );
 
   const pointsPerDay = 96;
   const trailing7dPoints = pointsPerDay * 7;
@@ -568,8 +746,20 @@ export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentCo
       renewableSharePctP50Next24h: null,
       renewableSharePctMinNext24h: null,
       renewableSharePctMaxNext24h: null,
+      renewableSharePctP50Next48h: null,
+      renewableSharePctMinNext48h: null,
+      renewableSharePctMaxNext48h: null,
+      renewableSharePctP50Day2: null,
     };
   }
+  const renewablePatterns = summarizeRecentRenewablePatterns({
+    unixSeconds: totalPower.unix_seconds,
+    loadValues: loadSeries.data,
+    residualValues: residualSeries?.data ?? null,
+    solarValues,
+    windValues,
+    forecast,
+  });
 
   return {
     snapshot,
@@ -596,6 +786,7 @@ export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentCo
       oversupplyPeriods7d,
     },
     forecast,
+    renewablePatterns,
     dataQuality: {
       missingSignals,
       note:

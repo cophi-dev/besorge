@@ -40,6 +40,8 @@ const responseSchema = z.object({
     }),
   }),
   dataGapsImpact: z.string().min(1),
+  analystSummary: z.string().min(1),
+  fullAnalysisSummary: z.string().min(1),
   asOf: z.string(),
 });
 

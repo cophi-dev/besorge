@@ -34,6 +34,10 @@ describe("BessAssessmentCenter", () => {
           next36m: { recommendation: "Do in 36m", rationale: "Because 36m" },
         },
         dataGapsImpact: "Data gaps impact text",
+        analystSummary:
+          "AETHER currently reads this window as beneficial now, with recent solar support and constructive near-term recharge conditions.",
+        fullAnalysisSummary:
+          "Recent renewable patterns and forward profile keep short-term arbitrage windows constructive while maintaining execution discipline.",
         asOf: "2026-05-06T10:00:00.000Z",
       }),
     }) as typeof fetch;
@@ -79,6 +83,8 @@ describe("BessAssessmentCenter", () => {
           next36m: { recommendation: "36m", rationale: "36m" },
         },
         dataGapsImpact: "impact",
+        analystSummary: "Beneficial setup remains intact.",
+        fullAnalysisSummary: "Expanded analyst note.",
         asOf: "2026-05-06T10:00:00.000Z",
       }),
     }) as typeof fetch;

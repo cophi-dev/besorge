@@ -33,6 +33,8 @@ type AssessmentResponse = {
     next36m: { recommendation: string; rationale: string };
   };
   dataGapsImpact: string;
+  analystSummary: string;
+  fullAnalysisSummary: string;
   asOf: string;
 };
 
@@ -183,7 +185,7 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
                     Verdict: {verdictLabel[data.verdict]}
                   </Badge>
                   <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-                    AETHER currently reads this window as <span className="font-semibold">{verdictLabel[data.verdict].toLowerCase()}</span> with moderate confidence. Near-term conditions support focused action when execution remains disciplined.
+                    {data.analystSummary}
                   </p>
                 </div>
 
@@ -201,7 +203,7 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
           {showFullAnalysis ? (
             <article className="rounded-2xl border border-slate-300/45 bg-white/75 p-5 dark:border-slate-500/35 dark:bg-slate-900/60 md:p-6">
               <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-                Current system stress and short-term market dynamics support selective deployment decisions, but execution quality remains the differentiator. The signal is constructive rather than aggressive, so teams should align commitments with downside protection and clear trigger levels.
+                {data.fullAnalysisSummary}
               </p>
 
               <div className="mt-5 grid gap-4 md:grid-cols-3">

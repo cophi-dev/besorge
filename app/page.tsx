@@ -35,6 +35,19 @@ type Assessment = {
   };
 };
 
+type BessProject = {
+  powerMw: number;
+  energyMwh: number;
+};
+
+type BessProjectsSnapshot = {
+  projects: BessProject[];
+  smallProjectsSummary: {
+    powerMw: number;
+    energyMwh: number;
+  };
+};
+
 const NUMBER_FORMATTER = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 const LIVE_UPDATE_LABEL = "Updated live";
 const DATA_FETCH_RETRIES = 2;
@@ -49,6 +62,10 @@ function formatAdaptivePower(valueMw: number): string {
     return `${NUMBER_FORMATTER.format(valueMw / 1000)} GW`;
   }
   return `${NUMBER_FORMATTER.format(valueMw)} MW`;
+}
+
+function formatInstalledValue(value: number, unit: "GW" | "GWh"): string {
+  return `${NUMBER_FORMATTER.format(value)} ${unit}`;
 }
 
 function buildTodaysKeyStory({
@@ -81,6 +98,7 @@ function buildTodaysKeyStory({
 export default function Home() {
   const [market, setMarket] = useState<MarketSnapshot | null>(null);
   const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [bessProjectsSnapshot, setBessProjectsSnapshot] = useState<BessProjectsSnapshot | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -105,9 +123,10 @@ export default function Home() {
     };
 
     const loadData = async () => {
-      const [marketResult, assessmentResult] = await Promise.allSettled([
+      const [marketResult, assessmentResult, bessProjectsResult] = await Promise.allSettled([
         fetchJsonWithRetry<MarketSnapshot>("/api/market/de"),
         fetchJsonWithRetry<Assessment>("/api/assessment/de"),
+        fetchJsonWithRetry<BessProjectsSnapshot>("/api/map/bess-projects/de"),
       ]);
 
       if (marketResult.status === "fulfilled") {
@@ -116,6 +135,10 @@ export default function Home() {
 
       if (assessmentResult.status === "fulfilled") {
         setAssessment(assessmentResult.value);
+      }
+
+      if (bessProjectsResult.status === "fulfilled") {
+        setBessProjectsSnapshot(bessProjectsResult.value);
       }
     };
     void loadData();
@@ -139,6 +162,40 @@ export default function Home() {
       : market
         ? "temporarily unavailable"
         : "Loading...";
+
+  const renewableGenerationValue = market
+    ? market.realtimeSystem.renewableShareOfLoadPct !== undefined
+      ? (market.realtimeSystem.loadMw * market.realtimeSystem.renewableShareOfLoadPct) / 100
+      : null
+    : null;
+  const conventionalGenerationValue =
+    market && renewableGenerationValue !== null
+      ? Math.max(0, market.realtimeSystem.domesticGenerationMw - renewableGenerationValue)
+      : null;
+  const netPositionMw = market ? market.realtimeSystem.domesticGenerationMw - market.realtimeSystem.loadMw : null;
+
+  const bessInstalledPowerTotal = market?.bess.installedPowerGw ?? null;
+  const bessInstalledEnergyTotal = market?.bess.installedCapacityGwh ?? null;
+  const bessUtilityScalePowerMw =
+    bessProjectsSnapshot?.projects.reduce((sum, project) => {
+      if (project.powerMw > 10) {
+        return sum + project.powerMw;
+      }
+      return sum;
+    }, 0) ?? null;
+  const bessUtilityScaleEnergyMwh =
+    bessProjectsSnapshot?.projects.reduce((sum, project) => {
+      if (project.powerMw > 10) {
+        return sum + project.energyMwh;
+      }
+      return sum;
+    }, 0) ?? null;
+  const bessSmallScalePowerMw = bessProjectsSnapshot?.smallProjectsSummary.powerMw ?? null;
+  const bessSmallScaleEnergyMwh = bessProjectsSnapshot?.smallProjectsSummary.energyMwh ?? null;
+  const bessUtilityScalePower = bessUtilityScalePowerMw !== null ? bessUtilityScalePowerMw / 1000 : null;
+  const bessSmallScalePower = bessSmallScalePowerMw !== null ? bessSmallScalePowerMw / 1000 : null;
+  const bessUtilityScaleEnergy = bessUtilityScaleEnergyMwh !== null ? bessUtilityScaleEnergyMwh / 1000 : null;
+  const bessSmallScaleEnergy = bessSmallScaleEnergyMwh !== null ? bessSmallScaleEnergyMwh / 1000 : null;
 
   const residualLoadValue =
     market?.realtimeSystem.residualLoadMw !== undefined
@@ -217,16 +274,33 @@ export default function Home() {
           Daily high-signal briefing for storage teams tracking demand stress, renewable penetration,
           and BESS deployment momentum.
         </p>
-        <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <KpiCard
+            title="Total generation"
+            value={market ? formatAdaptivePower(market.realtimeSystem.domesticGenerationMw) : "Loading..."}
+            meaning="Current domestic electricity generation."
+          />
+          <KpiCard
+            title="Renewable generation"
+            value={renewableGenerationValue !== null ? formatAdaptivePower(renewableGenerationValue) : "Loading..."}
+            sublabel={renewableShareValue}
+            meaning="Renewable output and share of current demand."
+          />
+          <KpiCard
+            title="Conventional generation"
+            value={
+              conventionalGenerationValue !== null
+                ? formatAdaptivePower(conventionalGenerationValue)
+                : market
+                  ? "temporarily unavailable"
+                  : "Loading..."
+            }
+            meaning="Dispatchable and thermal generation currently online."
+          />
           <KpiCard
             title="Current demand"
             value={market ? formatAdaptivePower(market.realtimeSystem.loadMw) : "Loading..."}
             meaning="Live power needed in the grid."
-          />
-          <KpiCard
-            title="Renewable share"
-            value={renewableShareValue}
-            meaning="Portion of demand served by renewables."
           />
           <KpiCard
             title="Residual Load"
@@ -234,26 +308,65 @@ export default function Home() {
             meaning="Demand remaining after renewable generation."
           />
           <KpiCard
-            title="Installed BESS power"
+            title="Net position"
             value={
-              market
-                ? `${NUMBER_FORMATTER.format(market.bess.installedPowerGw)} ${market.bess.powerUnit}`
+              netPositionMw !== null
+                ? `${netPositionMw >= 0 ? "Surplus" : "Deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}`
                 : "Loading..."
             }
-            sublabel={market ? `(${market.bess.capacityYear})` : undefined}
-            meaning="Operational utility-scale BESS power."
-          />
-          <KpiCard
-            title="Installed BESS energy"
-            value={
-              market
-                ? `${NUMBER_FORMATTER.format(market.bess.installedCapacityGwh)} ${market.bess.capacityUnit}`
-                : "Loading..."
-            }
-            sublabel={market ? `(${market.bess.capacityYear})` : undefined}
-            meaning="Available discharge energy capacity."
+            meaning="Domestic generation balance vs current demand."
           />
         </div>
+        <article className="rounded-2xl border border-slate-300/45 bg-white/75 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
+          <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
+            BESS Fleet Overview
+          </p>
+          <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+            Totals use Energy-Charts; size split uses MaStR operational registry units.
+          </p>
+          <div className="mt-4 grid gap-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
+                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Installed Power Total</p>
+                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
+                  {bessInstalledPowerTotal !== null ? formatInstalledValue(bessInstalledPowerTotal, "GW") : "Loading..."}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
+                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Utility-scale (&gt;10 MW)</p>
+                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
+                  {bessUtilityScalePower !== null ? formatInstalledValue(bessUtilityScalePower, "GW") : "Loading..."}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
+                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Small-scale (&lt;10 MW)</p>
+                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
+                  {bessSmallScalePower !== null ? formatInstalledValue(bessSmallScalePower, "GW") : "Loading..."}
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
+                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Installed Energy Total</p>
+                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
+                  {bessInstalledEnergyTotal !== null ? formatInstalledValue(bessInstalledEnergyTotal, "GWh") : "Loading..."}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
+                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Utility-scale (&gt;10 MW)</p>
+                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
+                  {bessUtilityScaleEnergy !== null ? formatInstalledValue(bessUtilityScaleEnergy, "GWh") : "Loading..."}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
+                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">Small-scale (&lt;10 MW)</p>
+                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
+                  {bessSmallScaleEnergy !== null ? formatInstalledValue(bessSmallScaleEnergy, "GWh") : "Loading..."}
+                </p>
+              </div>
+            </div>
+          </div>
+        </article>
         <article className="rounded-2xl border border-slate-300/45 bg-white/70 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
           <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
             Today&apos;s Key Story
@@ -336,9 +449,9 @@ function KpiCard({
   sublabel?: string;
 }) {
   return (
-    <article className="border-l-2 border-primary/35 pl-4">
+    <article className="rounded-2xl border border-slate-300/55 bg-white/80 p-5 dark:border-slate-500/40 dark:bg-slate-900/65">
       <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">{title}</p>
-      <p className="mt-2 text-4xl font-black text-slate-900 dark:text-white md:text-5xl [font-family:var(--font-sans)]">
+      <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white md:text-4xl [font-family:var(--font-sans)]">
         {value}
       </p>
       {sublabel ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{sublabel}</p> : null}

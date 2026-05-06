@@ -77,10 +77,25 @@ describe("GET /api/assessment/de", () => {
         available: true,
         note: "Forecast integrated",
         source: "energy-charts.ren_share_forecast",
-        horizonHours: 24,
+        horizonHours: 48,
         renewableSharePctP50Next24h: 53,
         renewableSharePctMinNext24h: 41,
         renewableSharePctMaxNext24h: 68,
+        renewableSharePctP50Next48h: 52,
+        renewableSharePctMinNext48h: 40,
+        renewableSharePctMaxNext48h: 70,
+        renewableSharePctP50Day2: 50,
+      },
+      renewablePatterns: {
+        recentWindowDays: 3,
+        recentSolarShareOfLoadPctAvg: 27,
+        recentWindShareOfLoadPctAvg: 20,
+        recentMiddaySolarMwAvg: 17000,
+        recentEveningResidualMwAvg: 21000,
+        recentOversupplyPeriods: 10,
+        recentSolarRichDays: 2,
+        inferredBatteryReadiness: "high",
+        note: "recent pattern and forecast support readiness",
       },
       dataQuality: { missingSignals: [], note: "ok" },
     });
@@ -108,6 +123,10 @@ describe("GET /api/assessment/de", () => {
         next36m: { recommendation: "Stage investments", rationale: "Regulatory design still evolving" },
       },
       dataGapsImpact: "Forward data gaps reduce certainty.",
+      analystSummary:
+        "AETHER currently reads this window as beneficial now. Recent renewable momentum and a supportive day-ahead profile imply better recharge optionality after evening discharge.",
+      fullAnalysisSummary:
+        "The last few days show a constructive renewable backdrop for short-term BESS dispatch. With batteries likely entering evening windows in healthier charge positions and forward renewable share still elevated, residual peaks can be monetized with lower next-day recharge risk. The setup supports selective, risk-controlled execution rather than broad acceleration.",
       asOf: "2026-05-06T10:00:00.000Z",
     });
 

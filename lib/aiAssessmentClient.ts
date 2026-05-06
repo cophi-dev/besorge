@@ -54,6 +54,21 @@ const requestContextSchema = z.object({
     renewableSharePctP50Next24h: z.number().nullable(),
     renewableSharePctMinNext24h: z.number().nullable(),
     renewableSharePctMaxNext24h: z.number().nullable(),
+    renewableSharePctP50Next48h: z.number().nullable(),
+    renewableSharePctMinNext48h: z.number().nullable(),
+    renewableSharePctMaxNext48h: z.number().nullable(),
+    renewableSharePctP50Day2: z.number().nullable(),
+  }),
+  renewablePatterns: z.object({
+    recentWindowDays: z.number().int().positive(),
+    recentSolarShareOfLoadPctAvg: z.number().nullable(),
+    recentWindShareOfLoadPctAvg: z.number().nullable(),
+    recentMiddaySolarMwAvg: z.number().nullable(),
+    recentEveningResidualMwAvg: z.number().nullable(),
+    recentOversupplyPeriods: z.number().int().nullable(),
+    recentSolarRichDays: z.number().int().nullable(),
+    inferredBatteryReadiness: z.enum(["high", "moderate", "low", "unknown"]),
+    note: z.string(),
   }),
   dataQuality: z.object({
     missingSignals: z.array(z.string()),
@@ -98,6 +113,8 @@ const assessmentResponseSchema = z.object({
   recommendedNextActions: z.array(z.string().min(1)).min(1),
   horizonOutlook: horizonOutlookSchema,
   dataGapsImpact: z.string().min(1),
+  analystSummary: z.string().min(1),
+  fullAnalysisSummary: z.string().min(1),
   asOf: z.string(),
 });
 
@@ -142,6 +159,8 @@ const assessmentOutputContract = {
     next36m: { recommendation: "string", rationale: "string" },
   },
   dataGapsImpact: "string",
+  analystSummary: "string",
+  fullAnalysisSummary: "string",
   asOf: "ISO timestamp string",
 };
 
@@ -207,6 +226,10 @@ export async function getBessAssessmentFromAi(context: RequestContext): Promise<
             "Provide scoreBreakdown with four numeric dimensions.",
             "Provide confidenceDrivers and confidenceLimitations based only on provided context.",
             "Provide horizonOutlook for now, next12m, and next36m.",
+            "Use renewablePatterns and forecast jointly: reason over the last 3 days plus the next 24-48h to infer likely BESS charge readiness and near-term arbitrage setup.",
+            "If recent solar-rich days and forward renewable support are both strong, explain why evening residual peaks can be more monetizable because recharge risk is lower.",
+            "Write analystSummary as premium concise copy for the homepage gauge card (2-3 sentences, calm and specific, avoid hype).",
+            "Write fullAnalysisSummary as a slightly deeper analyst note (3-5 sentences) expanding on weather-pattern context, likely battery state, and short-term BESS value.",
             "If context has missingSignals, explain impact in dataGapsImpact instead of overconfident extrapolation.",
           ],
           required_output_schema: assessmentOutputContract,
