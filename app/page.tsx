@@ -117,10 +117,6 @@ function formatGw(valueGw: number): string {
   return `${NUMBER_FORMATTER.format(valueGw)} GW`;
 }
 
-function formatGwh(valueGwh: number): string {
-  return `${NUMBER_FORMATTER.format(valueGwh)} GWh`;
-}
-
 function formatSignedGwh(valueGwh: number, language: "en" | "de"): string {
   const abs = Math.abs(valueGwh);
   const sign = valueGwh >= 0 ? "+" : "−";
@@ -135,45 +131,6 @@ function formatSignedValue(value: number, unit: string): string {
 
 function formatInstalledValue(value: number, unit: "GW" | "GWh"): string {
   return `${NUMBER_FORMATTER.format(value)} ${unit}`;
-}
-
-function buildTodaysKeyStory({
-  market,
-  assessment,
-  residualLoadValue,
-  language,
-}: {
-  market: MarketSnapshot | null;
-  assessment: AssessmentResponse | null;
-  residualLoadValue: string;
-  language: "en" | "de";
-}): string {
-  if (!market || !assessment) {
-    return language === "de"
-      ? "Die Live-Daten werden noch geladen, aber das aktuelle Umfeld bleibt fuer BESS selektiv konstruktiv. Nach sonnigen Tagen gehen viele Systeme meist mit solider Tagesladung in den Abend, was gezielte Entladeoptionen im Stressfenster eroeffnet. Bis Restlast, Volatilitaet und Opportunity Score aktualisiert sind, ist eine disziplinierte und risikobewusste Fahrweise sinnvoller als ein aggressiver Einsatz."
-      : "Live data is still being fetched, but the setup remains selectively constructive for BESS. Recent sunny days typically leave batteries with healthy daytime charge, creating room to discharge into the evening stress window. Until residual load, volatility, and opportunity score refresh, the right stance is disciplined and risk-aware rather than aggressive.";
-  }
-
-  const volatility = Math.round(assessment.scoreBreakdown.volatility);
-  const opportunity = Math.round(assessment.score);
-  const bessPower = `${NUMBER_FORMATTER.format(market.bess.installedPowerGw)} ${market.bess.powerUnit}`;
-
-  const directionalTakeaway =
-    language === "de"
-      ? opportunity >= 60
-        ? "starkes, aber weiterhin selektives Zeitfenster"
-        : opportunity >= 45
-          ? "selektive Chancenlage"
-          : "vorsichtiges Marktbild"
-      : opportunity >= 60
-        ? "strong but still selective window"
-        : opportunity >= 45
-          ? "selective opportunity"
-          : "cautious setup";
-
-  return language === "de"
-    ? `Eine Restlast von rund ${residualLoadValue} deutet auf ein anziehendes Abend-System hin, in dem BESS-Flotten für Entladung in Spitzenstressphasen vergütet werden und Margen absichern können. Bei einer Volatilität von ${volatility}/100 und einem Opportunity Score von ${opportunity}/100 ergibt sich ein ${directionalTakeaway}: Preisspitzen gezielt nutzen, aber keine Zyklen erzwingen, wenn Spreads einengen. Nach mehreren sonnigen Tagen starten viele Batterien voraussichtlich mit gutem Ladezustand in den Abend, was die Flexibilität erhöht, aber die erste Entladestunde auch verdichten kann. Mit bereits ${bessPower} installierter Leistung ist das Erlöspotenzial für disziplinierten Dispatch real; das Hauptrisiko bleibt Überzyklisierung in kurzlebige Preisbewegungen.`
-    : `Residual load near ${residualLoadValue} points to a tightening evening system, where BESS is paid to discharge into peak stress and protect margin. Volatility at ${volatility}/100 and opportunity score at ${opportunity}/100 suggest a ${directionalTakeaway}: monetize spikes, but avoid forcing cycles when spreads compress. After several sunny days, many batteries are likely entering the evening with solid state of charge from low-cost daytime charging, which improves optionality but can crowd the first discharge hour. With ${bessPower} already online, revenue potential is real for disciplined dispatch, while the main risk is overcycling into short-lived price moves.`;
 }
 
 export default function Home() {
@@ -314,19 +271,6 @@ export default function Home() {
           ? "voruebergehend nicht verfuegbar"
           : "temporarily unavailable";
 
-  const residualLoadValue =
-    market?.realtimeSystem.residualLoadMw !== undefined
-      ? formatAdaptivePower(market.realtimeSystem.residualLoadMw)
-      : market
-        ? renewableGenerationValue !== null
-          ? formatAdaptivePower(market.realtimeSystem.loadMw - renewableGenerationValue)
-          : language === "de"
-            ? "vorübergehend nicht verfügbar"
-            : "temporarily unavailable"
-        : language === "de"
-          ? "voruebergehend nicht verfuegbar"
-          : "temporarily unavailable";
-
   const liveUpdateLabel = market
     ? `${LIVE_UPDATE_LABEL[language]} • ${new Date(market.realtimeSystem.timestampIso).toLocaleString("de-DE", {
         day: "2-digit",
@@ -336,7 +280,6 @@ export default function Home() {
         minute: "2-digit",
       })}`
     : `${LIVE_UPDATE_LABEL[language]} • ${language === "de" ? "Datenabruf läuft" : "fetch in progress"}`;
-  const todaysKeyStory = buildTodaysKeyStory({ market, assessment, residualLoadValue, language });
   const volatilityScore = assessment ? Math.round(assessment.scoreBreakdown.volatility) : null;
   const rampScore = assessment ? Math.round(assessment.scoreBreakdown.adequacy) : null;
   const opportunityScore = assessment ? Math.round(assessment.score) : null;
@@ -372,27 +315,9 @@ export default function Home() {
     eveningFlexibilityGapGw !== null && dischargeHeadroomGw !== null
       ? Math.max(0, eveningFlexibilityGapGw - dischargeHeadroomGw)
       : null;
-
-  const eveningStressInsight = market
-    ? language === "de"
-      ? `Die abendliche Flexibilitätslücke wird auf rund ${eveningGapValueDisplay} geschätzt und markiert die residuale Last zwischen 17:00 und 21:00 Uhr, die BESS-Flotten gezielt absorbieren können.`
-      : `The evening flexibility gap is estimated near ${eveningGapValueDisplay}, marking the 17:00-21:00 residual load BESS fleets can absorb head-on.`
-      : language === "de"
-        ? "Die Live-Restlast wird geladen; der abendliche Netto-Nachfragestress ist jedoch typischerweise das sauberste Spread-Fenster fuer flexible Speicher."
-        : "Live residual load is being fetched, while evening net-demand stress is typically where flexible storage captures the cleanest spreads.";
-  const eveningGapFormulaNote =
-    market && eveningFlexibilityGapGw !== null
-      ? language === "de"
-        ? `Formel: ${formatAdaptivePower(eveningResidualSourceMw ?? 0)} ${eveningGapIsProxy ? "(Snapshot-Proxy)" : "(Ø 17–21 Uhr)"} × ${MUST_RUN_BASELOAD_FACTOR.toFixed(2)} (Must-Run-Abzug).`
-        : `Formula: ${formatAdaptivePower(eveningResidualSourceMw ?? 0)} ${eveningGapIsProxy ? "(snapshot proxy)" : "(avg 17-21h)"} × ${MUST_RUN_BASELOAD_FACTOR.toFixed(2)} (must-run baseload deduction).`
-      : null;
-  const eveningStressWhy = market
-    ? language === "de"
-      ? "Warum das wichtig ist: Diese um Must-Run bereinigte Lücke ist das tatsächlich monetarisierbare Fenster für Peak-Shaving und Regelenergie."
-      : "Why this matters: This must-run-adjusted gap is the actually monetizable window for peak-shaving and balancing value."
-    : language === "de"
-      ? "Warum das wichtig ist: Bestätigter Abendstress ist die Grundlage für belastbare Auslegungs- und Dispatch-Annahmen in kommerziellen Angeboten."
-      : "Why this matters: Confirming evening stress sets the baseline for sizing and dispatch assumptions in commercial proposals.";
+  const effectiveGapDisplay = effectiveGapGw !== null ? formatGw(effectiveGapGw) : null;
+  const effectiveGapValueDisplay =
+    effectiveGapDisplay ?? (language === "de" ? "voruebergehend nicht verfuegbar" : "temporarily unavailable");
 
   const dailyEnergy = market?.dailyEnergy ?? null;
   const dailyEnergyAvailable = dailyEnergy !== null;
@@ -401,215 +326,14 @@ export default function Home() {
     : language === "de"
       ? "voruebergehend nicht verfuegbar"
       : "temporarily unavailable";
-  const renewableDeficitValue = dailyEnergyAvailable ? formatSignedGwh(dailyEnergy.netBalanceGwh, language) : null;
-  const dailyEnergyDetailRows = dailyEnergyAvailable
-    ? [
-        {
-          label: language === "de" ? "Gesamterzeugung" : "Total generation",
-          value: formatGwh(dailyEnergy.totalGenerationGwh),
-        },
-        {
-          label: language === "de" ? "Erneuerbar" : "Renewable",
-          value: formatGwh(dailyEnergy.renewableGenerationGwh),
-        },
-        {
-          label: language === "de" ? "Bedarf" : "Demand",
-          value: formatGwh(dailyEnergy.demandGwh),
-        },
-        {
-          label: language === "de" ? "Tag bisher" : "Day so far",
-          value: `${PERCENT_FORMATTER.format(dailyEnergy.pointFractionOfDay * 100)}%`,
-        },
-      ]
-    : [];
-  const dailyBalanceInsight = dailyEnergyAvailable
-    ? dailyEnergy.totalNetBalanceGwh >= 0
-      ? language === "de"
-        ? "Die Gesamt-Erzeugung deckt die Last heute vollständig und erzeugt einen Systemüberschuss. Damit ist die Tagesbilanz faktenbasiert positiv, inklusive konventioneller Erzeugung und importgestützter Deckung."
-        : "Total generation fully covers load today and leaves a system surplus. The daily system balance is factually positive, including conventional generation and import-backed supply."
-      : language === "de"
-        ? "Die Last bleibt heute über der Gesamt-Erzeugung und erzeugt ein Systemdefizit. Das signalisiert knappe Deckung, die typischerweise durch zusätzliche Importe und preissensitive Flexibilität ausgeglichen wird."
-        : "Load remains above total generation today and creates a system deficit. This signals tight coverage, typically balanced by additional imports and price-sensitive flexibility."
-    : language === "de"
-      ? "Die taegliche Energiebilanz wird geladen."
-      : "Daily energy balance is being fetched.";
-  const dailyBalanceFormula = dailyEnergyAvailable
-    ? language === "de"
-      ? `Formel: Σ (Gesamterzeugung − Last) × 0,25h ÷ 1000 über ${dailyEnergy.samplePoints} verfügbare Viertelstunden in ${dailyEnergy.dateBerlin} (Berlin).`
-      : `Formula: Σ (total generation − load) × 0.25h / 1000 across ${dailyEnergy.samplePoints} available quarter-hours on ${dailyEnergy.dateBerlin} (Berlin).`
-    : null;
-  const dailyBalanceWhy = language === "de"
-    ? "Warum das wichtig ist: Diese Gesamtbilanz zeigt die reale Systemlage statt nur eines Teilbilds und ist damit die belastbare Basis für Lade-, Entlade- und Risikosteuerung."
-    : "Why this matters: This total balance reflects the real system state rather than a partial view, making it the reliable basis for charge, discharge, and risk decisions.";
-  const renewableDeficitRationale = dailyEnergyAvailable
-    ? language === "de"
-      ? "Ergänzende Perspektive: Die reine Erneuerbaren-Bilanz zeigt, wie stark die Tagesladung aus nicht-fossilen Quellen getragen wurde und unterstützt die Lade-Logik für den Folgetag."
-      : "Supplementary perspective: The renewable-only balance shows how much daytime charging was supported by non-fossil generation and informs next-day charging logic."
-    : null;
 
   const renewableSharePct = market?.realtimeSystem.renewableShareOfLoadPct ?? null;
-  const solarRichDays = market?.recentRenewablePatterns?.solarRichDays ?? null;
-  const socValueDisplay = socAvailable
-    ? `~${PERCENT_FORMATTER.format(socBand.midpointPct)}% (${PERCENT_FORMATTER.format(socBand.lowPct)}–${PERCENT_FORMATTER.format(socBand.highPct)}%)`
-    : language === "de"
-      ? "voruebergehend nicht verfuegbar"
-      : "temporarily unavailable";
-  const socDetailRows = market
-    ? [
-        ...(renewableSharePct !== null
-          ? [
-              {
-                label: language === "de" ? "Erneuerbaren-Anteil jetzt" : "Renewable share now",
-                value: `${PERCENT_FORMATTER.format(renewableSharePct)}%`,
-              },
-            ]
-          : []),
-        ...(solarRichDays !== null
-          ? [
-              {
-                label: language === "de" ? "Sonnige Tage (letzte 3)" : "Solar-rich days (last 3)",
-                value: `${solarRichDays}`,
-              },
-            ]
-          : []),
-      ]
-    : [];
-  const socInsight = socAvailable
-    ? socBand.label === "high"
-      ? language === "de"
-        ? "Mehrere sonnige Sessions plus aktuell hoher Erneuerbaren-Anteil deuten auf einen gut geladenen Flottenstand zum Abend hin."
-        : "Multiple solar-rich sessions plus a high current renewable share point to a well-charged fleet entering the evening window."
-      : socBand.label === "moderate"
-        ? language === "de"
-          ? "Der Erneuerbaren-Anteil stützt einen moderaten Flottenstand; Tagesladung reicht für teilweise Entladeabdeckung."
-          : "Renewable share supports a moderate fleet charge; daytime fill is sufficient for partial discharge cover."
-        : language === "de"
-          ? "Geringer Erneuerbaren-Anteil begrenzt heute die Tagesladung; Flotten starten voraussichtlich mit knappem Headroom in den Abend."
-          : "Low renewable share limits daytime charging; fleets are likely entering the evening with tight headroom."
-    : language === "de"
-      ? "Der SoC-Schätzer wartet auf den Live-Erneuerbaren-Anteil."
-      : "SoC estimator is awaiting the live renewable share signal.";
-  const socFormula =
-    market && socBand.label !== "unknown"
-      ? language === "de"
-        ? `Regelbasiert: >70% Erneuerbaren-Anteil und ≥2 sonnige Tage ⇒ high; 50-70% ⇒ moderate; <50% ⇒ low. Aktuell: ${renewableSharePct !== null ? `${PERCENT_FORMATTER.format(renewableSharePct)}%` : "?"} und ${solarRichDays ?? 0} sonnige Tage ⇒ „${socBand.label}".`
-        : `Rule-based: >70% renewable share and >=2 solar-rich days => high; 50-70% => moderate; <50% => low. Current: ${renewableSharePct !== null ? `${PERCENT_FORMATTER.format(renewableSharePct)}%` : "?"} and ${solarRichDays ?? 0} solar-rich days => "${socBand.label}".`
-      : null;
-  const socWhy = language === "de"
-    ? "Warum das wichtig ist: Der erwartete SoC bestimmt, wie viel der Abendlücke heute tatsächlich entladen werden kann."
-    : "Why this matters: Expected SoC determines how much of the evening gap can actually be discharged today.";
-
-  const grossGapDisplay = eveningFlexibilityGapGw !== null ? formatGw(eveningFlexibilityGapGw) : null;
-  const headroomDisplay = dischargeHeadroomGw !== null ? formatGw(dischargeHeadroomGw) : null;
-  const effectiveGapDisplay = effectiveGapGw !== null ? formatGw(effectiveGapGw) : null;
-  const installedPowerGwDisplay = market ? formatGw(market.bess.installedPowerGw) : null;
-  const effectiveGapValueDisplay =
-    effectiveGapDisplay ?? (language === "de" ? "voruebergehend nicht verfuegbar" : "temporarily unavailable");
-  const effectiveGapDetailRows =
-    grossGapDisplay && headroomDisplay
-      ? [
-          {
-            label: language === "de" ? "Brutto-Lücke" : "Gross gap",
-            value: grossGapDisplay,
-          },
-          {
-            label: language === "de" ? "Entlade-Headroom" : "Discharge headroom",
-            value: headroomDisplay,
-          },
-        ]
-      : [];
-  const effectiveGapInsight =
-    effectiveGapDisplay && grossGapDisplay && headroomDisplay
-      ? socBand.label === "high"
-        ? language === "de"
-          ? `Die Flotte erreicht das Fenster mit ~${socBand.midpointPct}% Ladung → ~${headroomDisplay} Entlade-Headroom decken den größten Teil der ${grossGapDisplay} Lücke ab; verbleibend bleiben rund ${effectiveGapDisplay} für Spitzenkraftwerke.`
-          : `Fleet enters the window near ~${socBand.midpointPct}% charge → ~${headroomDisplay} discharge headroom absorbs most of the ${grossGapDisplay} gap, leaving roughly ${effectiveGapDisplay} for peakers.`
-        : socBand.label === "moderate"
-          ? language === "de"
-            ? `Teilweise Entladeabdeckung: ~${headroomDisplay} Headroom gegen ${grossGapDisplay} Lücke. Preise dürften an der marginalen Flexibilitätsanlage clearen.`
-            : `Partial discharge cover: ~${headroomDisplay} headroom against ${grossGapDisplay} gap. Expect prices to clear at the marginal flexible plant.`
-          : language === "de"
-            ? `Begrenzte Entladeabdeckung (~${headroomDisplay}). Priorität: morgen im Solarfenster wieder aufladen, um den Headroom aufzubauen.`
-            : `Limited discharge cover (~${headroomDisplay}). Priority: rebuild headroom by charging in tomorrow's solar window.`
-      : language === "de"
-        ? "Die effektive Luecke wird geladen."
-        : "Effective gap is being fetched.";
-  const effectiveGapFormula =
-    grossGapDisplay && installedPowerGwDisplay && effectiveGapDisplay
-      ? language === "de"
-        ? `Formel: max(0; Brutto-Lücke − installierte Leistung × SoC-Mittelwert) = max(0; ${grossGapDisplay} − ${installedPowerGwDisplay} × ${(socBand.midpointPct / 100).toFixed(2)}).`
-        : `Formula: max(0, gross gap − installed power × SoC midpoint) = max(0, ${grossGapDisplay} − ${installedPowerGwDisplay} × ${(socBand.midpointPct / 100).toFixed(2)}).`
-      : null;
-  const effectiveGapWhy = language === "de"
-    ? "Warum das wichtig ist: Für BESS-Teams ist dies die operative Kernzahl, weil sie zeigt, welcher Restbedarf nach verfügbarer Flottenentladung übrig bleibt und damit kurzfristigen Dispatch- sowie Erlösdruck bestimmt."
-    : "Why this matters: For BESS teams this is the core operational metric, because it shows remaining demand after available fleet discharge and therefore defines near-term dispatch and revenue pressure.";
-
-  const volatilityInsight =
-    volatilityScore !== null
-      ? volatilityScore >= 55
-        ? language === "de"
-          ? `Eine Volatilität von ${volatilityScore}/100 signalisiert überdurchschnittliche Spread-Bewegungen und unterstützt in dieser Woche aktive Arbitrage plus Regelenergieerlöse.`
-          : `Volatility at ${volatilityScore}/100 signals above-baseline spread movement and supports active arbitrage plus balancing revenue this week.`
-        : language === "de"
-          ? `Eine Volatilität von ${volatilityScore}/100 ist moderat: eher selektive Arbitragefenster statt breiter, ganztägiger Spread-Abgriffe.`
-          : `Volatility at ${volatilityScore}/100 is moderate, with selective arbitrage windows rather than broad, all-day spread capture.`
-      : language === "de"
-        ? "Die Volatilitaet wird geladen; ab Werten ueber 55 unterstuetzt die Marktdynamik typischerweise belastbare Arbitrage- und Balancing-Chancen."
-        : "Volatility data is being fetched; once above 55, market movement typically supports meaningful arbitrage and balancing opportunities.";
-  const volatilityWhy =
-    volatilityScore !== null
-      ? language === "de"
-        ? "Warum das wichtig ist: Volatilität ist der schnellste Proxy für monetarisierbare Preisverwerfungen und damit für die Bruttomarge je Zyklus."
-        : "Why this matters: Volatility is the fastest proxy for monetizable price dislocations, which drive gross margin per cycle."
-      : language === "de"
-        ? "Warum das wichtig ist: Dieses Signal hilft bei der Entscheidung, ob in der Auslegung Arbitrage im Fokus stehen sollte oder zusätzliche Wertströme."
-        : "Why this matters: This signal helps decide whether to emphasize arbitrage economics or stack other value streams in sizing discussions.";
-
-  const rampsInsight =
-    rampScore !== null
-      ? rampScore >= 60
-        ? language === "de"
-          ? `Rampen bei ${rampScore}/100 deuten auf erhöhten Ausgleichsdruck hin; schnell reagierende Assets sollten kurzfristig aktiv genutzt werden.`
-          : `Ramps at ${rampScore}/100 indicate elevated balancing pressure, so fast-response assets should stay actively utilized in near-term operations.`
-        : language === "de"
-          ? `Rampen bei ${rampScore}/100 zeigen moderate Variabilität; die aktuelle Flotte scheint die meisten kurzfristigen Schwankungen bereits zu absorbieren.`
-          : `Ramps at ${rampScore}/100 indicate moderate variability, and the current fleet appears to be absorbing most short-term fluctuations.`
-      : language === "de"
-        ? "Der Rampendruck wird geladen; moderate Werte stehen meist fuer handhabbare Variabilitaet mit gezielten Balancing-Fenstern."
-        : "Ramp pressure is being fetched; moderate values usually indicate manageable variability with targeted balancing opportunities.";
-  const rampsWhy =
-    rampScore !== null
-      ? language === "de"
-        ? "Warum das wichtig ist: Rampenintensität bildet den operativen Wert von subsekundenschneller Reaktion und reservefähiger Batteriekapazität direkt ab."
-        : "Why this matters: Ramp intensity maps directly to the operational value of sub-second response and reserve-ready battery capacity."
-      : language === "de"
-        ? "Warum das wichtig ist: Das zeigt, wie stark zusätzliche Schnellreaktionskapazität Zuverlässigkeit und Dispatch-Qualität verbessern kann."
-        : "Why this matters: It clarifies how much additional fast-response capacity can improve reliability and dispatch outcomes.";
-
-  const opportunityInsight =
-    opportunityScore !== null
-      ? opportunityScore >= 60
-        ? language === "de"
-          ? `Ein Opportunity Score von ${opportunityScore}/100 ist aktuell konstruktiv; mehrere Signale stehen auf kurzfristige BESS-Wertrealisierung.`
-          : `Opportunity at ${opportunityScore}/100 is currently constructive, with multiple signals aligned for near-term BESS value capture.`
-        : opportunityScore >= 45
-          ? language === "de"
-            ? `Ein Opportunity Score von ${opportunityScore}/100 ist gemischt, aber investierbar; sinnvoll sind gezielte Deployments mit disziplinierten Dispatch-Annahmen.`
-            : `Opportunity at ${opportunityScore}/100 is mixed but investable, favoring targeted deployments with disciplined dispatch assumptions.`
-          : language === "de"
-            ? `Ein Opportunity Score von ${opportunityScore}/100 ist aktuell schwach und spricht für selektive Bindung, bis Stress- und Spread-Signale wieder anziehen.`
-            : `Opportunity at ${opportunityScore}/100 is currently soft, suggesting selective commitment until stronger stress and spread signals reappear.`
-      : language === "de"
-        ? "Der Opportunity Score wird geladen; dieser Kompositwert fasst zusammen, ob aktuelle Bedingungen sofortige BESS-Wertrealisierung tragen."
-        : "Opportunity score is being fetched; this composite will summarize whether current conditions support immediate BESS value capture.";
-  const opportunityWhy =
-    opportunityScore !== null
-      ? language === "de"
-        ? "Warum das wichtig ist: Diese Kompositsicht übersetzt rauschende Live-Metriken in ein klares Go/Hold-Signal für kommerzielle Timing-Entscheidungen."
-        : "Why this matters: The composite view helps convert noisy live metrics into a clear go/hold signal for commercial timing decisions."
-      : language === "de"
-        ? "Warum das wichtig ist: Dieses Leitsignal hält Stakeholder-Entscheidungen synchron, auch wenn zugrunde liegende Metriken mit unterschiedlicher Geschwindigkeit aktualisieren."
-        : "Why this matters: This headline signal keeps stakeholder decisions aligned when underlying metrics update at different speeds.";
+  const unavailableShort = language === "de" ? "k. A." : "n/a";
+  const quickStatsFleetSoc = socAvailable
+    ? `~${PERCENT_FORMATTER.format(socBand.midpointPct)}%`
+    : unavailableShort;
+  const renewableShareDisplay =
+    renewableSharePct !== null ? `${PERCENT_FORMATTER.format(renewableSharePct)}%` : unavailableShort;
 
   const takeawayText =
     dailyEnergy && effectiveGapGw !== null && socAvailable
@@ -621,7 +345,7 @@ export default function Home() {
         : "Live data is loading. Once daily balance, fleet SoC, and evening gap are available, this section will show a clear data-based takeaway.";
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-14 px-8 pb-24 pt-16 lg:px-12">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-16 px-8 pb-24 pt-16 md:gap-20 lg:px-12">
       {isLiveDataLoading ? (
         <div className="pointer-events-none fixed top-16 left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-slate-300/60 bg-white/90 p-3 shadow-lg backdrop-blur dark:border-slate-500/40 dark:bg-slate-900/85">
           <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -637,7 +361,7 @@ export default function Home() {
           </div>
         </div>
       ) : null}
-      <section id="overview" className="space-y-9 border-b border-slate-300/45 pb-14 dark:border-slate-500/35">
+      <section id="overview" className="space-y-10 pb-4 md:space-y-12">
         <p className="text-xs tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{liveUpdateLabel}</p>
         <article className="relative overflow-hidden rounded-2xl border border-blue-200/80 bg-gradient-to-r from-blue-50 via-blue-50/80 to-white p-4 md:p-5 dark:border-blue-300/35 dark:from-blue-400/12 dark:via-slate-900/85 dark:to-slate-900/80">
           <span className="absolute inset-y-0 left-0 w-1.5 bg-emerald-500/90 dark:bg-emerald-300/90" />
@@ -770,169 +494,116 @@ export default function Home() {
             <MegapackMap compact />
           </div>
         </article>
-        <article className="rounded-2xl border border-slate-300/45 bg-white/70 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
-          <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-            {language === "de" ? "Kernaussage des Tages" : "Today's Key Story"}
-          </p>
-          {isLiveDataLoading ? (
-            <div className="mt-3 max-w-5xl space-y-2">
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-11/12" />
-              <Skeleton className="h-3 w-10/12" />
-              <Skeleton className="h-3 w-4/5" />
-            </div>
-          ) : (
-            <p className="mt-3 max-w-5xl text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-              {todaysKeyStory}
-            </p>
-          )}
-        </article>
       </section>
 
-      <section id="bess-value" className="space-y-8">
-        <h2 className="text-3xl text-slate-900 dark:text-white md:text-4xl [font-family:var(--font-heading)]">
-          {language === "de" ? "Strategische Signalanalyse" : "Strategic Signal Review"}
+      <BessDispatchSimulator />
+
+      <section
+        id="market-signals"
+        className="scroll-mt-8 space-y-5 border-t border-slate-200/90 pt-14 dark:border-slate-600/35 dark:pt-16"
+      >
+        <h2 className="text-2xl text-slate-800 dark:text-slate-100 md:text-3xl [font-family:var(--font-heading)]">
+          {language === "de" ? "Strategische Signale" : "Strategic Signal Review"}
         </h2>
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <ValueCard
-            title={
-              language === "de"
-                ? "Abendliche Flexibilitätslücke (17–21 Uhr)"
-                : "Evening Flexibility Gap (17:00–21:00)"
-            }
+        <p className="max-w-2xl text-xs text-slate-500 dark:text-slate-400">
+          {language === "de"
+            ? "Kompakte Marktindikatoren — Kontext für Ihre Dispatch-Entscheidungen."
+            : "Compact market indicators — context for dispatch decisions."}
+        </p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <CompactSignalStat
+            label={language === "de" ? "Evening Gap" : "Evening gap"}
             value={eveningGapValueDisplay}
-            insight={eveningStressInsight}
-            whyThisMatters={eveningStressWhy}
-            formulaNote={eveningGapFormulaNote}
-            tag={
+            footnote={
               eveningGapIsProxy && market
                 ? language === "de"
                   ? "Snapshot-Proxy"
                   : "Snapshot proxy"
                 : undefined
             }
-            language={language}
             isLoading={isLiveDataLoading}
           />
-          <ValueCard
-            title={language === "de" ? "Volatilität" : "Volatility"}
-            value={volatilityScore !== null ? `${volatilityScore}/100` : language === "de" ? "k. A." : "n/a"}
-            insight={volatilityInsight}
-            whyThisMatters={volatilityWhy}
-            language={language}
+          <CompactSignalStat
+            label={language === "de" ? "Volatilität" : "Volatility"}
+            value={volatilityScore !== null ? `${volatilityScore}/100` : unavailableShort}
             isLoading={isLiveDataLoading}
           />
-          <ValueCard
-            title={language === "de" ? "Rampen" : "Ramps"}
-            value={rampScore !== null ? `${rampScore}/100` : language === "de" ? "k. A." : "n/a"}
-            insight={rampsInsight}
-            whyThisMatters={rampsWhy}
-            language={language}
+          <CompactSignalStat
+            label={language === "de" ? "Rampen" : "Ramps"}
+            value={rampScore !== null ? `${rampScore}/100` : unavailableShort}
             isLoading={isLiveDataLoading}
           />
-          <ValueCard
-            title={language === "de" ? "Opportunity Score" : "Opportunity score"}
-            value={opportunityScore !== null ? `${opportunityScore}/100` : language === "de" ? "k. A." : "n/a"}
-            insight={opportunityInsight}
-            whyThisMatters={opportunityWhy}
-            tag={
+          <CompactSignalStat
+            label={language === "de" ? "Opportunity" : "Opportunity"}
+            value={opportunityScore !== null ? `${opportunityScore}/100` : unavailableShort}
+            footnote={
               assessment
                 ? language === "de"
                   ? assessment.verdict === "beneficial_now"
-                    ? "aktuell vorteilhaft"
+                    ? "Fazit: vorteilhaft"
                     : assessment.verdict === "not_beneficial_now"
-                      ? "aktuell nicht vorteilhaft"
-                      : "unklar"
-                  : assessment.verdict.replaceAll("_", " ")
+                      ? "Fazit: nicht vorteilhaft"
+                      : "Fazit: unklar"
+                  : assessment.verdict === "beneficial_now"
+                    ? "Verdict: beneficial"
+                    : assessment.verdict === "not_beneficial_now"
+                      ? "Verdict: not beneficial"
+                      : "Verdict: uncertain"
                 : undefined
             }
-            language={language}
             isLoading={isLiveDataLoading}
           />
         </div>
-
-        <article className="rounded-2xl border border-slate-300/45 bg-white/70 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-              {language === "de"
-                ? "Tägliche Energiebilanz & Batterie-Ausblick"
-                : "Daily Energy Balance & Battery Outlook"}
-            </p>
-            {dailyEnergy ? (
-              <span className="text-[11px] tracking-[0.1em] text-slate-500 uppercase dark:text-slate-300">
-                {dailyEnergy.dateBerlin} · Berlin
-              </span>
-            ) : null}
-          </div>
-          <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
-            {language === "de"
-              ? "Ganzheitliche Tagesbilanz aus Live-Viertelstundenwerten: Primär die reale Systembilanz (inkl. konventionell und Importdeckung), ergänzt um die erneuerbare Teilbilanz und die SoC-basierte Abendlücke."
-              : "Holistic day balance from live quarter-hour values: primary real system balance (including conventional and import-backed supply), complemented by renewable sub-balance and SoC-based evening gap."}
-          </p>
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <ValueCard
-              title={
-                language === "de" ? "Tägliche Gesamt-Netto-Bilanz" : "Daily Total Net Balance"
-              }
-              value={dailyTotalBalanceValue}
-              subValue={
-                renewableDeficitValue
-                  ? language === "de"
-                    ? `Erneuerbares Defizit: ${renewableDeficitValue}`
-                    : `Renewable balance: ${renewableDeficitValue}`
-                  : undefined
-              }
-              detailRows={dailyEnergyDetailRows}
-              insight={dailyBalanceInsight}
-              whyThisMatters={dailyBalanceWhy}
-              formulaNote={
-                dailyBalanceFormula && renewableDeficitRationale
-                  ? `${dailyBalanceFormula} ${renewableDeficitRationale}`
-                  : dailyBalanceFormula
-              }
-              language={language}
-              isLoading={isLiveDataLoading || !dailyEnergyAvailable}
-            />
-            <ValueCard
-              title={
-                language === "de"
-                  ? "Geschätzter Flotten-SoC am Abend"
-                  : "Estimated Fleet SoC by Evening"
-              }
-              value={socValueDisplay}
-              detailRows={socDetailRows}
-              insight={socInsight}
-              whyThisMatters={socWhy}
-              formulaNote={socFormula}
-              language={language}
-              isLoading={isLiveDataLoading || !socAvailable}
-            />
-            <ValueCard
-              title={
-                language === "de"
-                  ? "Effektive Abendliche Lücke (SoC-bereinigt)"
-                  : "Effective Evening Gap (adjusted for SoC)"
-              }
-              value={effectiveGapValueDisplay}
-              detailRows={effectiveGapDetailRows}
-              insight={effectiveGapInsight}
-              whyThisMatters={effectiveGapWhy}
-              formulaNote={effectiveGapFormula}
-              language={language}
-              isLoading={isLiveDataLoading || effectiveGapDisplay === null}
-            />
-          </div>
-        </article>
       </section>
 
-      <BessDispatchSimulator />
+      <section
+        id="quick-stats"
+        className="scroll-mt-8 space-y-4 border-t border-slate-200/90 pt-12 dark:border-slate-600/35 dark:pt-14"
+      >
+        <p className="text-xs tracking-[0.16em] text-slate-500 uppercase dark:text-slate-400">
+          {language === "de" ? "Markt-Quick-Stats" : "Market quick stats"}
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <QuickStatPill
+            label={language === "de" ? "Tagesbilanz (Netto)" : "Daily net balance"}
+            value={dailyTotalBalanceValue}
+            isLoading={isLiveDataLoading || !dailyEnergyAvailable}
+          />
+          <QuickStatPill
+            label={language === "de" ? "Fleet-SoC (Abend)" : "Fleet SoC (eve.)"}
+            value={quickStatsFleetSoc}
+            isLoading={isLiveDataLoading || !socAvailable}
+          />
+          <QuickStatPill
+            label={language === "de" ? "Effektive Abendlücke" : "Effective evening gap"}
+            value={effectiveGapValueDisplay}
+            isLoading={isLiveDataLoading || effectiveGapDisplay === null}
+          />
+          <QuickStatPill
+            label={language === "de" ? "Erneuerbar-Anteil" : "Renewable share"}
+            value={renewableShareDisplay}
+            isLoading={isLiveDataLoading}
+          />
+          <QuickStatPill
+            label={language === "de" ? "Abend-Flexlücke (brutto)" : "Evening gap (gross)"}
+            value={eveningGapValueDisplay}
+            isLoading={isLiveDataLoading}
+          />
+        </div>
+        {dailyEnergy ? (
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            {language === "de" ? "Datum (Berlin):" : "Date (Berlin):"} {dailyEnergy.dateBerlin}
+          </p>
+        ) : null}
+      </section>
 
       <section
-        className="mx-auto w-full max-w-4xl rounded-2xl border border-slate-300/35 bg-white/55 p-4 dark:border-slate-500/35 dark:bg-slate-900/35 md:p-5"
+        className="mx-auto w-full max-w-4xl border-t border-slate-200/90 pt-14 dark:border-slate-600/35 dark:pt-16"
         id="ai-assessment"
       >
         {showAiAssessmentSection ? (
           <BessAssessmentCenter
+            variant="minimal"
             compact
             initialData={assessment}
             pendingInitialData={isAssessmentPending}
@@ -948,7 +619,7 @@ export default function Home() {
         )}
       </section>
 
-      <section id="news" className="space-y-8">
+      <section id="news" className="space-y-8 border-t border-slate-200/90 pt-14 dark:border-slate-600/35 dark:pt-16">
         <NewsPreviewSection limit={4} showHeaderLink />
       </section>
 
@@ -1021,70 +692,58 @@ function KpiCard({
   );
 }
 
-function ValueCard({
-  title,
+function CompactSignalStat({
+  label,
   value,
-  subValue,
-  insight,
-  whyThisMatters,
-  tag,
-  detailRows,
-  formulaNote,
-  language = "en",
+  footnote,
   isLoading = false,
 }: {
-  title: string;
+  label: string;
   value: string;
-  subValue?: string;
-  insight: string;
-  whyThisMatters: string;
-  tag?: string;
-  detailRows?: Array<{ label: string; value: string }>;
-  formulaNote?: string | null;
-  language?: "en" | "de";
+  footnote?: string;
   isLoading?: boolean;
 }) {
   return (
-    <article className="rounded-2xl border border-slate-300/50 bg-white/70 p-6 dark:border-slate-500/40 dark:bg-slate-900/70">
-      <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">{title}</p>
+    <article className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 shadow-sm dark:border-slate-600/40 dark:bg-slate-900/45">
+      <p className="text-[10px] font-medium tracking-[0.12em] text-slate-500 uppercase dark:text-slate-400">{label}</p>
       {isLoading ? (
-        <CardLoadingSkeleton />
+        <div className="mt-2">
+          <Skeleton className="h-7 w-20" />
+        </div>
       ) : (
         <>
-          <p className="mt-3 text-4xl font-extrabold text-slate-900 dark:text-white [font-family:var(--font-sans)]">{value}</p>
-      {subValue ? (
-        <p className="mt-1 text-sm font-medium text-slate-600 dark:text-slate-300">{subValue}</p>
-      ) : null}
-      {detailRows?.length ? (
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 dark:text-slate-200">
-          {detailRows.map((detail) => (
-            <p key={detail.label} className="inline-flex items-center gap-1.5">
-              <span className="text-slate-500 dark:text-slate-300">{detail.label}:</span>
-              <span className="font-semibold text-slate-900 dark:text-white">{detail.value}</span>
-            </p>
-          ))}
-        </div>
-      ) : null}
-      <p className="mt-3 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{insight}</p>
-      {formulaNote ? (
-        <p className="mt-2 text-[11px] leading-relaxed text-slate-500 italic dark:text-slate-400">
-          {formulaNote}
-        </p>
-      ) : null}
-      <p className="mt-4 text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">
-        {language === "de" ? "Warum das wichtig ist" : "Why this matters"}
-      </p>
-      <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-        {whyThisMatters.replace(language === "de" ? /^Warum das wichtig ist:\s*/i : /^Why this matters:\s*/i, "")}
-      </p>
-      {tag ? (
-        <p className="mt-4 inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary dark:text-blue-100">
-          {tag}
-        </p>
-      ) : null}
+          <p className="mt-1.5 text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white md:text-2xl [font-family:var(--font-sans)]">
+            {value}
+          </p>
+          {footnote ? <p className="mt-1 text-[10px] leading-tight text-slate-500 dark:text-slate-400">{footnote}</p> : null}
         </>
       )}
     </article>
+  );
+}
+
+function QuickStatPill({
+  label,
+  value,
+  isLoading = false,
+}: {
+  label: string;
+  value: string;
+  isLoading?: boolean;
+}) {
+  return (
+    <div className="min-w-[min(100%,11rem)] flex-1 rounded-xl border border-slate-200/85 bg-white/95 px-4 py-3 shadow-sm dark:border-slate-600/40 dark:bg-slate-900/55">
+      <p className="text-[10px] font-medium tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">{label}</p>
+      {isLoading ? (
+        <div className="mt-2">
+          <Skeleton className="h-6 w-28" />
+        </div>
+      ) : (
+        <p className="mt-1 text-base font-bold tabular-nums text-slate-900 dark:text-white md:text-lg [font-family:var(--font-sans)]">
+          {value}
+        </p>
+      )}
+    </div>
   );
 }
 

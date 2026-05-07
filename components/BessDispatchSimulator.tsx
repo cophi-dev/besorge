@@ -350,24 +350,24 @@ export default function BessDispatchSimulator() {
   return (
     <section
       id="dispatch-simulator"
-      className="glass-card relative overflow-hidden rounded-[2rem] p-6 md:p-10"
+      className="relative my-8 overflow-hidden rounded-[2.25rem] border-2 border-emerald-400/35 bg-gradient-to-b from-emerald-50/95 via-emerald-50/40 to-white px-6 py-8 shadow-[0_24px_60px_rgba(5,150,105,0.12)] md:my-14 md:rounded-[2.5rem] md:px-10 md:py-12 dark:border-emerald-500/25 dark:from-emerald-950/50 dark:via-slate-900/90 dark:to-slate-950/95 dark:shadow-[0_24px_60px_rgba(16,185,129,0.08)]"
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-emerald-300/20 via-transparent to-transparent dark:from-emerald-300/10" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-emerald-400/25 via-emerald-300/10 to-transparent dark:from-emerald-400/15" />
 
       <header className="relative">
-        <p className="inline-flex items-center gap-2 text-xs font-semibold tracking-[0.18em] text-emerald-700 uppercase dark:text-emerald-200">
-          <Zap className="h-3.5 w-3.5" /> {t.eyebrow}
+        <p className="inline-flex items-center gap-2 text-xs font-semibold tracking-[0.2em] text-emerald-800 uppercase dark:text-emerald-200">
+          <Zap className="h-4 w-4" /> {t.eyebrow}
         </p>
-        <h2 className="mt-3 max-w-3xl text-3xl text-slate-900 md:text-5xl dark:text-white [font-family:var(--font-heading)]">
+        <h2 className="mt-4 max-w-4xl text-4xl leading-[1.08] text-slate-900 md:text-5xl lg:text-6xl dark:text-white [font-family:var(--font-heading)]">
           {t.title}
         </h2>
-        <p className="mt-4 max-w-3xl text-base leading-relaxed text-slate-600 dark:text-slate-300 md:text-lg">
+        <p className="mt-5 max-w-3xl text-base leading-relaxed text-slate-600 dark:text-slate-300 md:text-lg">
           {t.intro}
         </p>
       </header>
 
       <div
-        className={`relative mt-8 grid min-w-0 gap-6 ${
+        className={`relative mt-10 grid min-w-0 gap-6 ${
           !response && !isRunning && !error
             ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]"
             : ""
@@ -479,7 +479,7 @@ export default function BessDispatchSimulator() {
         ) : null}
       </div>
 
-      <div className="relative mt-8 min-w-0">
+      <div className="relative mt-8 min-w-0 md:mt-10">
         <AnimatePresence mode="wait">
           {isRunning ? (
             <ResultsLoadingSkeleton key="loading" />

@@ -1,6 +1,44 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
 
 import BessAssessmentCenter from "@/components/BessAssessmentCenter";
+import { LanguageContext } from "@/components/language-context";
+
+const renderWithLanguage = (ui: ReactElement, language: "en" | "de" = "en") =>
+  render(
+    <LanguageContext.Provider value={{ language, setLanguage: jest.fn() }}>{ui}</LanguageContext.Provider>
+  );
+
+const mockAssessmentPayload = {
+  verdict: "beneficial_now" as const,
+  score: 88,
+  confidence: 71,
+  timeHorizon: "now" as const,
+  shortTermSignal: "Short-term signal",
+  structuralSignal: "Structural signal",
+  scoreBreakdown: {
+    volatility: 80,
+    adequacy: 77,
+    policyAndRegulation: 55,
+    marketPressure: 68,
+  },
+  confidenceDrivers: ["Driver confidence"],
+  confidenceLimitations: ["Limitation one"],
+  keyDrivers: ["Driver 1"],
+  risks: ["Risk 1"],
+  recommendedNextActions: ["Action 1"],
+  horizonOutlook: {
+    now: { recommendation: "Do now", rationale: "Because now." },
+    next12m: { recommendation: "Do in 12m", rationale: "Because 12m." },
+    next36m: { recommendation: "Do in 36m", rationale: "Because 36m." },
+  },
+  dataGapsImpact: "Data gaps impact text",
+  analystSummary:
+    "AETHER currently reads this window as beneficial now, with recent solar support and constructive near-term recharge conditions.",
+  fullAnalysisSummary:
+    "Recent renewable patterns and forward profile keep short-term arbitrage windows constructive while maintaining execution discipline.",
+  asOf: "2026-05-06T10:00:00.000Z",
+};
 
 describe("BessAssessmentCenter", () => {
   afterEach(() => {
@@ -10,94 +48,31 @@ describe("BessAssessmentCenter", () => {
   it("renders assessment content on success", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        verdict: "beneficial_now",
-        score: 88,
-        confidence: 71,
-        timeHorizon: "now",
-        shortTermSignal: "Short-term signal",
-        structuralSignal: "Structural signal",
-        scoreBreakdown: {
-          volatility: 80,
-          adequacy: 77,
-          policyAndRegulation: 55,
-          marketPressure: 68,
-        },
-        confidenceDrivers: ["Driver confidence"],
-        confidenceLimitations: ["Limitation one"],
-        keyDrivers: ["Driver 1"],
-        risks: ["Risk 1"],
-        recommendedNextActions: ["Action 1"],
-        horizonOutlook: {
-          now: { recommendation: "Do now", rationale: "Because now" },
-          next12m: { recommendation: "Do in 12m", rationale: "Because 12m" },
-          next36m: { recommendation: "Do in 36m", rationale: "Because 36m" },
-        },
-        dataGapsImpact: "Data gaps impact text",
-        analystSummary:
-          "AETHER currently reads this window as beneficial now, with recent solar support and constructive near-term recharge conditions.",
-        fullAnalysisSummary:
-          "Recent renewable patterns and forward profile keep short-term arbitrage windows constructive while maintaining execution discipline.",
-        asOf: "2026-05-06T10:00:00.000Z",
-      }),
+      json: async () => mockAssessmentPayload,
     }) as typeof fetch;
 
-    render(<BessAssessmentCenter />);
-    expect(screen.getByText("Running assessment...")).toBeInTheDocument();
+    renderWithLanguage(<BessAssessmentCenter />);
 
-    await waitFor(() =>
-      expect(screen.getByText(/Verdict:\s*Beneficial now/i)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/Verdict:\s*Beneficial now/i)).toBeInTheDocument());
     expect(screen.getByLabelText("Score gauge 88 out of 100")).toBeInTheDocument();
     expect(screen.getByText(/Confidence 71%/i)).toBeInTheDocument();
-    expect(screen.getByText("Key Drivers (last 7 days)")).toBeInTheDocument();
-    expect(screen.getByLabelText("Volatility impact 80")).toBeInTheDocument();
-    expect(screen.getByText("Immediate signal")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /let's talk about it/i })).toBeInTheDocument();
+    expect(screen.getByText(mockAssessmentPayload.analystSummary)).toBeInTheDocument();
+    expect(screen.getByText(/Horizon outlook/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /View full analysis/i })).toBeInTheDocument();
   });
 
-  it("opens ai chat when talk button is clicked", async () => {
+  it("minimal variant hides horizon and full-analysis controls", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        verdict: "beneficial_now",
-        score: 60,
-        confidence: 60,
-        timeHorizon: "now",
-        shortTermSignal: "signal",
-        structuralSignal: "signal",
-        scoreBreakdown: {
-          volatility: 60,
-          adequacy: 60,
-          policyAndRegulation: 60,
-          marketPressure: 60,
-        },
-        confidenceDrivers: ["driver"],
-        confidenceLimitations: ["limitation"],
-        keyDrivers: ["driver"],
-        risks: ["risk"],
-        recommendedNextActions: ["action"],
-        horizonOutlook: {
-          now: { recommendation: "now", rationale: "now" },
-          next12m: { recommendation: "12m", rationale: "12m" },
-          next36m: { recommendation: "36m", rationale: "36m" },
-        },
-        dataGapsImpact: "impact",
-        analystSummary: "Beneficial setup remains intact.",
-        fullAnalysisSummary: "Expanded analyst note.",
-        asOf: "2026-05-06T10:00:00.000Z",
-      }),
+      json: async () => ({ ...mockAssessmentPayload, score: 62 }),
     }) as typeof fetch;
 
-    const dispatchSpy = jest.spyOn(window, "dispatchEvent");
-    render(<BessAssessmentCenter />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /let's talk about it/i })).toBeInTheDocument()
-    );
+    renderWithLanguage(<BessAssessmentCenter variant="minimal" />);
 
-    fireEvent.click(screen.getByRole("button", { name: /let's talk about it/i }));
-    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "bessforge:open-ai-chat" }));
-    expect(window.location.hash).toBe("#ai-chat");
+    await waitFor(() => expect(screen.getByText(/Verdict:\s*Beneficial now/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Horizon outlook/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /View full analysis/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Based on your dispatch simulation/i)).toBeInTheDocument();
   });
 
   it("renders error state", async () => {
@@ -107,9 +82,7 @@ describe("BessAssessmentCenter", () => {
       json: async () => ({ message: "failed" }),
     }) as typeof fetch;
 
-    render(<BessAssessmentCenter />);
-    await waitFor(() =>
-      expect(screen.getByText(/Could not run assessment/i)).toBeInTheDocument()
-    );
+    renderWithLanguage(<BessAssessmentCenter />);
+    await waitFor(() => expect(screen.getByText(/Could not run assessment/i)).toBeInTheDocument());
   });
 });

@@ -63,6 +63,8 @@ const verdictTone: Record<AssessmentVerdict, string> = {
 
 type BessAssessmentCenterProps = {
   compact?: boolean;
+  /** Verdict badge + short summary only (e.g. home page hero flow). */
+  variant?: "default" | "minimal";
   initialData?: AssessmentResponse | null;
   pendingInitialData?: boolean;
   skipInitialFetch?: boolean;
@@ -77,6 +79,7 @@ const sleep = (ms: number) =>
 
 export default function BessAssessmentCenter({
   compact = false,
+  variant = "default",
   initialData = null,
   pendingInitialData = false,
   skipInitialFetch = false,
@@ -137,25 +140,36 @@ export default function BessAssessmentCenter({
 
   const resolvedData = data ?? initialData;
   const isLoading = loading || (pendingInitialData && resolvedData === null && error === null);
+  const isMinimal = variant === "minimal";
 
   return (
     <section
-      className={`glass-card relative rounded-4xl ${
-        compact ? "p-5 pb-8 md:p-6 md:pb-9" : "p-7 pb-10 md:p-9 md:pb-12"
+      className={`relative ${
+        isMinimal
+          ? "rounded-2xl border border-slate-300/50 bg-white/80 p-5 shadow-sm dark:border-slate-500/40 dark:bg-slate-900/70 md:p-6"
+          : `glass-card relative rounded-4xl ${compact ? "p-5 pb-8 md:p-6 md:pb-9" : "p-7 pb-10 md:p-9 md:pb-12"}`
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs tracking-[0.18em] text-blue-600 uppercase dark:text-blue-300">
-            {language === "de" ? "KI-Entscheidungsunterstützung" : "AI decision support"}
+            {isMinimal
+              ? language === "de"
+                ? "KI-Fazit"
+                : "AI verdict"
+              : language === "de"
+                ? "KI-Entscheidungsunterstützung"
+                : "AI decision support"}
           </p>
-          <h2
-            className={`mt-2 tracking-tight text-slate-900 [font-family:var(--font-heading)] ${
-              compact ? "text-2xl md:text-3xl" : "text-3xl md:text-4xl"
-            }`}
-          >
-            {language === "de" ? "Sollten Sie jetzt zusätzliche BESS-Kapazität aufbauen?" : "Should you add more BESS capacity now?"}
-          </h2>
+          {isMinimal ? null : (
+            <h2
+              className={`mt-2 tracking-tight text-slate-900 [font-family:var(--font-heading)] ${
+                compact ? "text-2xl md:text-3xl" : "text-3xl md:text-4xl"
+              }`}
+            >
+              {language === "de" ? "Sollten Sie jetzt zusätzliche BESS-Kapazität aufbauen?" : "Should you add more BESS capacity now?"}
+            </h2>
+          )}
         </div>
         <button
           type="button"
@@ -183,12 +197,14 @@ export default function BessAssessmentCenter({
       ) : null}
 
       {resolvedData ? (
-        <div className={`${compact ? "mt-6 space-y-6" : "mt-8 space-y-7 md:space-y-8"}`}>
-          <Card className="border-0 bg-white/95 text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-            <CardContent className="py-5">
-              <div className="grid gap-4 md:grid-cols-[auto_1fr_auto] md:items-center">
+        <div className={`${isMinimal ? "mt-5 space-y-3" : compact ? "mt-6 space-y-6" : "mt-8 space-y-7 md:space-y-8"}`}>
+          <Card className={`border-0 text-slate-900 ${isMinimal ? "bg-transparent shadow-none" : "bg-white/95 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"}`}>
+            <CardContent className={isMinimal ? "px-0 py-0" : "py-5"}>
+              <div
+                className={`grid gap-4 ${isMinimal ? "md:grid-cols-[auto_1fr] md:items-start" : "md:grid-cols-[auto_1fr_auto] md:items-center"}`}
+              >
                 <div
-                  className="relative flex h-24 w-24 items-center justify-center rounded-full border border-slate-200 bg-slate-50"
+                  className={`relative flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 ${isMinimal ? "h-16 w-16 shrink-0" : "h-24 w-24"}`}
                   style={{
                     background: `conic-gradient(${scoreColor(resolvedData.score)} ${Math.max(
                       0,
@@ -202,12 +218,14 @@ export default function BessAssessmentCenter({
                       : `Score gauge ${Math.round(resolvedData.score)} out of 100`
                   }
                 >
-                  <div className="absolute inset-2 rounded-full bg-white" />
+                  <div className={`absolute rounded-full bg-white ${isMinimal ? "inset-1.5" : "inset-2"}`} />
                   <div className="relative text-center">
                     <p className="text-[10px] tracking-[0.12em] text-slate-500 uppercase">
                       {language === "de" ? "Score" : "Score"}
                     </p>
-                    <p className="text-2xl font-extrabold text-slate-900 [font-family:var(--font-sans)]">
+                    <p
+                      className={`font-extrabold text-slate-900 [font-family:var(--font-sans)] ${isMinimal ? "text-lg" : "text-2xl"}`}
+                    >
                       {Math.round(resolvedData.score)}
                     </p>
                   </div>
@@ -221,84 +239,99 @@ export default function BessAssessmentCenter({
                     <ShieldCheck className="mr-1.5 size-3.5" />
                     {language === "de" ? "Fazit" : "Verdict"}: {verdictLabel[language][resolvedData.verdict]}
                   </Badge>
-                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                  <p
+                    className={`text-slate-700 dark:text-slate-200 ${isMinimal ? "line-clamp-2 text-sm leading-snug" : "text-sm leading-relaxed"}`}
+                  >
                     {resolvedData.analystSummary}
                   </p>
+                  {isMinimal ? (
+                    <p className="text-xs leading-snug text-slate-500 dark:text-slate-400">
+                      {language === "de"
+                        ? "Basierend auf Ihrer Dispatch-Simulation und den aktuellen Marktbedingungen."
+                        : "Based on your dispatch simulation and current market conditions."}
+                    </p>
+                  ) : null}
                 </div>
 
-                <Badge
-                  variant="outline"
-                  className="h-8 rounded-full border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-800"
-                >
-                  <Sparkle className="mr-1.5 size-3.5" />
-                  {language === "de" ? "Konfidenz" : "Confidence"} {Math.round(resolvedData.confidence)}%
-                </Badge>
+                {isMinimal ? null : (
+                  <Badge
+                    variant="outline"
+                    className="h-8 rounded-full border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-800"
+                  >
+                    <Sparkle className="mr-1.5 size-3.5" />
+                    {language === "de" ? "Konfidenz" : "Confidence"} {Math.round(resolvedData.confidence)}%
+                  </Badge>
+                )}
               </div>
             </CardContent>
           </Card>
 
-          {showFullAnalysis ? (
-            <article className="rounded-2xl border border-slate-300/45 bg-white/75 p-5 dark:border-slate-500/35 dark:bg-slate-900/60 md:p-6">
-              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-                {resolvedData.fullAnalysisSummary}
-              </p>
+          {isMinimal ? null : (
+            <>
+              {showFullAnalysis ? (
+                <article className="rounded-2xl border border-slate-300/45 bg-white/75 p-5 dark:border-slate-500/35 dark:bg-slate-900/60 md:p-6">
+                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                    {resolvedData.fullAnalysisSummary}
+                  </p>
 
-              <div className="mt-5 grid gap-4 md:grid-cols-3">
-                <BriefList title={language === "de" ? "Haupttreiber" : "Key Drivers"} items={resolvedData.keyDrivers.slice(0, 3)} />
-                <BriefList title={language === "de" ? "Wesentliche Risiken" : "Main Risks"} items={resolvedData.risks.slice(0, 3)} />
-                <BriefList title={language === "de" ? "Empfohlene Maßnahmen" : "Recommended Actions"} items={resolvedData.recommendedNextActions.slice(0, 3)} />
+                  <div className="mt-5 grid gap-4 md:grid-cols-3">
+                    <BriefList title={language === "de" ? "Haupttreiber" : "Key Drivers"} items={resolvedData.keyDrivers.slice(0, 3)} />
+                    <BriefList title={language === "de" ? "Wesentliche Risiken" : "Main Risks"} items={resolvedData.risks.slice(0, 3)} />
+                    <BriefList title={language === "de" ? "Empfohlene Maßnahmen" : "Recommended Actions"} items={resolvedData.recommendedNextActions.slice(0, 3)} />
+                  </div>
+                </article>
+              ) : null}
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowFullAnalysis((current) => !current)}
+                  className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
+                  aria-expanded={showFullAnalysis}
+                >
+                  {showFullAnalysis
+                    ? language === "de"
+                      ? "Analystennotiz ausblenden"
+                      : "Hide analyst note"
+                    : language === "de"
+                      ? "Vollständige Analyse anzeigen"
+                      : "View full analysis"}
+                </button>
               </div>
-            </article>
-          ) : null}
 
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={() => setShowFullAnalysis((current) => !current)}
-              className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
-              aria-expanded={showFullAnalysis}
-            >
-              {showFullAnalysis
-                ? language === "de"
-                  ? "Analystennotiz ausblenden"
-                  : "Hide analyst note"
-                : language === "de"
-                  ? "Vollständige Analyse anzeigen"
-                  : "View full analysis"}
-            </button>
-          </div>
+              <div className="rounded-xl bg-white/60 p-4 shadow-sm dark:bg-slate-900/50">
+                <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
+                  {language === "de" ? "Horizont-Ausblick" : "Horizon outlook"}
+                </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                  <HorizonNode
+                    label={language === "de" ? "Jetzt" : "Now"}
+                    verdict={resolvedData.horizonOutlook.now.recommendation}
+                    summary={firstSentence(resolvedData.horizonOutlook.now.rationale)}
+                    icon={<Sparkle className="size-3.5" />}
+                    current
+                    delay={0}
+                  />
+                  <HorizonNode
+                    label={language === "de" ? "Nächste 12M" : "Next 12m"}
+                    verdict={resolvedData.horizonOutlook.next12m.recommendation}
+                    summary={firstSentence(resolvedData.horizonOutlook.next12m.rationale)}
+                    icon={<TrendingUp className="size-3.5" />}
+                    delay={0.08}
+                  />
+                  <HorizonNode
+                    label={language === "de" ? "Nächste 36M" : "Next 36m"}
+                    verdict={resolvedData.horizonOutlook.next36m.recommendation}
+                    summary={firstSentence(resolvedData.horizonOutlook.next36m.rationale)}
+                    icon={<Atom className="size-3.5" />}
+                    delay={0.16}
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
-          <div className="rounded-xl bg-white/60 p-4 shadow-sm dark:bg-slate-900/50">
-            <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-              {language === "de" ? "Horizont-Ausblick" : "Horizon outlook"}
-            </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <HorizonNode
-                label={language === "de" ? "Jetzt" : "Now"}
-                verdict={resolvedData.horizonOutlook.now.recommendation}
-                summary={firstSentence(resolvedData.horizonOutlook.now.rationale)}
-                icon={<Sparkle className="size-3.5" />}
-                current
-                delay={0}
-              />
-              <HorizonNode
-                label={language === "de" ? "Nächste 12M" : "Next 12m"}
-                verdict={resolvedData.horizonOutlook.next12m.recommendation}
-                summary={firstSentence(resolvedData.horizonOutlook.next12m.rationale)}
-                icon={<TrendingUp className="size-3.5" />}
-                delay={0.08}
-              />
-              <HorizonNode
-                label={language === "de" ? "Nächste 36M" : "Next 36m"}
-                verdict={resolvedData.horizonOutlook.next36m.recommendation}
-                summary={firstSentence(resolvedData.horizonOutlook.next36m.rationale)}
-                icon={<Atom className="size-3.5" />}
-                delay={0.16}
-              />
-            </div>
-          </div>
-
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className={`text-xs text-slate-500 dark:text-slate-400 ${isMinimal ? "pt-1" : ""}`}>
             {language === "de" ? "Stand:" : "As of:"}{" "}
             {new Date(resolvedData.asOf).toLocaleString("de-DE", {
               dateStyle: "medium",
@@ -308,11 +341,19 @@ export default function BessAssessmentCenter({
         </div>
       ) : null}
 
-      <p className="pointer-events-none absolute right-6 bottom-4 left-6 text-center text-[10px] text-slate-400 dark:text-slate-500">
-        {language === "de"
-          ? "KI-Ausgaben sind beratend und müssen mit projektspezifischen Randbedingungen validiert werden."
-          : "AI output is advisory and should be validated with project-specific constraints."}
-      </p>
+      {isMinimal ? (
+        <p className="mt-4 text-center text-[10px] text-slate-400 dark:text-slate-500">
+          {language === "de"
+            ? "KI-Ausgaben sind beratend und müssen mit projektspezifischen Randbedingungen validiert werden."
+            : "AI output is advisory and should be validated with project-specific constraints."}
+        </p>
+      ) : (
+        <p className="pointer-events-none absolute right-6 bottom-4 left-6 text-center text-[10px] text-slate-400 dark:text-slate-500">
+          {language === "de"
+            ? "KI-Ausgaben sind beratend und müssen mit projektspezifischen Randbedingungen validiert werden."
+            : "AI output is advisory and should be validated with project-specific constraints."}
+        </p>
+      )}
     </section>
   );
 }
