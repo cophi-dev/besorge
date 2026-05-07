@@ -86,6 +86,9 @@ export function SiteShell({ children }: SiteShellProps) {
             <a href="#ai-assessment" className="rounded-full px-3.5 py-2 text-slate-600 transition hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-emerald-200">
               {language === "de" ? "Analysten-KI" : "Analyst AI"}
             </a>
+            <Link href="/news" className="rounded-full px-3.5 py-2 text-slate-600 transition hover:bg-primary/10 hover:text-primary dark:text-slate-300 dark:hover:text-emerald-200">
+              {language === "de" ? "Newsfeed" : "Newsfeed"}
+            </Link>
             <button
               type="button"
               onClick={() => setChatOpen(true)}

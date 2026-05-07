@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { z } from "zod";
 
 import BessAssessmentCenter from "@/components/BessAssessmentCenter";
+import NewsPreviewSection from "@/components/NewsPreviewSection";
 import { useLanguage } from "@/components/language-context";
 import { createLogger } from "@/lib/debug";
 import { estimateEveningSoc, type SocBand } from "@/lib/socEstimator";
@@ -836,6 +837,10 @@ export default function Home() {
         id="ai-assessment"
       >
         <BessAssessmentCenter compact />
+      </section>
+
+      <section id="news" className="space-y-8">
+        <NewsPreviewSection limit={4} showHeaderLink />
       </section>
 
       <button
