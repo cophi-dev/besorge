@@ -16,6 +16,25 @@ export function clearEnergyChartsResponseCache(): void {
   responseCache.clear();
 }
 
+/** Energy-Charts returns 404 for `total_power?country=de` without explicit calendar `start`/`end`. */
+const GERMANY_TOTAL_POWER_LOOKBACK_DAYS = 45;
+
+const formatCalendarDateBerlin = (date: Date): string =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+
+const getGermanyTotalPowerPath = (): string => {
+  const end = new Date();
+  const startMs = end.getTime() - GERMANY_TOTAL_POWER_LOOKBACK_DAYS * 86_400_000;
+  const startStr = formatCalendarDateBerlin(new Date(startMs));
+  const endStr = formatCalendarDateBerlin(end);
+  return `/total_power?country=de&start=${startStr}&end=${endStr}`;
+};
+
 const seriesSchema = z.object({
   name: z.string(),
   data: z.array(z.number().nullable()),
@@ -970,7 +989,7 @@ const buildGermanyMarketSnapshot = ({
 
 export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot> => {
   const [totalPower, installedPower] = await Promise.all([
-    fetchJson("/total_power?country=de", totalPowerResponseSchema, {
+    fetchJson(getGermanyTotalPowerPath(), totalPowerResponseSchema, {
       allowStaleOnFailure: true,
     }),
     fetchJson("/installed_power?country=de", installedPowerResponseSchema, {
@@ -1014,7 +1033,7 @@ export type GermanyDispatchSlotsResponse = {
 export const getGermanyTodaysDispatchSlots =
   async (): Promise<GermanyDispatchSlotsResponse> => {
     const totalPower = await fetchJson(
-      "/total_power?country=de",
+      getGermanyTotalPowerPath(),
       totalPowerResponseSchema,
       { allowStaleOnFailure: true }
     );
@@ -1086,7 +1105,7 @@ export const getGermanyTodaysDispatchSlots =
 
 export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentContext> => {
   const [totalPower, installedPower] = await Promise.all([
-    fetchJson("/total_power?country=de", totalPowerResponseSchema, {
+    fetchJson(getGermanyTotalPowerPath(), totalPowerResponseSchema, {
       allowStaleOnFailure: true,
     }),
     fetchJson("/installed_power?country=de", installedPowerResponseSchema, {
