@@ -1,4 +1,8 @@
-import { getGermanyAssessmentContext, getGermanyMarketSnapshot } from "@/lib/energyChartsApi";
+import {
+  clearEnergyChartsResponseCache,
+  getGermanyAssessmentContext,
+  getGermanyMarketSnapshot,
+} from "@/lib/energyChartsApi";
 
 const buildConstantSeries = (length: number, value: number): Array<number | null> =>
   Array.from({ length }, () => value);
@@ -63,6 +67,7 @@ const makeJsonResponse = (payload: unknown, status = 200) => ({
 
 describe("getGermanyAssessmentContext", () => {
   afterEach(() => {
+    clearEnergyChartsResponseCache();
     jest.resetAllMocks();
     delete (globalThis as { fetch?: typeof fetch }).fetch;
   });
@@ -94,10 +99,11 @@ describe("getGermanyAssessmentContext", () => {
     const context = await getGermanyAssessmentContext();
 
     expect(fetchMock).toHaveBeenCalled();
-    expect(context.snapshot.realtimeSystem.renewableShareOfLoadPct).toBeCloseTo(60, 3);
+    /** Residual load takes precedence over generation-sum when both exist: (1000-200)/1000. */
+    expect(context.snapshot.realtimeSystem.renewableShareOfLoadPct).toBeCloseTo(80, 3);
     expect(context.dataQuality.missingSignals).not.toContain("Limited renewable share history for trailing 7d");
     expect(context.forecast.available).toBe(true);
-    expect(context.forecast.horizonHours).toBe(24);
+    expect(context.forecast.horizonHours).toBe(48);
     expect(context.forecast.renewableSharePctP50Next24h).not.toBeNull();
   });
 
@@ -127,7 +133,8 @@ describe("getGermanyAssessmentContext", () => {
 
     const context = await getGermanyAssessmentContext();
 
-    expect(context.snapshot.realtimeSystem.renewableShareOfLoadPct).toBeUndefined();
+    /** Residual series implies a renewable share even without explicit share / gen breakdown. */
+    expect(context.snapshot.realtimeSystem.renewableShareOfLoadPct).toBeCloseTo(80, 3);
     expect(context.dataQuality.missingSignals).toContain("Limited renewable share history for trailing 7d");
     expect(context.forecast.available).toBe(false);
     expect(context.forecast.renewableSharePctP50Next24h).toBeNull();
@@ -136,6 +143,7 @@ describe("getGermanyAssessmentContext", () => {
 
 describe("getGermanyMarketSnapshot evening + daily aggregates", () => {
   afterEach(() => {
+    clearEnergyChartsResponseCache();
     jest.resetAllMocks();
     delete (globalThis as { fetch?: typeof fetch }).fetch;
   });

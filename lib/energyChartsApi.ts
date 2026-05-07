@@ -7,8 +7,14 @@ const log = createLogger("energy-charts");
 const ENERGY_CHARTS_BASE_URL = "https://api.energy-charts.info";
 const ENERGY_CHARTS_STALE_TTL_MS = 1000 * 60 * 60 * 24;
 const DEFAULT_RETRY_ATTEMPTS = 2;
-const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+/** Energy-Charts occasionally returns 404 under load; treat like other transient upstream errors. */
+const RETRYABLE_STATUS_CODES = new Set([404, 429, 500, 502, 503, 504]);
 const responseCache = new Map<string, { fetchedAtMs: number; payload: unknown }>();
+
+/** Clears the in-memory Energy-Charts success cache (tests only; see `energyChartsApi.test.ts`). */
+export function clearEnergyChartsResponseCache(): void {
+  responseCache.clear();
+}
 
 const seriesSchema = z.object({
   name: z.string(),

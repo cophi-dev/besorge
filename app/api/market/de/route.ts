@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
 
+import { unstable_cache } from "next/cache";
+
 import { createLogger } from "@/lib/debug";
 import { getGermanyMarketSnapshot } from "@/lib/energyChartsApi";
 
 const log = createLogger("api:market:de");
 
+const getGermanyMarketSnapshotCached = unstable_cache(
+  async () => getGermanyMarketSnapshot(),
+  ["energy-charts-germany-market-snapshot"],
+  { revalidate: 120 }
+);
+
 export async function GET() {
   try {
-    const snapshot = await getGermanyMarketSnapshot();
+    const snapshot = await getGermanyMarketSnapshotCached();
     return NextResponse.json(snapshot, {
       headers: {
         "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600",

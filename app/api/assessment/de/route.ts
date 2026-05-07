@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { unstable_cache } from "next/cache";
+
 import { getBessAssessmentFromAi } from "@/lib/aiAssessmentClient";
 import { createLogger } from "@/lib/debug";
 import { getGermanyAssessmentContext } from "@/lib/energyChartsApi";
 
 const log = createLogger("api:assessment:de");
+
+const getGermanyAssessmentContextCached = unstable_cache(
+  async () => getGermanyAssessmentContext(),
+  ["energy-charts-germany-assessment-context"],
+  { revalidate: 60 }
+);
 
 const responseSchema = z.object({
   verdict: z.enum(["beneficial_now", "not_beneficial_now", "uncertain"]),
@@ -47,7 +55,7 @@ const responseSchema = z.object({
 
 export async function GET() {
   try {
-    const context = await getGermanyAssessmentContext();
+    const context = await getGermanyAssessmentContextCached();
     const assessment = await getBessAssessmentFromAi(context);
     const parsed = responseSchema.parse(assessment);
 
