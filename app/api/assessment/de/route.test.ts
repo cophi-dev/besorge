@@ -141,6 +141,7 @@ describe("GET /api/assessment/de", () => {
     const json = await response.json();
     expect(response.status).toBe(200);
     expect(json.verdict).toBe("beneficial_now");
+    expect(response.headers["Cache-Control"]).toBe("public, s-maxage=60, stale-while-revalidate=120");
   });
 
   it("returns 502 when assessment fails", async () => {

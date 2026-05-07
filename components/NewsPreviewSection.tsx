@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 import { useLanguage } from "@/components/language-context";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const newsItemSchema = z.object({
   id: z.string(),
@@ -94,9 +95,23 @@ export default function NewsPreviewSection({
       {!compact ? <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{subtitle}</p> : null}
 
       {state.status === "loading" ? (
-        <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
-          {language === "de" ? "News werden geladen..." : "Loading news..."}
-        </p>
+        <div className="mt-4 grid gap-3">
+          {Array.from({ length: compact ? 2 : 3 }).map((_, index) => (
+            <article
+              key={`news-skeleton-${index}`}
+              className="rounded-xl border border-slate-200/70 bg-white/85 p-4 dark:border-slate-500/40 dark:bg-slate-900/55"
+            >
+              <div className="flex gap-2">
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+              <Skeleton className="mt-3 h-6 w-3/4" />
+              <Skeleton className="mt-2 h-3 w-full" />
+              <Skeleton className="mt-2 h-3 w-5/6" />
+              <Skeleton className="mt-3 h-3 w-1/2" />
+            </article>
+          ))}
+        </div>
       ) : null}
       {state.status === "error" ? (
         <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">

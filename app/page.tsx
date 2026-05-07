@@ -1,19 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageCircle } from "lucide-react";
+import { Lightbulb, MessageCircle } from "lucide-react";
 import dynamic from "next/dynamic";
 import { z } from "zod";
 
-import BessAssessmentCenter from "@/components/BessAssessmentCenter";
+import type { AssessmentResponse } from "@/components/BessAssessmentCenter";
 import NewsPreviewSection from "@/components/NewsPreviewSection";
 import { useLanguage } from "@/components/language-context";
+import { Skeleton } from "@/components/ui/skeleton";
 import { createLogger } from "@/lib/debug";
 import { estimateEveningSoc, type SocBand } from "@/lib/socEstimator";
 
 const log = createLogger("market-snapshot");
 
 const MegapackMap = dynamic(() => import("@/components/MegapackMap"), {
+  ssr: false,
+});
+const BessAssessmentCenter = dynamic(() => import("@/components/BessAssessmentCenter"), {
+  ssr: false,
+});
+const BessDispatchSimulator = dynamic(() => import("@/components/BessDispatchSimulator"), {
   ssr: false,
 });
 
@@ -69,16 +76,6 @@ const marketSnapshotSchema = z.object({
 
 type MarketSnapshot = z.infer<typeof marketSnapshotSchema>;
 
-type Assessment = {
-  score: number;
-  shortTermSignal: string;
-  verdict: "beneficial_now" | "not_beneficial_now" | "uncertain";
-  scoreBreakdown: {
-    volatility: number;
-    adequacy: number;
-  };
-};
-
 const NUMBER_FORMATTER = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 const PERCENT_FORMATTER = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
 const LIVE_UPDATE_LABEL: Record<"en" | "de", string> = {
@@ -104,7 +101,6 @@ const BESS_OVERVIEW = {
     smallScaleGwh: 4.8,
   },
 };
-
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -132,6 +128,11 @@ function formatSignedGwh(valueGwh: number, language: "en" | "de"): string {
   return `${sign}${NUMBER_FORMATTER.format(abs)} GWh ${tag}`;
 }
 
+function formatSignedValue(value: number, unit: string): string {
+  const sign = value >= 0 ? "+" : "−";
+  return `${sign}${NUMBER_FORMATTER.format(Math.abs(value))} ${unit}`;
+}
+
 function formatInstalledValue(value: number, unit: "GW" | "GWh"): string {
   return `${NUMBER_FORMATTER.format(value)} ${unit}`;
 }
@@ -143,14 +144,14 @@ function buildTodaysKeyStory({
   language,
 }: {
   market: MarketSnapshot | null;
-  assessment: Assessment | null;
+  assessment: AssessmentResponse | null;
   residualLoadValue: string;
   language: "en" | "de";
 }): string {
   if (!market || !assessment) {
     return language === "de"
-      ? "Die Live-Daten synchronisieren noch, aber das aktuelle Umfeld bleibt für BESS selektiv konstruktiv. Nach sonnigen Tagen gehen viele Systeme meist mit solider Tagesladung in den Abend, was gezielte Entladeoptionen im Stressfenster eröffnet. Bis Restlast, Volatilität und Opportunity Score aktualisiert sind, ist eine disziplinierte und risikobewusste Fahrweise sinnvoller als ein aggressiver Einsatz."
-      : "Live data is still syncing, but the setup remains selectively constructive for BESS. Recent sunny days typically leave batteries with healthy daytime charge, creating room to discharge into the evening stress window. Until residual load, volatility, and opportunity score refresh, the right stance is disciplined and risk-aware rather than aggressive.";
+      ? "Die Live-Daten werden noch geladen, aber das aktuelle Umfeld bleibt fuer BESS selektiv konstruktiv. Nach sonnigen Tagen gehen viele Systeme meist mit solider Tagesladung in den Abend, was gezielte Entladeoptionen im Stressfenster eroeffnet. Bis Restlast, Volatilitaet und Opportunity Score aktualisiert sind, ist eine disziplinierte und risikobewusste Fahrweise sinnvoller als ein aggressiver Einsatz."
+      : "Live data is still being fetched, but the setup remains selectively constructive for BESS. Recent sunny days typically leave batteries with healthy daytime charge, creating room to discharge into the evening stress window. Until residual load, volatility, and opportunity score refresh, the right stance is disciplined and risk-aware rather than aggressive.";
   }
 
   const volatility = Math.round(assessment.scoreBreakdown.volatility);
@@ -178,15 +179,19 @@ function buildTodaysKeyStory({
 export default function Home() {
   const { language } = useLanguage();
   const [market, setMarket] = useState<MarketSnapshot | null>(null);
-  const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [assessment, setAssessment] = useState<AssessmentResponse | null>(null);
+  const [isAssessmentPending, setIsAssessmentPending] = useState(true);
+  const [showAiAssessmentSection, setShowAiAssessmentSection] = useState(false);
+  const [liveLoadProgress, setLiveLoadProgress] = useState(10);
+  const [isLiveDataLoading, setIsLiveDataLoading] = useState(true);
 
   useEffect(() => {
     const controller = new AbortController();
-    const fetchJsonWithRetry = async <T,>(url: string): Promise<T> => {
+    const fetchJsonWithRetry = async <T,>(url: string, cache: RequestCache = "default"): Promise<T> => {
       let lastError: unknown = null;
       for (let attempt = 0; attempt <= DATA_FETCH_RETRIES; attempt += 1) {
         try {
-          const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+          const response = await fetch(url, { cache, signal: controller.signal });
           if (!response.ok) {
             throw new Error(`Request failed with status ${response.status}`);
           }
@@ -203,13 +208,16 @@ export default function Home() {
     };
 
     const loadData = async () => {
-      const [marketResult, assessmentResult] = await Promise.allSettled([
-        fetchJsonWithRetry<unknown>("/api/market/de"),
-        fetchJsonWithRetry<Assessment>("/api/assessment/de"),
-      ]);
+      setIsLiveDataLoading(true);
+      setIsAssessmentPending(true);
+      setLiveLoadProgress(10);
 
-      if (marketResult.status === "fulfilled") {
-        const parsed = marketSnapshotSchema.safeParse(marketResult.value);
+      const marketPromise = fetchJsonWithRetry<unknown>("/api/market/de");
+      const assessmentPromise = fetchJsonWithRetry<AssessmentResponse>("/api/assessment/de");
+
+      try {
+        const marketResult = await marketPromise;
+        const parsed = marketSnapshotSchema.safeParse(marketResult);
         if (parsed.success) {
           setMarket(parsed.data);
         } else {
@@ -218,15 +226,45 @@ export default function Home() {
             errors: parsed.error.flatten(),
           });
         }
+      } catch {
+        // Individual cards fall back to temporary-unavailable messaging.
       }
 
-      if (assessmentResult.status === "fulfilled") {
-        setAssessment(assessmentResult.value);
-      }
+      setLiveLoadProgress(100);
+      window.setTimeout(() => {
+        if (!controller.signal.aborted) {
+          setIsLiveDataLoading(false);
+        }
+      }, 220);
 
+      try {
+        const assessmentResult = await assessmentPromise;
+        if (!controller.signal.aborted) {
+          setAssessment(assessmentResult);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsAssessmentPending(false);
+        }
+      }
     };
+    const progressIntervalId = window.setInterval(() => {
+      setLiveLoadProgress((current) => Math.min(92, current + (current < 55 ? 8 : 4)));
+    }, 350);
     void loadData();
-    return () => controller.abort();
+    return () => {
+      window.clearInterval(progressIntervalId);
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setShowAiAssessmentSection(true);
+    }, 350);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, []);
 
   const openAiChat = () => {
@@ -263,8 +301,8 @@ export default function Home() {
           ? "vorübergehend nicht verfügbar"
           : "temporarily unavailable"
         : language === "de"
-          ? "Lädt..."
-          : "Loading...";
+          ? "voruebergehend nicht verfuegbar"
+          : "temporarily unavailable";
   const conventionalGenerationDisplay =
     conventionalGenerationValue !== null
       ? formatAdaptivePower(conventionalGenerationValue)
@@ -273,8 +311,8 @@ export default function Home() {
           ? "vorübergehend nicht verfügbar"
           : "temporarily unavailable"
         : language === "de"
-          ? "Lädt..."
-          : "Loading...";
+          ? "voruebergehend nicht verfuegbar"
+          : "temporarily unavailable";
 
   const residualLoadValue =
     market?.realtimeSystem.residualLoadMw !== undefined
@@ -286,8 +324,8 @@ export default function Home() {
             ? "vorübergehend nicht verfügbar"
             : "temporarily unavailable"
         : language === "de"
-          ? "Lädt..."
-          : "Loading...";
+          ? "voruebergehend nicht verfuegbar"
+          : "temporarily unavailable";
 
   const liveUpdateLabel = market
     ? `${LIVE_UPDATE_LABEL[language]} • ${new Date(market.realtimeSystem.timestampIso).toLocaleString("de-DE", {
@@ -297,7 +335,7 @@ export default function Home() {
         hour: "2-digit",
         minute: "2-digit",
       })}`
-    : `${LIVE_UPDATE_LABEL[language]} • ${language === "de" ? "synchronisiert" : "syncing"}`;
+    : `${LIVE_UPDATE_LABEL[language]} • ${language === "de" ? "Datenabruf läuft" : "fetch in progress"}`;
   const todaysKeyStory = buildTodaysKeyStory({ market, assessment, residualLoadValue, language });
   const volatilityScore = assessment ? Math.round(assessment.scoreBreakdown.volatility) : null;
   const rampScore = assessment ? Math.round(assessment.scoreBreakdown.adequacy) : null;
@@ -319,8 +357,8 @@ export default function Home() {
     eveningFlexibilityGapGw !== null
       ? formatGw(eveningFlexibilityGapGw)
       : language === "de"
-        ? "Lädt..."
-        : "Loading...";
+        ? "voruebergehend nicht verfuegbar"
+        : "temporarily unavailable";
 
   const socBand: SocBand = estimateEveningSoc({
     renewableShareOfLoadPct: market?.realtimeSystem.renewableShareOfLoadPct ?? null,
@@ -339,9 +377,9 @@ export default function Home() {
     ? language === "de"
       ? `Die abendliche Flexibilitätslücke wird auf rund ${eveningGapValueDisplay} geschätzt und markiert die residuale Last zwischen 17:00 und 21:00 Uhr, die BESS-Flotten gezielt absorbieren können.`
       : `The evening flexibility gap is estimated near ${eveningGapValueDisplay}, marking the 17:00-21:00 residual load BESS fleets can absorb head-on.`
-    : language === "de"
-      ? "Die Live-Restlast synchronisiert noch; der abendliche Netto-Nachfragestress ist jedoch typischerweise das sauberste Spread-Fenster für flexible Speicher."
-      : "Live residual load is syncing, but evening net-demand stress is typically where flexible storage captures the cleanest spreads.";
+      : language === "de"
+        ? "Die Live-Restlast wird geladen; der abendliche Netto-Nachfragestress ist jedoch typischerweise das sauberste Spread-Fenster fuer flexible Speicher."
+        : "Live residual load is being fetched, while evening net-demand stress is typically where flexible storage captures the cleanest spreads.";
   const eveningGapFormulaNote =
     market && eveningFlexibilityGapGw !== null
       ? language === "de"
@@ -361,8 +399,8 @@ export default function Home() {
   const dailyTotalBalanceValue = dailyEnergyAvailable
     ? formatSignedGwh(dailyEnergy.totalNetBalanceGwh, language)
     : language === "de"
-      ? "Lädt..."
-      : "Loading...";
+      ? "voruebergehend nicht verfuegbar"
+      : "temporarily unavailable";
   const renewableDeficitValue = dailyEnergyAvailable ? formatSignedGwh(dailyEnergy.netBalanceGwh, language) : null;
   const dailyEnergyDetailRows = dailyEnergyAvailable
     ? [
@@ -393,8 +431,8 @@ export default function Home() {
         ? "Die Last bleibt heute über der Gesamt-Erzeugung und erzeugt ein Systemdefizit. Das signalisiert knappe Deckung, die typischerweise durch zusätzliche Importe und preissensitive Flexibilität ausgeglichen wird."
         : "Load remains above total generation today and creates a system deficit. This signals tight coverage, typically balanced by additional imports and price-sensitive flexibility."
     : language === "de"
-      ? "Die tägliche Energiebilanz synchronisiert noch."
-      : "Daily energy balance is syncing.";
+      ? "Die taegliche Energiebilanz wird geladen."
+      : "Daily energy balance is being fetched.";
   const dailyBalanceFormula = dailyEnergyAvailable
     ? language === "de"
       ? `Formel: Σ (Gesamterzeugung − Last) × 0,25h ÷ 1000 über ${dailyEnergy.samplePoints} verfügbare Viertelstunden in ${dailyEnergy.dateBerlin} (Berlin).`
@@ -414,8 +452,8 @@ export default function Home() {
   const socValueDisplay = socAvailable
     ? `~${PERCENT_FORMATTER.format(socBand.midpointPct)}% (${PERCENT_FORMATTER.format(socBand.lowPct)}–${PERCENT_FORMATTER.format(socBand.highPct)}%)`
     : language === "de"
-      ? "Lädt..."
-      : "Loading...";
+      ? "voruebergehend nicht verfuegbar"
+      : "temporarily unavailable";
   const socDetailRows = market
     ? [
         ...(renewableSharePct !== null
@@ -466,7 +504,7 @@ export default function Home() {
   const effectiveGapDisplay = effectiveGapGw !== null ? formatGw(effectiveGapGw) : null;
   const installedPowerGwDisplay = market ? formatGw(market.bess.installedPowerGw) : null;
   const effectiveGapValueDisplay =
-    effectiveGapDisplay ?? (language === "de" ? "Lädt..." : "Loading...");
+    effectiveGapDisplay ?? (language === "de" ? "voruebergehend nicht verfuegbar" : "temporarily unavailable");
   const effectiveGapDetailRows =
     grossGapDisplay && headroomDisplay
       ? [
@@ -494,8 +532,8 @@ export default function Home() {
             ? `Begrenzte Entladeabdeckung (~${headroomDisplay}). Priorität: morgen im Solarfenster wieder aufladen, um den Headroom aufzubauen.`
             : `Limited discharge cover (~${headroomDisplay}). Priority: rebuild headroom by charging in tomorrow's solar window.`
       : language === "de"
-        ? "Effektive Lücke synchronisiert noch."
-        : "Effective gap is syncing.";
+        ? "Die effektive Luecke wird geladen."
+        : "Effective gap is being fetched.";
   const effectiveGapFormula =
     grossGapDisplay && installedPowerGwDisplay && effectiveGapDisplay
       ? language === "de"
@@ -516,8 +554,8 @@ export default function Home() {
           ? `Eine Volatilität von ${volatilityScore}/100 ist moderat: eher selektive Arbitragefenster statt breiter, ganztägiger Spread-Abgriffe.`
           : `Volatility at ${volatilityScore}/100 is moderate, with selective arbitrage windows rather than broad, all-day spread capture.`
       : language === "de"
-        ? "Die Volatilität synchronisiert noch; ab Werten über 55 unterstützt die Marktdynamik typischerweise belastbare Arbitrage- und Balancing-Chancen."
-        : "Volatility is syncing; once above 55, market movement typically supports meaningful arbitrage and balancing opportunities.";
+        ? "Die Volatilitaet wird geladen; ab Werten ueber 55 unterstuetzt die Marktdynamik typischerweise belastbare Arbitrage- und Balancing-Chancen."
+        : "Volatility data is being fetched; once above 55, market movement typically supports meaningful arbitrage and balancing opportunities.";
   const volatilityWhy =
     volatilityScore !== null
       ? language === "de"
@@ -537,8 +575,8 @@ export default function Home() {
           ? `Rampen bei ${rampScore}/100 zeigen moderate Variabilität; die aktuelle Flotte scheint die meisten kurzfristigen Schwankungen bereits zu absorbieren.`
           : `Ramps at ${rampScore}/100 indicate moderate variability, and the current fleet appears to be absorbing most short-term fluctuations.`
       : language === "de"
-        ? "Der Rampendruck synchronisiert noch; moderate Werte stehen meist für handhabbare Variabilität mit gezielten Balancing-Fenstern."
-        : "Ramp pressure is syncing; moderate values usually indicate manageable variability with targeted balancing opportunities.";
+        ? "Der Rampendruck wird geladen; moderate Werte stehen meist fuer handhabbare Variabilitaet mit gezielten Balancing-Fenstern."
+        : "Ramp pressure is being fetched; moderate values usually indicate manageable variability with targeted balancing opportunities.";
   const rampsWhy =
     rampScore !== null
       ? language === "de"
@@ -562,8 +600,8 @@ export default function Home() {
             ? `Ein Opportunity Score von ${opportunityScore}/100 ist aktuell schwach und spricht für selektive Bindung, bis Stress- und Spread-Signale wieder anziehen.`
             : `Opportunity at ${opportunityScore}/100 is currently soft, suggesting selective commitment until stronger stress and spread signals reappear.`
       : language === "de"
-        ? "Der Opportunity Score synchronisiert noch; dieser Kompositwert fasst zusammen, ob aktuelle Bedingungen sofortige BESS-Wertrealisierung tragen."
-        : "Opportunity score is syncing; this composite will summarize whether current conditions support immediate BESS value capture.";
+        ? "Der Opportunity Score wird geladen; dieser Kompositwert fasst zusammen, ob aktuelle Bedingungen sofortige BESS-Wertrealisierung tragen."
+        : "Opportunity score is being fetched; this composite will summarize whether current conditions support immediate BESS value capture.";
   const opportunityWhy =
     opportunityScore !== null
       ? language === "de"
@@ -573,17 +611,53 @@ export default function Home() {
         ? "Warum das wichtig ist: Dieses Leitsignal hält Stakeholder-Entscheidungen synchron, auch wenn zugrunde liegende Metriken mit unterschiedlicher Geschwindigkeit aktualisieren."
         : "Why this matters: This headline signal keeps stakeholder decisions aligned when underlying metrics update at different speeds.";
 
+  const takeawayText =
+    dailyEnergy && effectiveGapGw !== null && socAvailable
+      ? language === "de"
+        ? `Heute liegt die Tagesbilanz bei ${formatSignedValue(dailyEnergy.totalNetBalanceGwh, "GWh")} (Netto-Systembilanz). Der geschätzte Fleet-SoC zum Abend liegt bei rund ${PERCENT_FORMATTER.format(socBand.midpointPct)}%, daher bleibt nach Flottenentladung eine effektive Evening Gap von etwa ${formatGw(effectiveGapGw)}. Für Dispatch heißt das: Chancen selektiv nutzen, aber Zyklen nur bei klaren Spreads fahren.`
+        : `Today, the net daily system balance is ${formatSignedValue(dailyEnergy.totalNetBalanceGwh, "GWh")}. Estimated fleet SoC into the evening is around ${PERCENT_FORMATTER.format(socBand.midpointPct)}%, leaving an effective evening gap near ${formatGw(effectiveGapGw)} after expected fleet discharge. Dispatch takeaway: capture opportunities selectively and avoid cycling unless spreads are clear.`
+      : language === "de"
+        ? "Live-Daten werden geladen. Sobald Tagesbilanz, Fleet-SoC und Evening Gap vollständig vorliegen, wird hier ein klarer, datenbasierter Takeaway angezeigt."
+        : "Live data is loading. Once daily balance, fleet SoC, and evening gap are available, this section will show a clear data-based takeaway.";
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-14 px-8 pb-24 pt-16 lg:px-12">
+      {isLiveDataLoading ? (
+        <div className="pointer-events-none fixed top-16 left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-slate-300/60 bg-white/90 p-3 shadow-lg backdrop-blur dark:border-slate-500/40 dark:bg-slate-900/85">
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            {language === "de"
+              ? "Daten werden live von Energy-Charts & MaStR geladen..."
+              : "Live data is loading from Energy-Charts & MaStR..."}
+          </p>
+          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-slate-200/90 dark:bg-slate-700/70">
+            <div
+              className="h-full bg-primary transition-[width] duration-300 ease-out dark:bg-emerald-300"
+              style={{ width: `${Math.max(5, Math.min(100, liveLoadProgress))}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
       <section id="overview" className="space-y-9 border-b border-slate-300/45 pb-14 dark:border-slate-500/35">
         <p className="text-xs tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{liveUpdateLabel}</p>
+        <article className="relative overflow-hidden rounded-2xl border border-blue-200/80 bg-gradient-to-r from-blue-50 via-blue-50/80 to-white p-4 md:p-5 dark:border-blue-300/35 dark:from-blue-400/12 dark:via-slate-900/85 dark:to-slate-900/80">
+          <span className="absolute inset-y-0 left-0 w-1.5 bg-emerald-500/90 dark:bg-emerald-300/90" />
+          <div className="pl-3">
+            <p className="inline-flex items-center gap-2 text-xs font-semibold tracking-[0.12em] text-blue-800 uppercase dark:text-blue-200">
+              <Lightbulb className="h-3.5 w-3.5" />
+              Heutiger Key Takeaway
+            </p>
+            <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-800 dark:text-slate-100">
+              {takeawayText}
+            </p>
+          </div>
+        </article>
         <h1 className="max-w-5xl text-5xl leading-tight text-slate-900 md:text-7xl dark:text-white [font-family:var(--font-heading)]">
           AETHER
         </h1>
         <p className="max-w-3xl text-xl text-slate-700 dark:text-slate-200 md:text-2xl">
           {language === "de"
             ? "Klarheit für Deutschlands Energiewende"
-            : "Clarity for Germany&apos;s energy transition"}
+            : "Clarity for Germany's energy transition"}
         </p>
         <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
           {language === "de"
@@ -594,8 +668,9 @@ export default function Home() {
           <div className="grid gap-4 md:grid-cols-2">
             <KpiCard
               title={language === "de" ? "Gesamterzeugung" : "Total generation"}
-              value={market ? formatAdaptivePower(market.realtimeSystem.domesticGenerationMw) : language === "de" ? "Lädt..." : "Loading..."}
+              value={market ? formatAdaptivePower(market.realtimeSystem.domesticGenerationMw) : language === "de" ? "voruebergehend nicht verfuegbar" : "temporarily unavailable"}
               meaning={language === "de" ? "Aktuelle inländische Stromerzeugung." : "Current domestic electricity generation."}
+              isLoading={isLiveDataLoading}
               detailRows={[
                 { label: language === "de" ? "Erneuerbar" : "Renewable", value: renewableGenerationDisplay },
                 { label: language === "de" ? "Konventionell" : "Conventional", value: conventionalGenerationDisplay },
@@ -603,8 +678,9 @@ export default function Home() {
             />
             <KpiCard
               title={language === "de" ? "Aktuelle Last" : "Current demand"}
-              value={market ? formatAdaptivePower(market.realtimeSystem.loadMw) : language === "de" ? "Lädt..." : "Loading..."}
+              value={market ? formatAdaptivePower(market.realtimeSystem.loadMw) : language === "de" ? "voruebergehend nicht verfuegbar" : "temporarily unavailable"}
               meaning={language === "de" ? "Live-Leistungsbedarf im Netz." : "Live power needed in the grid."}
+              isLoading={isLiveDataLoading}
             />
           </div>
           <div className="flex justify-center">
@@ -615,10 +691,11 @@ export default function Home() {
                 netPositionMw !== null
                   ? `${netPositionMw >= 0 ? (language === "de" ? "Überschuss" : "Surplus") : language === "de" ? "Defizit" : "Deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}`
                   : language === "de"
-                    ? "Lädt..."
-                    : "Loading..."
+                    ? "voruebergehend nicht verfuegbar"
+                    : "temporarily unavailable"
               }
               meaning={language === "de" ? "Saldo aus inländischer Erzeugung und aktueller Last." : "Domestic generation balance vs current demand."}
+              isLoading={isLiveDataLoading}
             />
           </div>
         </div>
@@ -695,11 +772,20 @@ export default function Home() {
         </article>
         <article className="rounded-2xl border border-slate-300/45 bg-white/70 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
           <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-            {language === "de" ? "Kernaussage des Tages" : "Today&apos;s Key Story"}
+            {language === "de" ? "Kernaussage des Tages" : "Today's Key Story"}
           </p>
-          <p className="mt-3 max-w-5xl text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-            {todaysKeyStory}
-          </p>
+          {isLiveDataLoading ? (
+            <div className="mt-3 max-w-5xl space-y-2">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-11/12" />
+              <Skeleton className="h-3 w-10/12" />
+              <Skeleton className="h-3 w-4/5" />
+            </div>
+          ) : (
+            <p className="mt-3 max-w-5xl text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+              {todaysKeyStory}
+            </p>
+          )}
         </article>
       </section>
 
@@ -726,6 +812,7 @@ export default function Home() {
                 : undefined
             }
             language={language}
+            isLoading={isLiveDataLoading}
           />
           <ValueCard
             title={language === "de" ? "Volatilität" : "Volatility"}
@@ -733,6 +820,7 @@ export default function Home() {
             insight={volatilityInsight}
             whyThisMatters={volatilityWhy}
             language={language}
+            isLoading={isLiveDataLoading}
           />
           <ValueCard
             title={language === "de" ? "Rampen" : "Ramps"}
@@ -740,6 +828,7 @@ export default function Home() {
             insight={rampsInsight}
             whyThisMatters={rampsWhy}
             language={language}
+            isLoading={isLiveDataLoading}
           />
           <ValueCard
             title={language === "de" ? "Opportunity Score" : "Opportunity score"}
@@ -758,6 +847,7 @@ export default function Home() {
                 : undefined
             }
             language={language}
+            isLoading={isLiveDataLoading}
           />
         </div>
 
@@ -801,6 +891,7 @@ export default function Home() {
                   : dailyBalanceFormula
               }
               language={language}
+              isLoading={isLiveDataLoading || !dailyEnergyAvailable}
             />
             <ValueCard
               title={
@@ -814,6 +905,7 @@ export default function Home() {
               whyThisMatters={socWhy}
               formulaNote={socFormula}
               language={language}
+              isLoading={isLiveDataLoading || !socAvailable}
             />
             <ValueCard
               title={
@@ -827,16 +919,33 @@ export default function Home() {
               whyThisMatters={effectiveGapWhy}
               formulaNote={effectiveGapFormula}
               language={language}
+              isLoading={isLiveDataLoading || effectiveGapDisplay === null}
             />
           </div>
         </article>
       </section>
 
+      <BessDispatchSimulator />
+
       <section
         className="mx-auto w-full max-w-4xl rounded-2xl border border-slate-300/35 bg-white/55 p-4 dark:border-slate-500/35 dark:bg-slate-900/35 md:p-5"
         id="ai-assessment"
       >
-        <BessAssessmentCenter compact />
+        {showAiAssessmentSection ? (
+          <BessAssessmentCenter
+            compact
+            initialData={assessment}
+            pendingInitialData={isAssessmentPending}
+            skipInitialFetch
+          />
+        ) : (
+          <div className="space-y-3">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-11 w-2/3" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-11/12" />
+          </div>
+        )}
       </section>
 
       <section id="news" className="space-y-8">
@@ -874,6 +983,7 @@ function KpiCard({
   sublabel,
   className,
   detailRows,
+  isLoading = false,
 }: {
   title: string;
   value: string;
@@ -881,14 +991,19 @@ function KpiCard({
   sublabel?: string;
   className?: string;
   detailRows?: Array<{ label: string; value: string }>;
+  isLoading?: boolean;
 }) {
   return (
     <article className={`relative rounded-2xl border border-slate-300/55 bg-white/80 p-5 dark:border-slate-500/40 dark:bg-slate-900/65 ${className ?? ""}`}>
       <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">{title}</p>
-      <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white md:text-4xl [font-family:var(--font-sans)]">
-        {value}
-      </p>
-      {detailRows?.length ? (
+      {isLoading ? (
+        <CardLoadingSkeleton compact />
+      ) : (
+        <>
+          <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white md:text-4xl [font-family:var(--font-sans)]">
+            {value}
+          </p>
+          {detailRows?.length ? (
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 dark:text-slate-200">
           {detailRows.map((detail) => (
             <p key={detail.label} className="inline-flex items-center gap-1.5">
@@ -897,9 +1012,11 @@ function KpiCard({
             </p>
           ))}
         </div>
-      ) : null}
-      {sublabel ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{sublabel}</p> : null}
-      <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{meaning}</p>
+          ) : null}
+          {sublabel ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{sublabel}</p> : null}
+          <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{meaning}</p>
+        </>
+      )}
     </article>
   );
 }
@@ -914,6 +1031,7 @@ function ValueCard({
   detailRows,
   formulaNote,
   language = "en",
+  isLoading = false,
 }: {
   title: string;
   value: string;
@@ -924,11 +1042,16 @@ function ValueCard({
   detailRows?: Array<{ label: string; value: string }>;
   formulaNote?: string | null;
   language?: "en" | "de";
+  isLoading?: boolean;
 }) {
   return (
     <article className="rounded-2xl border border-slate-300/50 bg-white/70 p-6 dark:border-slate-500/40 dark:bg-slate-900/70">
       <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">{title}</p>
-      <p className="mt-3 text-4xl font-extrabold text-slate-900 dark:text-white [font-family:var(--font-sans)]">{value}</p>
+      {isLoading ? (
+        <CardLoadingSkeleton />
+      ) : (
+        <>
+          <p className="mt-3 text-4xl font-extrabold text-slate-900 dark:text-white [font-family:var(--font-sans)]">{value}</p>
       {subValue ? (
         <p className="mt-1 text-sm font-medium text-slate-600 dark:text-slate-300">{subValue}</p>
       ) : null}
@@ -959,6 +1082,20 @@ function ValueCard({
           {tag}
         </p>
       ) : null}
+        </>
+      )}
     </article>
   );
 }
+
+function CardLoadingSkeleton({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={`${compact ? "mt-3 space-y-2" : "mt-3 space-y-3"}`}>
+      <Skeleton className={`${compact ? "h-8 w-2/3" : "h-10 w-3/4"}`} />
+      <Skeleton className="h-3 w-full" />
+      <Skeleton className="h-3 w-11/12" />
+      {!compact ? <Skeleton className="h-3 w-4/5" /> : null}
+    </div>
+  );
+}
+

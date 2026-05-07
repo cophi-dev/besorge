@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useLanguage } from "@/components/language-context";
 
 type AssessmentVerdict = "beneficial_now" | "not_beneficial_now" | "uncertain";
@@ -39,6 +40,8 @@ type AssessmentResponse = {
   asOf: string;
 };
 
+export type { AssessmentResponse };
+
 const verdictLabel: Record<"en" | "de", Record<AssessmentVerdict, string>> = {
   en: {
     beneficial_now: "Beneficial now",
@@ -60,6 +63,9 @@ const verdictTone: Record<AssessmentVerdict, string> = {
 
 type BessAssessmentCenterProps = {
   compact?: boolean;
+  initialData?: AssessmentResponse | null;
+  pendingInitialData?: boolean;
+  skipInitialFetch?: boolean;
 };
 
 const ASSESSMENT_FETCH_RETRIES = 2;
@@ -69,10 +75,15 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-export default function BessAssessmentCenter({ compact = false }: BessAssessmentCenterProps) {
+export default function BessAssessmentCenter({
+  compact = false,
+  initialData = null,
+  pendingInitialData = false,
+  skipInitialFetch = false,
+}: BessAssessmentCenterProps) {
   const { language } = useLanguage();
   const [data, setData] = useState<AssessmentResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!skipInitialFetch && initialData === null);
   const [error, setError] = useState<string | null>(null);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
 
@@ -110,16 +121,22 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
   }, [language]);
 
   useEffect(() => {
+    if (skipInitialFetch) {
+      return;
+    }
     const timeoutId = window.setTimeout(() => {
       void loadAssessment();
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [loadAssessment]);
+  }, [loadAssessment, skipInitialFetch]);
 
   const refreshAssessment = async () => {
     setLoading(true);
     await loadAssessment();
   };
+
+  const resolvedData = data ?? initialData;
+  const isLoading = loading || (pendingInitialData && resolvedData === null && error === null);
 
   return (
     <section
@@ -144,16 +161,19 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
           type="button"
           onClick={() => void refreshAssessment()}
           className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
-          disabled={loading}
+          disabled={isLoading}
         >
-          {loading ? (language === "de" ? "Aktualisiert..." : "Refreshing...") : language === "de" ? "Assessment aktualisieren" : "Refresh assessment"}
+          {isLoading ? (language === "de" ? "Aktualisiert..." : "Refreshing...") : language === "de" ? "Assessment aktualisieren" : "Refresh assessment"}
         </button>
       </div>
 
-      {loading ? (
-        <p className="mt-5 rounded-xl border border-slate-300/60 bg-white/60 p-4 text-sm text-slate-700 dark:border-slate-500/35 dark:bg-slate-900/50 dark:text-slate-200">
-          {language === "de" ? "Assessment wird berechnet..." : "Running assessment..."}
-        </p>
+      {isLoading ? (
+        <div className="mt-5 rounded-xl border border-slate-300/60 bg-white/60 p-4 dark:border-slate-500/35 dark:bg-slate-900/50">
+          <Skeleton className="h-3 w-40" />
+          <Skeleton className="mt-3 h-10 w-32" />
+          <Skeleton className="mt-3 h-3 w-full" />
+          <Skeleton className="mt-2 h-3 w-11/12" />
+        </div>
       ) : null}
 
       {error ? (
@@ -162,7 +182,7 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
         </p>
       ) : null}
 
-      {data ? (
+      {resolvedData ? (
         <div className={`${compact ? "mt-6 space-y-6" : "mt-8 space-y-7 md:space-y-8"}`}>
           <Card className="border-0 bg-white/95 text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
             <CardContent className="py-5">
@@ -170,16 +190,16 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
                 <div
                   className="relative flex h-24 w-24 items-center justify-center rounded-full border border-slate-200 bg-slate-50"
                   style={{
-                    background: `conic-gradient(${scoreColor(data.score)} ${Math.max(
+                    background: `conic-gradient(${scoreColor(resolvedData.score)} ${Math.max(
                       0,
-                      Math.min(100, data.score)
+                      Math.min(100, resolvedData.score)
                     )}%, rgba(148, 163, 184, 0.2) 0%)`,
                   }}
                   role="img"
                   aria-label={
                     language === "de"
-                      ? `Score-Anzeige ${Math.round(data.score)} von 100`
-                      : `Score gauge ${Math.round(data.score)} out of 100`
+                      ? `Score-Anzeige ${Math.round(resolvedData.score)} von 100`
+                      : `Score gauge ${Math.round(resolvedData.score)} out of 100`
                   }
                 >
                   <div className="absolute inset-2 rounded-full bg-white" />
@@ -188,7 +208,7 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
                       {language === "de" ? "Score" : "Score"}
                     </p>
                     <p className="text-2xl font-extrabold text-slate-900 [font-family:var(--font-sans)]">
-                      {Math.round(data.score)}
+                      {Math.round(resolvedData.score)}
                     </p>
                   </div>
                 </div>
@@ -196,13 +216,13 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
                 <div className="space-y-2">
                   <Badge
                     variant="outline"
-                    className={`rounded-full border px-4 py-1.5 text-xs font-semibold tracking-[0.12em] uppercase ${verdictTone[data.verdict]}`}
+                    className={`rounded-full border px-4 py-1.5 text-xs font-semibold tracking-[0.12em] uppercase ${verdictTone[resolvedData.verdict]}`}
                   >
                     <ShieldCheck className="mr-1.5 size-3.5" />
-                    {language === "de" ? "Fazit" : "Verdict"}: {verdictLabel[language][data.verdict]}
+                    {language === "de" ? "Fazit" : "Verdict"}: {verdictLabel[language][resolvedData.verdict]}
                   </Badge>
                   <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-                    {data.analystSummary}
+                    {resolvedData.analystSummary}
                   </p>
                 </div>
 
@@ -211,7 +231,7 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
                   className="h-8 rounded-full border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-800"
                 >
                   <Sparkle className="mr-1.5 size-3.5" />
-                  {language === "de" ? "Konfidenz" : "Confidence"} {Math.round(data.confidence)}%
+                  {language === "de" ? "Konfidenz" : "Confidence"} {Math.round(resolvedData.confidence)}%
                 </Badge>
               </div>
             </CardContent>
@@ -220,13 +240,13 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
           {showFullAnalysis ? (
             <article className="rounded-2xl border border-slate-300/45 bg-white/75 p-5 dark:border-slate-500/35 dark:bg-slate-900/60 md:p-6">
               <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-                {data.fullAnalysisSummary}
+                {resolvedData.fullAnalysisSummary}
               </p>
 
               <div className="mt-5 grid gap-4 md:grid-cols-3">
-                <BriefList title={language === "de" ? "Haupttreiber" : "Key Drivers"} items={data.keyDrivers.slice(0, 3)} />
-                <BriefList title={language === "de" ? "Wesentliche Risiken" : "Main Risks"} items={data.risks.slice(0, 3)} />
-                <BriefList title={language === "de" ? "Empfohlene Maßnahmen" : "Recommended Actions"} items={data.recommendedNextActions.slice(0, 3)} />
+                <BriefList title={language === "de" ? "Haupttreiber" : "Key Drivers"} items={resolvedData.keyDrivers.slice(0, 3)} />
+                <BriefList title={language === "de" ? "Wesentliche Risiken" : "Main Risks"} items={resolvedData.risks.slice(0, 3)} />
+                <BriefList title={language === "de" ? "Empfohlene Maßnahmen" : "Recommended Actions"} items={resolvedData.recommendedNextActions.slice(0, 3)} />
               </div>
             </article>
           ) : null}
@@ -255,23 +275,23 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <HorizonNode
                 label={language === "de" ? "Jetzt" : "Now"}
-                verdict={data.horizonOutlook.now.recommendation}
-                summary={firstSentence(data.horizonOutlook.now.rationale)}
+                verdict={resolvedData.horizonOutlook.now.recommendation}
+                summary={firstSentence(resolvedData.horizonOutlook.now.rationale)}
                 icon={<Sparkle className="size-3.5" />}
                 current
                 delay={0}
               />
               <HorizonNode
                 label={language === "de" ? "Nächste 12M" : "Next 12m"}
-                verdict={data.horizonOutlook.next12m.recommendation}
-                summary={firstSentence(data.horizonOutlook.next12m.rationale)}
+                verdict={resolvedData.horizonOutlook.next12m.recommendation}
+                summary={firstSentence(resolvedData.horizonOutlook.next12m.rationale)}
                 icon={<TrendingUp className="size-3.5" />}
                 delay={0.08}
               />
               <HorizonNode
                 label={language === "de" ? "Nächste 36M" : "Next 36m"}
-                verdict={data.horizonOutlook.next36m.recommendation}
-                summary={firstSentence(data.horizonOutlook.next36m.rationale)}
+                verdict={resolvedData.horizonOutlook.next36m.recommendation}
+                summary={firstSentence(resolvedData.horizonOutlook.next36m.rationale)}
                 icon={<Atom className="size-3.5" />}
                 delay={0.16}
               />
@@ -280,7 +300,7 @@ export default function BessAssessmentCenter({ compact = false }: BessAssessment
 
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {language === "de" ? "Stand:" : "As of:"}{" "}
-            {new Date(data.asOf).toLocaleString("de-DE", {
+            {new Date(resolvedData.asOf).toLocaleString("de-DE", {
               dateStyle: "medium",
               timeStyle: "short",
             })}

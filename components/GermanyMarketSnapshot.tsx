@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type GermanyMarketSnapshot = {
   retrievedAtIso: string;
@@ -107,9 +108,18 @@ export default function GermanyMarketSnapshot() {
       </p>
 
       {loading ? (
-        <p className="mt-5 rounded-xl border border-slate-300/60 bg-white/60 p-4 text-sm text-slate-700 dark:border-slate-500/35 dark:bg-slate-900/50 dark:text-slate-200">
-          Loading market data...
-        </p>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={`market-skeleton-${index}`}
+              className="rounded-xl border border-slate-300/60 bg-white/65 p-4 dark:border-slate-500/30 dark:bg-slate-900/55"
+            >
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="mt-3 h-8 w-2/3" />
+              <Skeleton className="mt-2 h-3 w-3/4" />
+            </div>
+          ))}
+        </div>
       ) : null}
 
       {error ? (

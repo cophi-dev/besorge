@@ -72,7 +72,7 @@ export function SiteShell({ children }: SiteShellProps) {
               <p className="text-[10px] tracking-[0.16em] text-slate-600 uppercase dark:text-slate-300">
                 {language === "de"
                   ? "Klarheit für Deutschlands Energiewende"
-                  : "Clarity for Germany&apos;s energy transition"}
+                  : "Clarity for Germany's energy transition"}
               </p>
             </div>
           </Link>
@@ -98,9 +98,6 @@ export function SiteShell({ children }: SiteShellProps) {
             </button>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <span className="hidden text-slate-600 dark:text-slate-300 sm:inline">
-              {language === "de" ? "Premium-Marktintelligenz" : "Premium market intelligence"}
-            </span>
             <div className="inline-flex items-center rounded-full border border-slate-300/75 bg-white/95 p-1 shadow-[0_5px_14px_rgba(15,23,42,0.08)] dark:border-slate-500/45 dark:bg-slate-900/70">
               <button
                 type="button"
@@ -137,14 +134,6 @@ export function SiteShell({ children }: SiteShellProps) {
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-full border border-slate-300/75 bg-white/95 px-4 py-2 text-slate-700 shadow-[0_5px_14px_rgba(15,23,42,0.08)] transition hover:text-primary dark:border-slate-500/45 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:text-emerald-200"
-            >
-              GitHub
-            </a>
           </div>
         </nav>
       </header>

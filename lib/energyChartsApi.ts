@@ -32,6 +32,8 @@ const renewableShareForecastResponseSchema = z.object({
   substitute: z.boolean(),
   deprecated: z.boolean(),
 });
+type TotalPowerResponse = z.infer<typeof totalPowerResponseSchema>;
+type InstalledPowerResponse = z.infer<typeof installedPowerResponseSchema>;
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -847,16 +849,13 @@ const computeRecentRenewablePatternsSnapshot = (params: {
   };
 };
 
-export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot> => {
-  const [totalPower, installedPower] = await Promise.all([
-    fetchJson("/total_power?country=de", totalPowerResponseSchema, {
-      allowStaleOnFailure: true,
-    }),
-    fetchJson("/installed_power?country=de", installedPowerResponseSchema, {
-      allowStaleOnFailure: true,
-    }),
-  ]);
-
+const buildGermanyMarketSnapshot = ({
+  totalPower,
+  installedPower,
+}: {
+  totalPower: TotalPowerResponse;
+  installedPower: InstalledPowerResponse;
+}): GermanyMarketSnapshot => {
   const loadSeries = findSeriesOrThrow(
     totalPower.production_types,
     "Load (incl. self-consumption)"
@@ -963,13 +962,132 @@ export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot>
   };
 };
 
-export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentContext> => {
-  const [snapshot, totalPower] = await Promise.all([
-    getGermanyMarketSnapshot(),
+export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot> => {
+  const [totalPower, installedPower] = await Promise.all([
     fetchJson("/total_power?country=de", totalPowerResponseSchema, {
       allowStaleOnFailure: true,
     }),
+    fetchJson("/installed_power?country=de", installedPowerResponseSchema, {
+      allowStaleOnFailure: true,
+    }),
   ]);
+
+  return buildGermanyMarketSnapshot({ totalPower, installedPower });
+};
+
+export type GermanyDispatchSlot = {
+  /** ISO-8601 timestamp at the start of the quarter-hour (UTC). */
+  timestampIso: string;
+  /** Berlin local hour at the start of the slot (0..23). */
+  hourBerlin: number;
+  /** Real Energy-Charts residual load in MW for this slot. */
+  residualLoadMw: number;
+};
+
+export type GermanyDispatchSlotsResponse = {
+  /** Berlin local date the slots cover. */
+  dateBerlin: string;
+  /** Number of quarter-hour samples returned (max 96). */
+  samplePoints: number;
+  /** Coverage of the full 24h day (0..1). */
+  pointFractionOfDay: number;
+  /** Source label (always "energy-charts.total_power" for now). */
+  source: "energy-charts.total_power";
+  /** Quarter-hour slots in chronological order. */
+  slots: GermanyDispatchSlot[];
+};
+
+/**
+ * Fetch today's (Berlin) quarter-hour residual load slots from Energy-Charts.
+ *
+ * The simulator only needs a residual-load price proxy plus Berlin hour, so this
+ * helper returns a small, dispatch-shaped DTO instead of the raw `total_power`
+ * payload. Falls back to the most recent fully-observed Berlin day if the
+ * current Berlin day has no usable samples yet (e.g. very early morning).
+ */
+export const getGermanyTodaysDispatchSlots =
+  async (): Promise<GermanyDispatchSlotsResponse> => {
+    const totalPower = await fetchJson(
+      "/total_power?country=de",
+      totalPowerResponseSchema,
+      { allowStaleOnFailure: true }
+    );
+
+    const loadSeries = findSeriesOrThrow(
+      totalPower.production_types,
+      "Load (incl. self-consumption)"
+    );
+    const residualSeries = totalPower.production_types.find(
+      (entry) => entry.name === "Residual load"
+    );
+
+    const indicesByDate = groupIndicesByBerlinDate(totalPower.unix_seconds);
+    const dateKeys = [...indicesByDate.keys()].sort();
+
+    for (let i = dateKeys.length - 1; i >= 0; i -= 1) {
+      const dateKey = dateKeys[i];
+      const indices = indicesByDate.get(dateKey) ?? [];
+      const slots: GermanyDispatchSlot[] = [];
+
+      for (const index of indices) {
+        const ts = totalPower.unix_seconds[index];
+        const loadMw = loadSeries.data[index];
+        if (loadMw === null || !Number.isFinite(loadMw)) {
+          continue;
+        }
+
+        const renewableMw = sumSeriesAtIndex(
+          totalPower.production_types,
+          isRenewableGenerationSeries,
+          index
+        );
+        let residualMw: number | null = null;
+        if (residualSeries) {
+          const direct = residualSeries.data[index];
+          if (direct !== null && Number.isFinite(direct)) {
+            residualMw = direct;
+          }
+        }
+        if (residualMw === null && renewableMw !== null) {
+          residualMw = loadMw - renewableMw;
+        }
+        if (residualMw === null || !Number.isFinite(residualMw)) {
+          continue;
+        }
+
+        slots.push({
+          timestampIso: new Date(ts * 1000).toISOString(),
+          hourBerlin: getBerlinHour(ts),
+          residualLoadMw: residualMw,
+        });
+      }
+
+      if (slots.length >= 4) {
+        return {
+          dateBerlin: dateKey,
+          samplePoints: slots.length,
+          pointFractionOfDay: Math.min(1, slots.length / POINTS_PER_DAY_15MIN),
+          source: "energy-charts.total_power",
+          slots,
+        };
+      }
+    }
+
+    throw new Error(
+      "No usable quarter-hour residual-load slots available from Energy-Charts."
+    );
+  };
+
+export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentContext> => {
+  const [totalPower, installedPower] = await Promise.all([
+    fetchJson("/total_power?country=de", totalPowerResponseSchema, {
+      allowStaleOnFailure: true,
+    }),
+    fetchJson("/installed_power?country=de", installedPowerResponseSchema, {
+      allowStaleOnFailure: true,
+    }),
+  ]);
+  const snapshot = buildGermanyMarketSnapshot({ totalPower, installedPower });
 
   const loadSeries = findSeriesOrThrow(
     totalPower.production_types,

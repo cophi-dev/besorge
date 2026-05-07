@@ -7,6 +7,7 @@ import L from "leaflet";
 import { MapContainer, Marker, Rectangle, TileLayer, Tooltip, useMap } from "react-leaflet";
 
 import type { GermanyBessProject } from "@/lib/germanyBessProjects";
+import { Skeleton } from "@/components/ui/skeleton";
 const DEFAULT_CENTER: [number, number] = [53.5511, 9.9937];
 const DEFAULT_ZOOM = 6;
 
@@ -501,18 +502,25 @@ export default function MegapackMap({ compact = false }: { compact?: boolean }) 
               MaStR provides location context only (heatmap and pins).
             </p>
           </div>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-            Data source:{" "}
-            {knownProjectsLoading
-              ? "Loading mapped projects…"
-              : knownProjectsSource === "mastr_zenodo"
-                ? "Bundled MaStR snapshot"
-                : knownProjectsSource === "fallback"
-                  ? "Fallback curated list"
-                  : knownProjectsError
-                    ? "Unavailable (request timed out or network error)"
-                    : "Unknown"}
-          </p>
+          <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+            {knownProjectsLoading ? (
+              <div className="space-y-1">
+                <Skeleton className="h-3 w-40" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+            ) : (
+              <p>
+                Data source:{" "}
+                {knownProjectsSource === "mastr_zenodo"
+                  ? "Bundled MaStR snapshot"
+                  : knownProjectsSource === "fallback"
+                    ? "Fallback curated list"
+                    : knownProjectsError
+                      ? "Unavailable (request timed out or network error)"
+                      : "Unknown"}
+              </p>
+            )}
+          </div>
           {knownProjectsCacheNote ? (
             <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Cache: {knownProjectsCacheNote}</p>
           ) : null}
