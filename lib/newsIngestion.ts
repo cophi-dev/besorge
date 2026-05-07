@@ -47,9 +47,26 @@ const RSS_SOURCES = rssSourcesSchema.parse([
   },
 ]);
 
+const RSS_FETCH_TIMEOUT_MS = 8_000;
+const AI_CURATION_TIMEOUT_MS = 10_000;
+
 const stripCdata = (value: string) => value.replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "");
 
+const decodeHtmlEntities = (value: string) =>
+  value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+
 const stripHtml = (value: string) => value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
+const normalizeText = (value: string) =>
+  stripHtml(decodeHtmlEntities(value))
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const extractTag = (itemXml: string, tag: string): string | null => {
   const match = itemXml.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "i"));
@@ -72,8 +89,8 @@ const parseRss = (xml: string, sourceName: string): RawNewsCandidate[] => {
       continue;
     }
     const candidate = rawNewsCandidateSchema.safeParse({
-      title: stripHtml(title),
-      description: stripHtml(description) || stripHtml(title),
+      title: normalizeText(title),
+      description: normalizeText(description) || normalizeText(title),
       sourceName,
       url,
       publishedAtIso: publishedAt.toISOString(),
@@ -209,7 +226,7 @@ const getNewsCurationFromAi = async (candidates: RawNewsCandidate[], limit: numb
       },
     ],
   };
-  const response = await fetch(url, {
+  const aiRequest = fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -217,6 +234,12 @@ const getNewsCurationFromAi = async (candidates: RawNewsCandidate[], limit: numb
     },
     body: JSON.stringify(body),
   });
+  const response = await Promise.race([
+    aiRequest,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`AI curation timed out after ${AI_CURATION_TIMEOUT_MS}ms`)), AI_CURATION_TIMEOUT_MS);
+    }),
+  ]);
   if (!response.ok) {
     const responseBody = await response.text();
     log("news curation request failed %o", {
@@ -245,10 +268,18 @@ const getNewsCurationFromAi = async (candidates: RawNewsCandidate[], limit: numb
 export async function getCuratedNewsFeed(limit = 20) {
   const sourceResults = await Promise.allSettled(
     RSS_SOURCES.map(async (source) => {
-      const response = await fetch(source.url, {
-        headers: { Accept: "application/rss+xml, application/xml, text/xml" },
-        next: { revalidate: 60 * 60 * 24 },
-      });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), RSS_FETCH_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch(source.url, {
+          headers: { Accept: "application/rss+xml, application/xml, text/xml" },
+          next: { revalidate: 60 * 60 * 24 },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       if (!response.ok) {
         throw new Error(`RSS fetch failed (${source.name}) with status ${response.status}`);
       }
@@ -258,6 +289,13 @@ export async function getCuratedNewsFeed(limit = 20) {
 
   const candidates = sourceResults.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
   const merged = dedupeCandidates(candidates);
+  if (merged.length === 0) {
+    return curatedNewsResponseSchema.parse({
+      asOfIso: new Date().toISOString(),
+      itemCount: 0,
+      items: [],
+    });
+  }
 
   let items: NewsItem[];
   try {

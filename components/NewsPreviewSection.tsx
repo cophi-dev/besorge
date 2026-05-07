@@ -129,9 +129,20 @@ export default function NewsPreviewSection({
                 </a>
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{item.summary}</p>
-              <p className="mt-3 text-xs text-slate-500 dark:text-slate-300">
-                {item.sourceName} • {new Date(item.publishedAtIso).toLocaleString(language === "de" ? "de-DE" : "en-GB")}
-              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-300">
+                <p>
+                  {item.sourceName} •{" "}
+                  {new Date(item.publishedAtIso).toLocaleString(language === "de" ? "de-DE" : "en-GB")}
+                </p>
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-primary hover:underline dark:text-emerald-200"
+                >
+                  {language === "de" ? "Artikel lesen" : "Read article"}
+                </a>
+              </div>
             </article>
           ))}
         </div>
