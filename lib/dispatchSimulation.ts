@@ -53,8 +53,8 @@ export type DispatchSlotInput = {
   loadMw?: number;
   /** Total domestic generation in MW for this slot. */
   totalGenerationMw?: number;
-  /** Renewable generation in MW for this slot. */
-  renewableGenerationMw?: number;
+  /** Renewable generation in MW for this slot (`null` when absent in the feed — same as Energy-Charts Germany slots). */
+  renewableGenerationMw?: number | null;
 };
 
 export type DispatchAction = "charge" | "discharge" | "idle";
