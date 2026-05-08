@@ -222,6 +222,9 @@ const sumDomesticGenerationMw = (
     if (EXCLUDED_FROM_DOMESTIC_GENERATION.has(series.name)) {
       continue;
     }
+    if (isResidualLoadProductionSeriesName(series.name)) {
+      continue;
+    }
     const value = valueAtIndexWithFallback(series.data, loadIndex, 0);
     if (value !== null) {
       sum += value;
@@ -238,6 +241,9 @@ const sumDomesticGenerationExcludingBatteryMw = (
   let sum = 0;
   for (const series of productionTypes) {
     if (EXCLUDED_FROM_DOMESTIC_GENERATION.has(series.name)) {
+      continue;
+    }
+    if (isResidualLoadProductionSeriesName(series.name)) {
       continue;
     }
     if (/battery/i.test(series.name)) {
@@ -263,6 +269,17 @@ const findBatteryStorageSeries = (
 
 const RENEWABLE_GENERATION_SERIES_REGEX =
   /(wind|solar|biomass|geothermal|hydro run-of-river|hydro water reservoir)/i;
+
+/** Matches Energy-Charts residual rows even if capitalization/suffix wording drifts slightly. */
+const RESIDUAL_LOAD_SERIES_REGEX = /^residual\s*load\b/i;
+
+const findResidualLoadSeries = (
+  productionTypes: ProductionSeries[]
+): ProductionSeries | undefined =>
+  productionTypes.find((entry) => RESIDUAL_LOAD_SERIES_REGEX.test(entry.name.trim()));
+
+const isResidualLoadProductionSeriesName = (name: string): boolean =>
+  RESIDUAL_LOAD_SERIES_REGEX.test(name.trim());
 
 const isRenewableGenerationSeries = (name: string): boolean =>
   !EXCLUDED_FROM_DOMESTIC_GENERATION.has(name) &&
@@ -1007,6 +1024,8 @@ const computeRecentRenewablePatternsSnapshot = (params: {
 };
 
 const MIN_DISPATCH_SLOTS = 4;
+/** Backfill stale / null ECMWF residual points using recent published values (¼ h grain). */
+const RESIDUAL_LOAD_BACKFILL_STEPS = 96;
 
 const extractGermanyDispatchSlotsFromTotalPower = (
   totalPower: TotalPowerResponse
@@ -1015,7 +1034,18 @@ const extractGermanyDispatchSlotsFromTotalPower = (
     totalPower.production_types,
     "Load (incl. self-consumption)"
   );
-  const residualSeries = totalPower.production_types.find((entry) => entry.name === "Residual load");
+  const residualSeries = findResidualLoadSeries(totalPower.production_types);
+  const renewableShareSeriesDirect = totalPower.production_types.find(
+    (entry) => entry.name === "Renewable share of load"
+  );
+  const derivedRenewableShareSeries = deriveRenewableShareOfLoadSeries(
+    totalPower.production_types,
+    loadSeries
+  );
+  const mergedRenewableShareSeries =
+    renewableShareSeriesDirect === undefined
+      ? derivedRenewableShareSeries
+      : mergeRenewableShareSeries(renewableShareSeriesDirect.data, derivedRenewableShareSeries);
 
   const indicesByDate = groupIndicesByBerlinDate(totalPower.unix_seconds);
   const dateKeys = [...indicesByDate.keys()].sort();
@@ -1037,6 +1067,10 @@ const extractGermanyDispatchSlotsFromTotalPower = (
         isRenewableGenerationSeries,
         index
       );
+      const sharePct = valueAtIndexWithFallback(mergedRenewableShareSeries, index, 96);
+      const renewableMwFromShare =
+        sharePct !== null && Number.isFinite(sharePct) && loadMw > 0 ? (sharePct / 100) * loadMw : null;
+
       let residualMw: number | null = null;
       if (residualSeries) {
         const direct = residualSeries.data[index];
@@ -1044,9 +1078,31 @@ const extractGermanyDispatchSlotsFromTotalPower = (
           residualMw = direct;
         }
       }
-      if (residualMw === null && renewableMw !== null) {
+      if (residualMw === null && renewableMw !== null && Number.isFinite(renewableMw)) {
         residualMw = loadMw - renewableMw;
       }
+      if (
+        residualMw === null &&
+        renewableMwFromShare !== null &&
+        Number.isFinite(renewableMwFromShare)
+      ) {
+        residualMw = loadMw - renewableMwFromShare;
+      }
+      if (residualMw === null && residualSeries) {
+        const backfilled = valueAtIndexWithFallback(
+          residualSeries.data,
+          index,
+          RESIDUAL_LOAD_BACKFILL_STEPS
+        );
+        if (backfilled !== null && Number.isFinite(backfilled)) {
+          residualMw = backfilled;
+        }
+      }
+
+      const renewableGenerationMwForSlot =
+        renewableMw ??
+        (renewableMwFromShare !== null ? renewableMwFromShare : null);
+
       if (residualMw === null || !Number.isFinite(residualMw)) {
         continue;
       }
@@ -1057,7 +1113,7 @@ const extractGermanyDispatchSlotsFromTotalPower = (
         residualLoadMw: residualMw,
         loadMw,
         totalGenerationMw: sumDomesticGenerationMw(totalPower.production_types, index),
-        renewableGenerationMw: renewableMw,
+        renewableGenerationMw: renewableGenerationMwForSlot,
       });
     }
 
@@ -1111,7 +1167,7 @@ const buildGermanyMarketSnapshot = ({
       ? null
       : valueAtIndexWithFallback(batteryGridSeries.data, loadIndex);
 
-  const residualSeries = totalPower.production_types.find((entry) => entry.name === "Residual load");
+  const residualSeries = findResidualLoadSeries(totalPower.production_types);
   const residualValue =
     residualSeries === undefined
       ? loadPoint.value - domesticGenerationMw
@@ -1249,7 +1305,7 @@ export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentCo
     "Load (incl. self-consumption)"
   );
   const nonNullLoad = loadSeries.data.filter((value): value is number => value !== null);
-  const residualSeries = totalPower.production_types.find((entry) => entry.name === "Residual load");
+  const residualSeries = findResidualLoadSeries(totalPower.production_types);
   const nonNullResidual =
     residualSeries === undefined
       ? []

@@ -42,6 +42,7 @@ const marketSnapshotSchema = z.object({
     timestampIso: z.string(),
     loadMw: z.number(),
     domesticGenerationMw: z.number(),
+    batteryStorageMw: z.number().nullable().optional(),
     residualLoadMw: z.number().optional(),
     renewableShareOfLoadPct: z.number().optional(),
   }),

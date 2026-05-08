@@ -267,6 +267,96 @@ describe("getGermanyMarketSnapshot evening + daily aggregates", () => {
     expect(snapshot.dayEnergyFlow).not.toBeNull();
     expect(snapshot.dayEnergyFlow?.samplePoints).toBe(4);
   });
+
+  it("fills dayEnergyFlow when residual MW is briefly null but renewable share still tracks load coverage", async () => {
+    const anchorUnixSeconds = 1_718_402_400;
+    const points = 40;
+    const loadMw = 50_000;
+    const renewablesSharePct = 40;
+    const coalMw = 30_000;
+
+    const totalPower = {
+      unix_seconds: Array.from({ length: points }, (_, i) => anchorUnixSeconds + i * 900),
+      production_types: [
+        { name: "Load (incl. self-consumption)", data: buildConstantSeries(points, loadMw) },
+        /** Latest quarter-hours often publish load + renewable share ahead of ECMWF residual. */
+        {
+          name: "Residual load",
+          data: Array.from({ length: points }, (_, i) =>
+            i < points - 10 ? loadMw - (loadMw * renewablesSharePct) / 100 : null
+          ),
+        },
+        {
+          name: "Renewable share of load",
+          data: buildConstantSeries(points, renewablesSharePct),
+        },
+        /** No discrete wind/solar columns — renewables are implied only via the share curve. */
+        { name: "Fossil hard coal", data: buildConstantSeries(points, coalMw) },
+      ],
+    };
+
+    const fetchMock = jest.fn(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/installed_power?country=de")) {
+        return makeJsonResponse(installedPowerPayload);
+      }
+      if (url.includes("/total_power?country=de")) {
+        return makeJsonResponse(totalPower);
+      }
+      return makeJsonResponse({ message: "not found" }, 404);
+    });
+    (globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
+
+    const snapshot = await getGermanyMarketSnapshot();
+
+    expect(snapshot.dayEnergyFlow).not.toBeNull();
+    expect(snapshot.dayEnergyFlow?.samplePoints).toBe(points);
+    const expectedRenewMw = (renewablesSharePct / 100) * loadMw;
+    expect(snapshot.dayEnergyFlow?.slots[points - 1]?.residualLoadMw).toBeCloseTo(
+      loadMw - expectedRenewMw,
+      4
+    );
+    expect(snapshot.dayEnergyFlow?.slots[points - 1]?.renewableGenerationMw).toBeCloseTo(
+      expectedRenewMw,
+      4
+    );
+  });
+
+  it("recognizes alternate Energy-Charts labeling for residual load series", async () => {
+    const anchorUnixSeconds = 1_718_402_400;
+    const points = 24;
+    const loadMw = 50_000;
+    const solarMw = 14_000;
+    const residualMw = loadMw - solarMw;
+
+    const totalPower = {
+      unix_seconds: Array.from({ length: points }, (_, i) => anchorUnixSeconds + i * 900),
+      production_types: [
+        { name: "Load (incl. self-consumption)", data: buildConstantSeries(points, loadMw) },
+        { name: "Residual Load (Germany)", data: buildConstantSeries(points, residualMw) },
+        { name: "Solar", data: buildConstantSeries(points, solarMw) },
+        { name: "Fossil hard coal", data: buildConstantSeries(points, 20_000) },
+      ],
+    };
+
+    const fetchMock = jest.fn(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/installed_power?country=de")) {
+        return makeJsonResponse(installedPowerPayload);
+      }
+      if (url.includes("/total_power?country=de")) {
+        return makeJsonResponse(totalPower);
+      }
+      return makeJsonResponse({ message: "not found" }, 404);
+    });
+    (globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
+
+    const snapshot = await getGermanyMarketSnapshot();
+
+    expect(snapshot.dayEnergyFlow).not.toBeNull();
+    expect(snapshot.dayEnergyFlow?.samplePoints).toBe(points);
+    expect(snapshot.dayEnergyFlow?.slots[0]?.residualLoadMw).toBeCloseTo(residualMw, 3);
+  });
 });
 
 describe("getGermanyMarketSnapshot resilience", () => {
