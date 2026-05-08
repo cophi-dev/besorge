@@ -23,6 +23,9 @@ const BessAssessmentCenter = dynamic(() => import("@/components/BessAssessmentCe
 const BessDispatchSimulator = dynamic(() => import("@/components/BessDispatchSimulator"), {
   ssr: false,
 });
+const GermanyDayEnergyFlow = dynamic(() => import("@/components/GermanyDayEnergyFlow"), {
+  ssr: false,
+});
 
 const marketSnapshotSchema = z.object({
   retrievedAtIso: z.string(),
@@ -72,12 +75,46 @@ const marketSnapshotSchema = z.object({
       inferredBatteryReadiness: z.enum(["high", "moderate", "low", "unknown"]),
     })
     .optional(),
+  fleetStructuralSurplus: z
+    .object({
+      dateBerlin: z.string(),
+      samplePoints: z.number(),
+      pointFractionOfDay: z.number(),
+      totalStructuralSurplusMwh: z.number(),
+      observedBatteryAbsorptionInSurplusMwh: z.number(),
+      uncapturedStructuralSurplusMwh: z.number(),
+    })
+    .nullable()
+    .optional(),
+  dayEnergyFlow: z
+    .object({
+      dateBerlin: z.string(),
+      samplePoints: z.number(),
+      pointFractionOfDay: z.number(),
+      source: z.literal("energy-charts.total_power"),
+      slots: z.array(
+        z.object({
+          timestampIso: z.string(),
+          hourBerlin: z.number(),
+          residualLoadMw: z.number(),
+          loadMw: z.number(),
+          totalGenerationMw: z.number(),
+          renewableGenerationMw: z.number().nullable(),
+        })
+      ),
+    })
+    .nullable()
+    .optional(),
 });
 
 type MarketSnapshot = z.infer<typeof marketSnapshotSchema>;
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 const PERCENT_FORMATTER = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
+const MWH_COMPACT_FORMATTER = new Intl.NumberFormat("de-DE", {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 0,
+});
 const LIVE_UPDATE_LABEL: Record<"en" | "de", string> = {
   en: "Updated live",
   de: "Live aktualisiert",
@@ -133,6 +170,29 @@ function formatInstalledValue(value: number, unit: "GW" | "GWh"): string {
   return `${NUMBER_FORMATTER.format(value)} ${unit}`;
 }
 
+function formatCoveragePct(pointFractionOfDay: number): string {
+  return `${NUMBER_FORMATTER.format(pointFractionOfDay * 100)}%`;
+}
+
+type FleetMode = "charging" | "discharging" | "idle";
+
+function inferFleetMode(params: {
+  netPositionMw: number | null;
+  residualLoadMw: number | null;
+}): FleetMode | null {
+  const { netPositionMw, residualLoadMw } = params;
+  if (netPositionMw === null && residualLoadMw === null) {
+    return null;
+  }
+  if ((netPositionMw ?? 0) > 1200 || (residualLoadMw ?? 0) < -800) {
+    return "charging";
+  }
+  if ((netPositionMw ?? 0) < -1200 || (residualLoadMw ?? 0) > 18000) {
+    return "discharging";
+  }
+  return "idle";
+}
+
 export default function Home() {
   const { language } = useLanguage();
   const [market, setMarket] = useState<MarketSnapshot | null>(null);
@@ -169,7 +229,7 @@ export default function Home() {
       setIsAssessmentPending(true);
       setLiveLoadProgress(10);
 
-      const marketPromise = fetchJsonWithRetry<unknown>("/api/market/de");
+      const marketPromise = fetchJsonWithRetry<unknown>("/api/market/de", "no-store");
       const assessmentPromise = fetchJsonWithRetry<AssessmentResponse>("/api/assessment/de");
 
       try {
@@ -250,6 +310,26 @@ export default function Home() {
       ? Math.max(0, market.realtimeSystem.domesticGenerationMw - renewableGenerationValue)
       : null;
   const netPositionMw = market ? market.realtimeSystem.domesticGenerationMw - market.realtimeSystem.loadMw : null;
+  const inferredFleetMode = inferFleetMode({
+    netPositionMw,
+    residualLoadMw: market?.realtimeSystem.residualLoadMw ?? null,
+  });
+  const fleetModeLabel =
+    inferredFleetMode === null
+      ? language === "de"
+        ? "voruebergehend nicht verfuegbar"
+        : "temporarily unavailable"
+      : language === "de"
+        ? inferredFleetMode === "charging"
+          ? "Laden"
+          : inferredFleetMode === "discharging"
+            ? "Entladen"
+            : "Leerlauf"
+        : inferredFleetMode === "charging"
+          ? "Charging"
+          : inferredFleetMode === "discharging"
+            ? "Discharging"
+            : "Idle";
   const renewableGenerationDisplay =
     renewableGenerationValue !== null
       ? formatAdaptivePower(renewableGenerationValue)
@@ -335,14 +415,68 @@ export default function Home() {
   const renewableShareDisplay =
     renewableSharePct !== null ? `${PERCENT_FORMATTER.format(renewableSharePct)}%` : unavailableShort;
 
-  const takeawayText =
-    dailyEnergy && effectiveGapGw !== null && socAvailable
+  const fleetStructuralSurplus = market?.fleetStructuralSurplus ?? null;
+  const fleetUncapturedSurplusDisplay =
+    fleetStructuralSurplus !== null
+      ? `${MWH_COMPACT_FORMATTER.format(fleetStructuralSurplus.uncapturedStructuralSurplusMwh)} MWh`
+      : unavailableShort;
+
+  const fleetSurplusMethodologyFootnote =
+    market && !fleetStructuralSurplus
       ? language === "de"
-        ? `Heute liegt die Tagesbilanz bei ${formatSignedValue(dailyEnergy.totalNetBalanceGwh, "GWh")} (Netto-Systembilanz). Der geschätzte Fleet-SoC zum Abend liegt bei rund ${PERCENT_FORMATTER.format(socBand.midpointPct)}%, daher bleibt nach Flottenentladung eine effektive Evening Gap von etwa ${formatGw(effectiveGapGw)}. Für Dispatch heißt das: Chancen selektiv nutzen, aber Zyklen nur bei klaren Spreads fahren.`
-        : `Today, the net daily system balance is ${formatSignedValue(dailyEnergy.totalNetBalanceGwh, "GWh")}. Estimated fleet SoC into the evening is around ${PERCENT_FORMATTER.format(socBand.midpointPct)}%, leaving an effective evening gap near ${formatGw(effectiveGapGw)} after expected fleet discharge. Dispatch takeaway: capture opportunities selectively and avoid cycling unless spreads are clear.`
-      : language === "de"
-        ? "Live-Daten werden geladen. Sobald Tagesbilanz, Fleet-SoC und Evening Gap vollständig vorliegen, wird hier ein klarer, datenbasierter Takeaway angezeigt."
-        : "Live data is loading. Once daily balance, fleet SoC, and evening gap are available, this section will show a clear data-based takeaway.";
+        ? "Hinweis: Ohne Batterieserie im Energy-Charts-total_power-Feed kann der nicht aufgenommene Ueberschuss hier nicht ermittelt werden."
+        : "Note: Without a battery series in the Energy-Charts total_power payload, observed uncaptured surplus cannot be computed here."
+      : fleetStructuralSurplus
+        ? language === "de"
+          ? `Messgroesse fuer ${fleetStructuralSurplus.dateBerlin} (${formatCoveragePct(fleetStructuralSurplus.pointFractionOfDay)} des Tages): je Viertelstunde struktureller Ueberschuss (inl. Erzeugung ohne Batterieserie minus Last); Abzug davon bis zur beobachteten Flottenladung (${MWH_COMPACT_FORMATTER.format(fleetStructuralSurplus.observedBatteryAbsorptionInSurplusMwh)} MWh gesamt), wobei negative MW in der Batterieserie als Laden gewertet werden. Nur Slots mit strukturellem Ueberschuss.`
+          : `Metric for ${fleetStructuralSurplus.dateBerlin} (${formatCoveragePct(fleetStructuralSurplus.pointFractionOfDay)} of day): quarter-hour structural surplus (domestic generation excluding battery stack − load); minus observed fleet charging (total ${MWH_COMPACT_FORMATTER.format(fleetStructuralSurplus.observedBatteryAbsorptionInSurplusMwh)} MWh), treating negative MW in the battery series as charging. Only slots with positive structural surplus.`
+        : null;
+
+  const fallbackTakeawayText =
+    language === "de"
+      ? "Live-Daten werden geladen. Sobald aktuelle Netto-Position, Tagesbilanz, Forecast-Signal und Fleet-SoC vorliegen, wird hier ein klarer 3-Horizonte-Takeaway angezeigt."
+      : "Live data is loading. Once current net position, full-day balance, forecast signal, and fleet SoC are available, this section will show a clear three-horizon takeaway.";
+
+  const takeawaySections =
+    dailyEnergy && effectiveGapGw !== null && socAvailable && netPositionMw !== null
+      ? language === "de"
+        ? [
+            {
+              label: "Jetzt",
+              text: `Netto-Position: ${netPositionMw >= 0 ? "Ueberschuss" : "Defizit"} ${formatAdaptivePower(Math.abs(netPositionMw))}; BESS-Flottenmodus: ${fleetModeLabel}.`,
+            },
+            {
+              label: "Tagesbilanz Deutschland",
+              text: `${formatSignedValue(dailyEnergy.totalNetBalanceGwh, "GWh")} bis jetzt (${formatCoveragePct(dailyEnergy.pointFractionOfDay)} des Tages erfasst).`,
+            },
+            {
+              label: "Forecast / Struktursignal",
+              text: assessment?.shortTermSignal ?? "Kurzfristsignal wird geladen.",
+            },
+            {
+              label: "Abendluecke (SoC-adjustiert)",
+              text: `Bei geschaetztem Evening-SoC von rund ${PERCENT_FORMATTER.format(socBand.midpointPct)}% bleibt eine effektive Evening Gap von etwa ${formatGw(effectiveGapGw)}.`,
+            },
+          ]
+        : [
+            {
+              label: "Now",
+              text: `Net position: ${netPositionMw >= 0 ? "surplus" : "deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}; BESS fleet mode: ${fleetModeLabel}.`,
+            },
+            {
+              label: "Germany day balance",
+              text: `${formatSignedValue(dailyEnergy.totalNetBalanceGwh, "GWh")} so far (${formatCoveragePct(dailyEnergy.pointFractionOfDay)} of the day observed).`,
+            },
+            {
+              label: "Forecast / structural signal",
+              text: assessment?.shortTermSignal ?? "Short-term signal is loading.",
+            },
+            {
+              label: "Evening gap (SoC-adjusted)",
+              text: `With estimated evening SoC near ${PERCENT_FORMATTER.format(socBand.midpointPct)}%, the effective evening gap remains around ${formatGw(effectiveGapGw)}.`,
+            },
+          ]
+      : null;
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-16 px-8 pb-24 pt-16 md:gap-20 lg:px-12">
@@ -370,9 +504,27 @@ export default function Home() {
               <Lightbulb className="h-3.5 w-3.5" />
               Heutiger Key Takeaway
             </p>
-            <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-800 dark:text-slate-100">
-              {takeawayText}
-            </p>
+            {takeawaySections ? (
+              <div className="mt-3 grid gap-2.5">
+                {takeawaySections.map((section) => (
+                  <div
+                    key={section.label}
+                    className="rounded-lg border border-slate-200/80 bg-white/70 px-3 py-2 dark:border-slate-600/45 dark:bg-slate-900/45"
+                  >
+                    <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase dark:text-slate-300">
+                      {section.label}
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-slate-800 dark:text-slate-100">
+                      {section.text}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-800 dark:text-slate-100">
+                {fallbackTakeawayText}
+              </p>
+            )}
           </div>
         </article>
         <h1 className="max-w-5xl text-5xl leading-tight text-slate-900 md:text-7xl dark:text-white [font-family:var(--font-heading)]">
@@ -419,6 +571,7 @@ export default function Home() {
                     : "temporarily unavailable"
               }
               meaning={language === "de" ? "Saldo aus inländischer Erzeugung und aktueller Last." : "Domestic generation balance vs current demand."}
+              sublabel={`${language === "de" ? "BESS-Status" : "BESS status"}: ${fleetModeLabel}`}
               isLoading={isLiveDataLoading}
             />
           </div>
@@ -495,6 +648,14 @@ export default function Home() {
           </div>
         </article>
       </section>
+
+      <GermanyDayEnergyFlow
+        flow={market?.dayEnergyFlow ?? null}
+        fleetCapacityGwh={market?.bess.installedCapacityGwh}
+        fleetPowerGw={market?.bess.installedPowerGw}
+        language={language}
+        isLoading={isLiveDataLoading}
+      />
 
       <BessDispatchSimulator />
 
@@ -589,7 +750,17 @@ export default function Home() {
             value={eveningGapValueDisplay}
             isLoading={isLiveDataLoading}
           />
+          <QuickStatPill
+            label={language === "de" ? "Ueberschuss ohne Speicherdecke (Ist)" : "Uncaptured surplus (observed)"}
+            value={fleetUncapturedSurplusDisplay}
+            isLoading={isLiveDataLoading}
+          />
         </div>
+        {fleetSurplusMethodologyFootnote ? (
+          <p className="max-w-4xl text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+            {fleetSurplusMethodologyFootnote}
+          </p>
+        ) : null}
         {dailyEnergy ? (
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
             {language === "de" ? "Datum (Berlin):" : "Date (Berlin):"} {dailyEnergy.dateBerlin}

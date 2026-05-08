@@ -10,7 +10,7 @@ const log = createLogger("api:market:de");
 const getGermanyMarketSnapshotCached = unstable_cache(
   async () => getGermanyMarketSnapshot(),
   ["energy-charts-germany-market-snapshot"],
-  { revalidate: 120 }
+  { revalidate: 60 }
 );
 
 export async function GET() {
@@ -18,7 +18,7 @@ export async function GET() {
     const snapshot = await getGermanyMarketSnapshotCached();
     return NextResponse.json(snapshot, {
       headers: {
-        "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600",
+        "Cache-Control": "no-store",
       },
     });
   } catch (error) {

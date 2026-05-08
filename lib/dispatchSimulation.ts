@@ -33,7 +33,7 @@ const PRICE_PROXY_CEILING_EUR_PER_MWH = 250;
  */
 const EVENING_DISCHARGE_BONUS_FRACTION = 0.2;
 
-export type DispatchStrategy = "arbitrage_evening_priority";
+export type DispatchStrategy = "auto_policy_v1";
 
 export type DispatchSimulationInput = {
   powerMw: number;
@@ -49,6 +49,12 @@ export type DispatchSlotInput = {
   hourBerlin: number;
   /** Real Energy-Charts residual load in MW for this slot. */
   residualLoadMw: number;
+  /** Total load in MW for this slot. */
+  loadMw?: number;
+  /** Total domestic generation in MW for this slot. */
+  totalGenerationMw?: number;
+  /** Renewable generation in MW for this slot. */
+  renewableGenerationMw?: number;
 };
 
 export type DispatchAction = "charge" | "discharge" | "idle";
@@ -57,6 +63,9 @@ export type DispatchScheduleEntry = {
   timestampIso: string;
   hourBerlin: number;
   residualLoadMw: number;
+  loadMw: number | null;
+  totalGenerationMw: number | null;
+  renewableGenerationMw: number | null;
   /** Synthesized DE day-ahead-style price proxy in €/MWh. */
   priceProxyEurPerMwh: number;
   action: DispatchAction;
@@ -65,6 +74,17 @@ export type DispatchScheduleEntry = {
   /** State of charge in MWh at the END of this slot. */
   socMwh: number;
   socPct: number;
+  /** Remaining room to charge at END of slot (MWh). */
+  chargeHeadroomMwh: number;
+  /** Remaining room to discharge at END of slot (MWh). */
+  dischargeHeadroomMwh: number;
+  /** Human-readable auto-policy reason for this slot decision. */
+  decisionReason: string;
+  /**
+   * Best-case SoC (%) reachable by this slot if charging only from residual
+   * surplus (residualLoadMw < 0), constrained by power, capacity, and RTE.
+   */
+  maxReachableSocPct: number;
 };
 
 export type DispatchResults = {
@@ -88,6 +108,15 @@ export type DispatchResults = {
   averageSpreadEurPerMwh: number;
   /** Round-trip energy loss as a percentage of grid input. */
   roundTripLossPct: number;
+  /** Max reachable SoC at the start of the evening window (17:00 Berlin). */
+  maxReachableSocByEveningPct: number;
+  /** Maximum reachable SoC at any time in the observed day. */
+  maxReachableSocPeakPct: number;
+  /**
+   * Surplus energy that was available in-slot but not stored due to BESS
+   * charging constraints (power and/or remaining capacity), in MWh.
+   */
+  uncapturedSurplusMwh: number;
 };
 
 export type DispatchSimulationOutput = {
@@ -106,6 +135,15 @@ export type DispatchSimulationOutput = {
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+const quantile = (values: number[], q: number): number => {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * q)));
+  return sorted[index] ?? 0;
+};
 
 const buildPriceProxyMapper = (residuals: number[]) => {
   const minR = Math.min(...residuals);
@@ -162,6 +200,9 @@ export const simulateDispatch = (
   const { mapper: priceProxy, minPrice, maxPrice } = buildPriceProxyMapper(residuals);
   const priceRange = Math.max(0, maxPrice - minPrice);
   const eveningBonus = priceRange * EVENING_DISCHARGE_BONUS_FRACTION;
+  const priceP35 = quantile(enrichedPrices(residuals, priceProxy), 0.35);
+  const priceP75 = quantile(enrichedPrices(residuals, priceProxy), 0.75);
+  const eveningResidualThreshold = quantile(residuals, 0.7);
 
   const enrichedSlots = sortedSlots.map((slot, index) => {
     const price = priceProxy(slot.residualLoadMw);
@@ -175,37 +216,6 @@ export const simulateDispatch = (
     };
   });
 
-  const desiredDischargeSlots = Math.ceil(inputs.capacityMwh / energyPerSlotMwh);
-  const cappedDischargeSlots = Math.min(desiredDischargeSlots, enrichedSlots.length);
-
-  const dischargeRanked = [...enrichedSlots].sort(
-    (a, b) => b.dischargeScore - a.dischargeScore
-  );
-  const dischargeSet = new Set<number>(
-    dischargeRanked.slice(0, cappedDischargeSlots).map((s) => s.index)
-  );
-
-  const earliestDischargeIndex =
-    dischargeSet.size === 0
-      ? enrichedSlots.length
-      : Math.min(...Array.from(dischargeSet));
-
-  // Charge from grid is larger than what is stored, so we may want a few extra slots
-  // to fully fill the battery once charge-side losses are applied.
-  const desiredChargeSlots = Math.ceil(
-    inputs.capacityMwh / sqrtEta / energyPerSlotMwh
-  );
-
-  const chargeCandidates = enrichedSlots
-    .filter(
-      (slot) => slot.index < earliestDischargeIndex && !dischargeSet.has(slot.index)
-    )
-    .sort((a, b) => a.priceProxyEurPerMwh - b.priceProxyEurPerMwh);
-  const cappedChargeSlots = Math.min(desiredChargeSlots, chargeCandidates.length);
-  const chargeSet = new Set<number>(
-    chargeCandidates.slice(0, cappedChargeSlots).map((s) => s.index)
-  );
-
   let socMwh = 0;
   let energyChargedFromGridMwh = 0;
   let energyDischargedToGridMwh = 0;
@@ -213,14 +223,67 @@ export const simulateDispatch = (
   let dischargeRevenueEur = 0;
   let dischargedFromBatteryMwh = 0;
   let eveningDeliveredMwh = 0;
+  let uncapturedSurplusMwh = 0;
   let actualChargeSlots = 0;
   let actualDischargeSlots = 0;
+  let envelopeSocMwh = 0;
+  let maxReachableSocByEveningPct = 0;
+  let maxReachableSocPeakPct = 0;
 
   const schedule: DispatchScheduleEntry[] = enrichedSlots.map((slot) => {
     let action: DispatchAction = "idle";
+    let decisionReason = "hold_reserve";
     let signedPowerMw = 0;
 
-    if (chargeSet.has(slot.index) && socMwh < inputs.capacityMwh) {
+    const hasTotalBalanceForAction =
+      isFiniteNumber(slot.totalGenerationMw) && isFiniteNumber(slot.loadMw);
+    const availableSurplusMw = hasTotalBalanceForAction
+      ? Math.max(0, (slot.totalGenerationMw ?? 0) - (slot.loadMw ?? 0))
+      : slot.residualLoadMw < 0
+        ? Math.abs(slot.residualLoadMw)
+        : 0;
+    const futureSlotsBeforeEvening = enrichedSlots.filter(
+      (s) => s.index >= slot.index && s.hourBerlin < 17
+    );
+    const futureSurplusBeforeEveningMwh = futureSlotsBeforeEvening.reduce((sum, s) => {
+      const hasBalance = isFiniteNumber(s.totalGenerationMw) && isFiniteNumber(s.loadMw);
+      const futureSurplusMw = hasBalance
+        ? Math.max(0, (s.totalGenerationMw ?? 0) - (s.loadMw ?? 0))
+        : s.residualLoadMw < 0
+          ? Math.abs(s.residualLoadMw)
+          : 0;
+      return sum + Math.min(inputs.powerMw, futureSurplusMw) * dt * sqrtEta;
+    }, 0);
+    const eveningRiskHigh = slot.residualLoadMw >= eveningResidualThreshold || slot.isEvening;
+    const targetSocForEveningMwh = inputs.capacityMwh * (eveningRiskHigh ? 0.65 : 0.4);
+    const needsPrecharge = socMwh < targetSocForEveningMwh && futureSurplusBeforeEveningMwh < (targetSocForEveningMwh - socMwh);
+
+    if (availableSurplusMw > 0 && socMwh < inputs.capacityMwh) {
+      const availableSurplusMwh = availableSurplusMw * dt;
+      const gridChargeCapMwh = Math.min(energyPerSlotMwh, availableSurplusMwh);
+      const desiredStoredMwh = gridChargeCapMwh * sqrtEta;
+      const headroomMwh = inputs.capacityMwh - socMwh;
+      const actualStoredMwh = Math.min(desiredStoredMwh, headroomMwh);
+      if (actualStoredMwh > 1e-6) {
+        const actualGridDrawMwh = actualStoredMwh / sqrtEta;
+        const actualPowerMw = actualGridDrawMwh / dt;
+        signedPowerMw = -actualPowerMw;
+        socMwh += actualStoredMwh;
+        energyChargedFromGridMwh += actualGridDrawMwh;
+        chargeCostEur += actualGridDrawMwh * slot.priceProxyEurPerMwh;
+        action = "charge";
+        decisionReason = "surplus_capture";
+        actualChargeSlots += 1;
+        uncapturedSurplusMwh += Math.max(0, availableSurplusMwh - actualGridDrawMwh);
+      }
+    } else if (availableSurplusMw > 0) {
+      uncapturedSurplusMwh += availableSurplusMw * dt;
+    } else if (
+      !slot.isEvening &&
+      needsPrecharge &&
+      slot.priceProxyEurPerMwh <= priceP35 &&
+      socMwh < inputs.capacityMwh
+    ) {
       const desiredStoredMwh = energyPerSlotMwh * sqrtEta;
       const headroomMwh = inputs.capacityMwh - socMwh;
       const actualStoredMwh = Math.min(desiredStoredMwh, headroomMwh);
@@ -232,9 +295,13 @@ export const simulateDispatch = (
         energyChargedFromGridMwh += actualGridDrawMwh;
         chargeCostEur += actualGridDrawMwh * slot.priceProxyEurPerMwh;
         action = "charge";
+        decisionReason = "precharge_evening_risk";
         actualChargeSlots += 1;
       }
-    } else if (dischargeSet.has(slot.index) && socMwh > 1e-6) {
+    } else if (
+      socMwh > 1e-6 &&
+      (slot.isEvening || slot.priceProxyEurPerMwh + (slot.isEvening ? eveningBonus : 0) >= priceP75)
+    ) {
       const desiredFromBatteryMwh = energyPerSlotMwh / sqrtEta;
       const actualFromBatteryMwh = Math.min(desiredFromBatteryMwh, socMwh);
       if (actualFromBatteryMwh > 1e-6) {
@@ -249,19 +316,56 @@ export const simulateDispatch = (
           eveningDeliveredMwh += actualToGridMwh;
         }
         action = "discharge";
+        decisionReason = slot.isEvening ? "evening_support" : "high_price_discharge";
         actualDischargeSlots += 1;
       }
+    }
+
+    // Envelope: prioritize real domestic surplus (generation - load). If not
+    // available, fall back to residual<0 (renewable oversupply proxy).
+    const hasTotalBalanceForEnvelope =
+      isFiniteNumber(slot.totalGenerationMw) && isFiniteNumber(slot.loadMw);
+    const availableSurplusMwForEnvelope = hasTotalBalanceForEnvelope
+      ? Math.max(0, (slot.totalGenerationMw ?? 0) - (slot.loadMw ?? 0))
+      : slot.residualLoadMw < 0
+        ? Math.abs(slot.residualLoadMw)
+        : 0;
+    if (availableSurplusMwForEnvelope > 0 && envelopeSocMwh < inputs.capacityMwh) {
+      const surplusMwh = availableSurplusMwForEnvelope * dt;
+      const gridDrawableMwh = Math.min(energyPerSlotMwh, surplusMwh);
+      const storedFromSurplusMwh = gridDrawableMwh * sqrtEta;
+      const headroomMwh = inputs.capacityMwh - envelopeSocMwh;
+      envelopeSocMwh += Math.min(storedFromSurplusMwh, headroomMwh);
+    }
+    const maxReachableSocPct = (envelopeSocMwh / inputs.capacityMwh) * 100;
+    maxReachableSocPeakPct = Math.max(maxReachableSocPeakPct, maxReachableSocPct);
+    if (slot.hourBerlin === 17) {
+      maxReachableSocByEveningPct = Math.max(
+        maxReachableSocByEveningPct,
+        maxReachableSocPct
+      );
     }
 
     return {
       timestampIso: slot.timestampIso,
       hourBerlin: slot.hourBerlin,
       residualLoadMw: slot.residualLoadMw,
+      loadMw: isFiniteNumber(slot.loadMw) ? slot.loadMw : null,
+      totalGenerationMw: isFiniteNumber(slot.totalGenerationMw)
+        ? slot.totalGenerationMw
+        : null,
+      renewableGenerationMw: isFiniteNumber(slot.renewableGenerationMw)
+        ? slot.renewableGenerationMw
+        : null,
       priceProxyEurPerMwh: slot.priceProxyEurPerMwh,
       action,
       powerMw: signedPowerMw,
       socMwh,
       socPct: (socMwh / inputs.capacityMwh) * 100,
+      chargeHeadroomMwh: Math.max(0, inputs.capacityMwh - socMwh),
+      dischargeHeadroomMwh: Math.max(0, socMwh),
+      decisionReason,
+      maxReachableSocPct,
     };
   });
 
@@ -280,6 +384,10 @@ export const simulateDispatch = (
       ? ((energyChargedFromGridMwh - energyDischargedToGridMwh) / energyChargedFromGridMwh) *
         100
       : 0;
+  if (maxReachableSocByEveningPct <= 0) {
+    const eveningPoint = schedule.find((entry) => entry.hourBerlin >= 17);
+    maxReachableSocByEveningPct = eveningPoint?.maxReachableSocPct ?? maxReachableSocPeakPct;
+  }
 
   return {
     inputs,
@@ -295,6 +403,9 @@ export const simulateDispatch = (
       eveningCoveragePct,
       averageSpreadEurPerMwh: avgDischargePriceEurPerMwh - avgChargePriceEurPerMwh,
       roundTripLossPct,
+      maxReachableSocByEveningPct,
+      maxReachableSocPeakPct,
+      uncapturedSurplusMwh,
     },
     diagnostics: {
       samplePoints: slots.length,
@@ -312,3 +423,7 @@ export const __INTERNAL__ = {
   EVENING_DISCHARGE_BONUS_FRACTION,
   EVENING_HOURS_BERLIN,
 };
+
+function enrichedPrices(residuals: number[], mapper: (residual: number) => number): number[] {
+  return residuals.map((value) => mapper(value));
+}

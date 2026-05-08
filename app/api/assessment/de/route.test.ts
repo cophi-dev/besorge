@@ -58,6 +58,8 @@ describe("GET /api/assessment/de", () => {
         },
         eveningWindow: null,
         dailyEnergy: null,
+        fleetStructuralSurplus: null,
+        dayEnergyFlow: null,
         recentRenewablePatterns: {
           windowDays: 3,
           solarRichDays: null,

@@ -24,7 +24,7 @@ import { createLogger } from "@/lib/debug";
 
 const log = createLogger("dispatch-simulator");
 
-const STRATEGY_VALUE = "arbitrage_evening_priority" as const;
+const STRATEGY_VALUE = "auto_policy_v1" as const;
 
 const POWER_MIN_MW = 50;
 const POWER_MAX_MW = 2_000;
@@ -58,11 +58,18 @@ const responseSchema = z.object({
       timestampIso: z.string(),
       hourBerlin: z.number(),
       residualLoadMw: z.number(),
+      loadMw: z.number().nullable(),
+      totalGenerationMw: z.number().nullable(),
+      renewableGenerationMw: z.number().nullable(),
       priceProxyEurPerMwh: z.number(),
       action: z.enum(["charge", "discharge", "idle"]),
+      decisionReason: z.string(),
       powerMw: z.number(),
       socMwh: z.number(),
       socPct: z.number(),
+      chargeHeadroomMwh: z.number(),
+      dischargeHeadroomMwh: z.number(),
+      maxReachableSocPct: z.number(),
     })
   ),
   results: z.object({
@@ -76,6 +83,9 @@ const responseSchema = z.object({
     eveningCoveragePct: z.number(),
     averageSpreadEurPerMwh: z.number(),
     roundTripLossPct: z.number(),
+    maxReachableSocByEveningPct: z.number(),
+    maxReachableSocPeakPct: z.number(),
+    uncapturedSurplusMwh: z.number(),
   }),
   diagnostics: z.object({
     samplePoints: z.number(),
@@ -116,7 +126,7 @@ const copy = {
     eyebrow: "Dispatch simulation",
     title: "BESS Dispatch Simulator",
     intro:
-      "Run a real, daily dispatch simulation against today's quarter-hour Energy-Charts data. Pick a battery configuration and see how the asset would have charged, discharged, and earned across the day.",
+      "The charts above show today's observed Germany quarter-hour series. Here, add hypothetical incremental power and capacity to see marginal charge, discharge, SoC, and economics layered on that same day — not a replacement for the full fleet.",
     powerLabel: "Power (MW)",
     powerHint: "AC nameplate power, charge and discharge symmetric.",
     capacityLabel: "Capacity (MWh)",
@@ -124,9 +134,9 @@ const copy = {
     rteLabel: "Round-trip efficiency (%)",
     rteHint: "Applied symmetrically as √η on each side.",
     strategyLabel: "Strategy",
-    strategyOption: "Arbitrage + Evening Gap Priority",
+    strategyOption: "Auto Policy v1 (forecast-aware)",
     strategyDescription:
-      "Charge during the cheapest residual-load slots, discharge into the most expensive slots with a strong bias toward the 17:00–21:00 evening flexibility gap.",
+      "Automatically chooses charge/discharge/idle per slot using surplus capture, evening risk, and residual-price regime.",
     runButton: "Run dispatch",
     runButtonLoading: "Running simulation...",
     sourceNote: "Simulation runs on today's real quarter-hour values from Energy-Charts.",
@@ -134,7 +144,7 @@ const copy = {
     cyclesLabel: "Cycles",
     placeholderTitle: "Configure your battery and run a dispatch.",
     placeholderBody:
-      "We will pull today's residual-load profile and walk an arbitrage schedule slot-by-slot, prioritizing the evening flexibility window.",
+      "We reuse the same Energy-Charts slots as on the homepage. Configure extra storage to quantify how much additional evening coverage and spread capture a marginal asset could add on top of the observed profile.",
     errorTitle: "Could not run simulation",
     errorRetry: "Try again",
     kpiRevenue: "Gross revenue",
@@ -157,23 +167,48 @@ const copy = {
     kpiEstimatedRevenueToday: "Estimated revenue today",
     kpiEveningGapCoverage: "Evening gap coverage",
     kpiCyclesToday: "Cycles today",
-    kpiAvgEveningSoc: "Average SoC this evening",
+    kpiMaxReachableEveningSoc: "Max reachable SoC by 17:00",
+    kpiCurrentMode: "Current BESS mode",
     kpiPriceProxyHint: "Residual-load price proxy (larger deficit → higher assumed price). EPEX later.",
     chartSocTitle: "State of charge",
+    chartSocTrajectoryTitle: "SoC through the day",
+    chartSocTrajectorySubtitle:
+      "Simulated stored energy for your configured battery — quarter-hour resolution.",
+    chartAxisStoredEnergy: "Stored energy (MWh)",
+    chartLegendSocStored: "Stored energy",
+    socStatStart: "Start",
+    socStatEnd: "Now / end",
+    socStatMin: "Min",
+    socStatMax: "Max",
+    chartResidualTitle: "Residual surplus / deficit",
     chartDispatchTitle: "Dispatch timeline",
     chartAxisTime: "Time (Berlin)",
     chartAxisSoc: "SoC",
     chartAxisPowerDispatch: "Charge / discharge (MW)",
     chartLegendResidualOverlay: "Residual load",
+    chartLegendResidualDeficit: "Residual (+deficit / -surplus)",
+    tooltipTotalGeneration: "Domestic generation",
+    tooltipLoad: "Load",
+    tooltipRenewables: "Renewables",
+    tooltipAction: "Action",
+    tooltipChargeHeadroom: "Charge headroom",
+    tooltipDischargeHeadroom: "Discharge headroom",
+    tooltipChargeAction: "Charge",
+    tooltipDischargeAction: "Discharge",
+    tooltipIdleAction: "Idle",
+    modeCharging: "Charging",
+    modeDischarge: "Discharging",
+    modeIdle: "Idle",
     resultsMetaEyebrow: "Simulation result",
     kpiEveningGapFootnote: "Share of Σ max(0, residual) × ¼ h in 17–21 h (Berlin proxy).",
-    kpiAvgEveningSocWindow: "17–21 h · average",
+    kpiMaxReachableEveningSocHint: "Best-case from intraday surplus only (power/capacity/RTE constrained).",
+    chartLegendMaxReachableSoc: "Max reachable SoC",
   },
   de: {
     eyebrow: "Dispatch-Simulation",
     title: "BESS Dispatch Simulator",
     intro:
-      "Lassen Sie eine echte Tages-Dispatch-Simulation auf den heutigen Viertelstundenwerten von Energy-Charts laufen. Konfigurieren Sie die Batterie und sehen Sie, wie der Speicher heute geladen, entladen und Erlöse erzielt hätte.",
+      "Die Grafiken oben zeigen den beobachteten Deutschland-Tagesverlauf in Viertelstunden. Hier konfigurieren Sie zusaetzliche Leistung und Kapazitaet, um marginale Lade-/Entladeentscheidungen, SoC und Oekonomie auf genau diesem Tag zu sehen — kein Ersatz fuer die reale Flotte.",
     powerLabel: "Leistung (MW)",
     powerHint: "AC-Nennleistung, symmetrisch für Lade- und Entladevorgang.",
     capacityLabel: "Kapazität (MWh)",
@@ -181,9 +216,9 @@ const copy = {
     rteLabel: "Round-Trip Efficiency (%)",
     rteHint: "Symmetrisch als √η auf jeder Seite angewandt.",
     strategyLabel: "Strategie",
-    strategyOption: "Arbitrage + Evening Gap Priorität",
+    strategyOption: "Auto Policy v1 (forecast-aware)",
     strategyDescription:
-      "Laden in den günstigsten Restlast-Slots, Entladen in den teuersten Slots mit klarem Vorrang für die abendliche Flexibilitätslücke (17:00–21:00).",
+      "Waehlt Laden/Entladen/Leerlauf je Slot automatisch anhand von Ueberschuss, Abendrisiko und Restlast-Preisregime.",
     runButton: "Dispatch simulieren",
     runButtonLoading: "Simulation läuft...",
     sourceNote: "Simulation basiert auf heutigen realen Viertelstundenwerten (Energy-Charts).",
@@ -191,7 +226,7 @@ const copy = {
     cyclesLabel: "Zyklen",
     placeholderTitle: "Batterie konfigurieren und Dispatch starten.",
     placeholderBody:
-      "Wir laden das heutige Restlastprofil und durchlaufen einen Arbitrage-Plan Slot für Slot, mit Priorität für das Abendfenster.",
+      "Wir nutzen dieselben Energy-Charts-Slots wie auf der Startseite. Stellen Sie zusaetzlichen Speicher ein, um abendliche Abdeckung und Spread-Capture zu schaetzen, die ein marginaler Zubau auf dem beobachteten Profil haette liefern koennen.",
     errorTitle: "Simulation konnte nicht ausgeführt werden",
     errorRetry: "Erneut versuchen",
     kpiRevenue: "Bruttoerlös",
@@ -214,18 +249,44 @@ const copy = {
     kpiEstimatedRevenueToday: "Geschätzte Revenue heute",
     kpiEveningGapCoverage: "Evening-Gap-Abdeckung",
     kpiCyclesToday: "Zyklen heute",
-    kpiAvgEveningSoc: "Ø SoC am Abend",
+    kpiMaxReachableEveningSoc: "Max. erreichbarer SoC bis 17:00",
+    kpiCurrentMode: "Aktueller BESS-Modus",
     kpiPriceProxyHint:
       "Preis-Proxy aus Restlast (höheres Defizit → höherer angenommener Preis). Später EPEX.",
     chartSocTitle: "SoC-Verlauf",
+    chartSocTrajectoryTitle: "SoC-Verlauf ueber den Tag",
+    chartSocTrajectorySubtitle:
+      "Simulierte gespeicherte Energie fuer Ihre konfigurierte Batterie — Viertelstundenbasis.",
+    chartAxisStoredEnergy: "Gespeicherte Energie (MWh)",
+    chartLegendSocStored: "Gespeicherte Energie",
+    socStatStart: "Start",
+    socStatEnd: "Jetzt / Ende",
+    socStatMin: "Min",
+    socStatMax: "Max",
+    chartResidualTitle: "Residuale Ueber-/Unterdeckung",
     chartDispatchTitle: "Dispatch-Zeitleiste",
     chartAxisTime: "Uhrzeit (Berlin)",
     chartAxisSoc: "SoC",
     chartAxisPowerDispatch: "Laden / Entladen (MW)",
     chartLegendResidualOverlay: "Restlast",
+    chartLegendResidualDeficit: "Restlast (+Defizit / -Ueberschuss)",
+    tooltipTotalGeneration: "Inlands-Erzeugung",
+    tooltipLoad: "Last",
+    tooltipRenewables: "Erneuerbare",
+    tooltipAction: "Aktion",
+    tooltipChargeHeadroom: "Lade-Spielraum",
+    tooltipDischargeHeadroom: "Entlade-Spielraum",
+    tooltipChargeAction: "Laden",
+    tooltipDischargeAction: "Entladen",
+    tooltipIdleAction: "Leerlauf",
+    modeCharging: "Laden",
+    modeDischarge: "Entladen",
+    modeIdle: "Leerlauf",
     resultsMetaEyebrow: "Simulationsergebnis",
     kpiEveningGapFootnote: "Anteil am Proxy Σ Restlast⁺ · ¼ h (17–21 Uhr, Berlin).",
-    kpiAvgEveningSocWindow: "17–21 Uhr · Durchschnitt",
+    kpiMaxReachableEveningSocHint:
+      "Best-Case nur aus Intraday-Überschuss (begrenzt durch Leistung/Kapazität/RTE).",
+    chartLegendMaxReachableSoc: "Max. erreichbarer SoC",
   },
 } as const;
 
@@ -234,10 +295,19 @@ type ChartDatum = {
   /** Quarter-hour label HH:mm (Berlin). */
   timeLabel: string;
   hourBerlin: number;
+  action: "charge" | "discharge" | "idle";
+  loadMw: number | null;
+  totalGenerationMw: number | null;
+  renewableGenerationMw: number | null;
   dischargeMw: number;
   /** Negative grid draw MW for bar chart. */
   chargeSignedMw: number;
   socPct: number;
+  /** Stored energy at end of slot (MWh). */
+  socMwh: number;
+  chargeHeadroomMwh: number;
+  dischargeHeadroomMwh: number;
+  maxReachableSocPct: number;
   residualLoadMw: number;
 };
 
@@ -326,9 +396,17 @@ export default function BessDispatchSimulator() {
         index,
         timeLabel,
         hourBerlin: entry.hourBerlin,
+        action: entry.action,
+        loadMw: entry.loadMw,
+        totalGenerationMw: entry.totalGenerationMw,
+        renewableGenerationMw: entry.renewableGenerationMw,
         dischargeMw,
         chargeSignedMw: entry.action === "charge" ? entry.powerMw : 0,
         socPct: entry.socPct,
+        socMwh: entry.socMwh,
+        chargeHeadroomMwh: entry.chargeHeadroomMwh,
+        dischargeHeadroomMwh: entry.dischargeHeadroomMwh,
+        maxReachableSocPct: entry.maxReachableSocPct,
         residualLoadMw: entry.residualLoadMw,
       };
     });
@@ -734,21 +812,11 @@ function ResultsPanel({
     results.eveningDeliveredMwh,
   ]);
 
-  const avgEveningSocPct = useMemo(() => {
-    const samples = schedule
-      .filter((s) => isEveningGapHour(s.hourBerlin))
-      .map((s) => s.socPct);
-    if (samples.length === 0) {
-      return 0;
-    }
-    return samples.reduce((a, b) => a + b, 0) / samples.length;
-  }, [schedule]);
-
   const animRevenue = useAnimatedNumber(results.grossRevenueEur);
   const animEveningMwh = useAnimatedNumber(results.eveningDeliveredMwh);
   const animCoverage = useAnimatedNumber(eveningGapCoveragePct);
   const animCycles = useAnimatedNumber(results.cycles);
-  const animAvgEveningSoc = useAnimatedNumber(avgEveningSocPct);
+  const animMaxReachableEveningSoc = useAnimatedNumber(results.maxReachableSocByEveningPct);
 
   const powerLim = inputs.powerMw * 1.08;
   const xAxisInterval = Math.max(0, Math.floor(chartData.length / 12) - 1);
@@ -759,6 +827,43 @@ function ResultsPanel({
   const xEveningEnd = eveningBoundaries
     ? chartData[eveningBoundaries.endIndex]?.timeLabel
     : undefined;
+  const actionLabel = (action: ChartDatum["action"]) => {
+    if (action === "charge") {
+      return t.modeCharging;
+    }
+    if (action === "discharge") {
+      return t.modeDischarge;
+    }
+    return t.modeIdle;
+  };
+  const currentModeLabel = actionLabel(schedule[schedule.length - 1]?.action ?? "idle");
+
+  const socTrajectoryStats = useMemo(() => {
+    if (chartData.length === 0) {
+      return null;
+    }
+    let minPct = chartData[0].socPct;
+    let maxPct = chartData[0].socPct;
+    let minMwh = chartData[0].socMwh;
+    let maxMwh = chartData[0].socMwh;
+    for (const d of chartData) {
+      minPct = Math.min(minPct, d.socPct);
+      maxPct = Math.max(maxPct, d.socPct);
+      minMwh = Math.min(minMwh, d.socMwh);
+      maxMwh = Math.max(maxMwh, d.socMwh);
+    }
+    const last = chartData.length - 1;
+    return {
+      startPct: chartData[0].socPct,
+      endPct: chartData[last].socPct,
+      startMwh: chartData[0].socMwh,
+      endMwh: chartData[last].socMwh,
+      minPct,
+      maxPct,
+      minMwh,
+      maxMwh,
+    };
+  }, [chartData]);
 
   return (
     <motion.div
@@ -779,9 +884,14 @@ function ResultsPanel({
             </span>
           </p>
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          {t.datasetSamples(dataset.samplePoints, samplePct)}
-        </p>
+        <div className="flex flex-col items-start gap-1 md:items-end">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t.datasetSamples(dataset.samplePoints, samplePct)}
+          </p>
+          <p className="rounded-full border border-slate-300/55 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 dark:border-slate-500/40 dark:bg-slate-900/70 dark:text-slate-200">
+            {t.kpiCurrentMode}: {currentModeLabel}
+          </p>
+        </div>
       </div>
 
       <motion.div
@@ -855,40 +965,74 @@ function ResultsPanel({
           className="rounded-2xl border border-sky-400/35 bg-white/90 p-5 shadow-sm dark:border-sky-400/25 dark:bg-slate-900/75"
         >
           <p className="text-[11px] font-semibold tracking-[0.14em] text-sky-900/80 uppercase dark:text-sky-200/90">
-            {t.kpiAvgEveningSoc}
+            {t.kpiMaxReachableEveningSoc}
           </p>
           <p className="mt-3 text-2xl font-extrabold tracking-tight text-sky-950 md:text-3xl dark:text-sky-100">
-            {INTEGER_FORMATTER.format(Math.round(animAvgEveningSoc))}%
+            {INTEGER_FORMATTER.format(Math.round(animMaxReachableEveningSoc))}%
           </p>
-          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">{t.kpiAvgEveningSocWindow}</p>
+          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+            {t.kpiMaxReachableEveningSocHint}
+          </p>
         </motion.article>
+
       </motion.div>
 
       <motion.div
+        id="dispatch-soc-trajectory"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, delay: 0.12, ease: "easeOut" }}
-        className="rounded-2xl border border-slate-300/55 bg-white/92 p-4 md:p-5 dark:border-slate-500/35 dark:bg-slate-900/60"
+        transition={{ duration: 0.45, delay: 0.06, ease: "easeOut" }}
+        className="rounded-2xl border-2 border-indigo-400/35 bg-gradient-to-b from-indigo-50/90 via-white/95 to-white p-4 shadow-[0_12px_40px_rgba(79,70,229,0.08)] md:p-6 dark:border-indigo-400/28 dark:from-indigo-950/45 dark:via-slate-900/85 dark:to-slate-900/75 dark:shadow-[0_12px_40px_rgba(99,102,241,0.06)]"
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-            {t.chartSocTitle}
-          </p>
-          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-300">
-            <LegendDot color="rgb(37,99,235)" label={t.chartLegendSoc} />
-            <LegendDot color="rgba(251,191,36,0.45)" label={t.chartLegendEvening} square />
+        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-start md:justify-between">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.14em] text-indigo-800 uppercase dark:text-indigo-200">
+              {t.chartSocTrajectoryTitle}
+            </p>
+            <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+              {t.chartSocTrajectorySubtitle}{" "}
+              <span className="tabular-nums text-slate-500 dark:text-slate-500">
+                ({INTEGER_FORMATTER.format(inputs.capacityMwh)} MWh nameplate · {NUMBER_FORMATTER.format(inputs.rteEfficiencyPct)}% RTE).
+              </span>
+            </p>
           </div>
         </div>
-        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-          {t.chartAxisTime} · 15&nbsp;min
-        </p>
-        <div className="mt-3 h-72 w-full min-h-[280px]">
+
+        {socTrajectoryStats ? (
+          <div className="mt-4 grid grid-cols-2 gap-2 tabular-nums sm:grid-cols-4">
+            <SocStatChip
+              label={t.socStatStart}
+              pct={socTrajectoryStats.startPct}
+              mwh={socTrajectoryStats.startMwh}
+            />
+            <SocStatChip
+              label={t.socStatEnd}
+              pct={socTrajectoryStats.endPct}
+              mwh={socTrajectoryStats.endMwh}
+            />
+            <SocStatChip label={t.socStatMin} pct={socTrajectoryStats.minPct} mwh={socTrajectoryStats.minMwh} />
+            <SocStatChip label={t.socStatMax} pct={socTrajectoryStats.maxPct} mwh={socTrajectoryStats.maxMwh} />
+          </div>
+        ) : null}
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-slate-600 dark:text-slate-400">
+          <LegendDot color="rgb(79,70,229)" label={t.chartLegendSoc} />
+          <LegendDot color="rgb(124,58,237)" label={t.chartLegendSocStored} />
+          <LegendDot color="rgb(14,116,144)" label={t.chartLegendMaxReachableSoc} />
+          <LegendDot color="rgba(251,191,36,0.45)" label={t.chartLegendEvening} square />
+          <span className="text-slate-400 dark:text-slate-500">·</span>
+          <span>
+            {t.chartAxisTime} · 15&nbsp;min
+          </span>
+        </div>
+
+        <div className="mt-3 h-[min(360px,calc(55vh))] min-h-[280px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 8, right: 14, bottom: 6, left: 2 }}>
+            <ComposedChart data={chartData} margin={{ top: 12, right: 14, bottom: 8, left: 8 }}>
               <defs>
                 <linearGradient id={socGradientId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgb(37,99,235)" stopOpacity={0.33} />
-                  <stop offset="100%" stopColor="rgb(37,99,235)" stopOpacity={0.02} />
+                  <stop offset="0%" stopColor="rgb(79,70,229)" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="rgb(79,70,229)" stopOpacity={0.03} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
@@ -899,10 +1043,12 @@ function ResultsPanel({
                 axisLine={{ stroke: "rgba(148,163,184,0.45)" }}
               />
               <YAxis
+                yAxisId="pct"
                 domain={[0, 100]}
+                orientation="left"
                 tick={{ fontSize: 10, fill: "rgb(100,116,139)" }}
                 tickFormatter={(v) => `${v}%`}
-                width={44}
+                width={46}
                 label={{
                   value: t.chartAxisSoc,
                   angle: -90,
@@ -911,18 +1057,135 @@ function ResultsPanel({
                   fill: "rgb(100,116,139)",
                 }}
               />
+              <YAxis
+                yAxisId="mwh"
+                orientation="right"
+                domain={[0, inputs.capacityMwh]}
+                tick={{ fontSize: 10, fill: "rgb(100,116,139)" }}
+                width={54}
+                label={{
+                  value: t.chartAxisStoredEnergy,
+                  angle: 90,
+                  position: "insideRight",
+                  fontSize: 10,
+                  fill: "rgb(100,116,139)",
+                }}
+                tickFormatter={(v) => INTEGER_FORMATTER.format(typeof v === "number" ? v : 0)}
+              />
+              {xEveningStart !== undefined && xEveningEnd !== undefined ? (
+                <ReferenceArea
+                  x1={xEveningStart}
+                  x2={xEveningEnd}
+                  yAxisId="pct"
+                  fill="rgba(251,191,36,0.18)"
+                  stroke="rgba(245,158,11,0.3)"
+                />
+              ) : null}
               <Tooltip
-                contentStyle={{
-                  background: "rgba(255,255,255,0.97)",
-                  border: "1px solid rgba(148,163,184,0.45)",
-                  borderRadius: 12,
-                  fontSize: 12,
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) {
+                    return null;
+                  }
+                  const point = payload[0]?.payload as ChartDatum | undefined;
+                  if (!point) {
+                    return null;
+                  }
+                  return (
+                    <div className="rounded-xl border border-slate-300/60 bg-white/95 p-3 text-xs text-slate-700 shadow-lg dark:border-slate-500/50 dark:bg-slate-900/95 dark:text-slate-200">
+                      <p className="mb-2 font-semibold">{String(label)}</p>
+                      <p>
+                        {t.tooltipAction}: {actionLabel(point.action)}
+                      </p>
+                      <p>
+                        {t.chartLegendSoc}: {NUMBER_FORMATTER.format(point.socPct)}% (
+                        {MWH_DETAIL_FORMATTER.format(point.socMwh)} MWh)
+                      </p>
+                      <p>
+                        {t.chartLegendMaxReachableSoc}: {NUMBER_FORMATTER.format(point.maxReachableSocPct)}%
+                      </p>
+                    </div>
+                  );
                 }}
-                formatter={(value) => {
-                  const n = typeof value === "number" ? value : Number(value ?? 0);
-                  return [`${NUMBER_FORMATTER.format(n)}%`, t.chartLegendSoc];
-                }}
-                labelFormatter={(label) => String(label)}
+              />
+              <Area
+                yAxisId="pct"
+                type="monotone"
+                dataKey="socPct"
+                stroke="transparent"
+                fill={`url(#${socGradientId})`}
+                isAnimationActive
+                animationDuration={560}
+              />
+              <Line
+                yAxisId="pct"
+                type="monotone"
+                dataKey="socPct"
+                name={t.chartLegendSoc}
+                stroke="rgb(79,70,229)"
+                strokeWidth={2.6}
+                dot={false}
+                isAnimationActive
+                animationDuration={620}
+              />
+              <Line
+                yAxisId="pct"
+                type="monotone"
+                dataKey="maxReachableSocPct"
+                name={t.chartLegendMaxReachableSoc}
+                stroke="rgb(14,116,144)"
+                strokeDasharray="5 4"
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive
+                animationDuration={620}
+              />
+              <Line
+                yAxisId="mwh"
+                type="monotone"
+                dataKey="socMwh"
+                name={t.chartLegendSocStored}
+                stroke="rgb(124,58,237)"
+                strokeWidth={2}
+                dot={false}
+                strokeOpacity={0.95}
+                isAnimationActive
+                animationDuration={620}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.12, ease: "easeOut" }}
+        className="rounded-2xl border border-slate-300/55 bg-white/92 p-4 md:p-5 dark:border-slate-500/35 dark:bg-slate-900/60"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
+            {t.chartResidualTitle}
+          </p>
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-300">
+            <LegendDot color="rgb(51,65,85)" label={t.chartLegendResidualDeficit} />
+            <LegendDot color="rgba(251,191,36,0.45)" label={t.chartLegendEvening} square />
+          </div>
+        </div>
+        <div className="mt-3 h-52 w-full min-h-[200px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 6, right: 14, bottom: 4, left: 2 }}>
+              <CartesianGrid stroke="rgba(148,163,184,0.18)" strokeDasharray="3 3" />
+              <XAxis
+                dataKey="timeLabel"
+                tick={{ fontSize: 9, fill: "rgb(100,116,139)" }}
+                interval={xAxisInterval}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: "rgb(100,116,139)" }}
+                width={42}
+                tickFormatter={(v) =>
+                  `${v > 0 ? "+" : ""}${INTEGER_FORMATTER.format(typeof v === "number" ? v : 0)}`
+                }
               />
               {xEveningStart !== undefined && xEveningEnd !== undefined ? (
                 <ReferenceArea
@@ -932,22 +1195,63 @@ function ResultsPanel({
                   stroke="rgba(245,158,11,0.35)"
                 />
               ) : null}
-              <Area
-                type="monotone"
-                dataKey="socPct"
-                stroke="transparent"
-                fill={`url(#${socGradientId})`}
-                isAnimationActive
-                animationDuration={600}
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload || payload.length === 0) {
+                    return null;
+                  }
+                  const point = payload[0]?.payload as ChartDatum | undefined;
+                  if (!point) {
+                    return null;
+                  }
+                  return (
+                    <div className="rounded-xl border border-slate-300/60 bg-white/95 p-3 text-xs text-slate-700 shadow-lg dark:border-slate-500/50 dark:bg-slate-900/95 dark:text-slate-200">
+                      <p className="mb-2 font-semibold">{String(label)}</p>
+                      <p>
+                        {t.tooltipLoad}: {point.loadMw === null ? "n/a" : `${INTEGER_FORMATTER.format(point.loadMw)} MW`}
+                      </p>
+                      <p>
+                        {t.tooltipTotalGeneration}:{" "}
+                        {point.totalGenerationMw === null
+                          ? "n/a"
+                          : `${INTEGER_FORMATTER.format(point.totalGenerationMw)} MW`}
+                      </p>
+                      <p>
+                        {t.tooltipRenewables}:{" "}
+                        {point.renewableGenerationMw === null
+                          ? "n/a"
+                          : `${INTEGER_FORMATTER.format(point.renewableGenerationMw)} MW`}
+                      </p>
+                      <p>
+                        {t.chartLegendResidualOverlay}:{" "}
+                        {`${point.residualLoadMw >= 0 ? "+" : ""}${INTEGER_FORMATTER.format(point.residualLoadMw)} MW`}
+                      </p>
+                      <p>
+                        {t.tooltipAction}: {actionLabel(point.action)}
+                      </p>
+                      <p>
+                        SoC: {NUMBER_FORMATTER.format(point.socPct)}%
+                      </p>
+                      <p>
+                        {t.tooltipChargeHeadroom}: {MWH_DETAIL_FORMATTER.format(point.chargeHeadroomMwh)} MWh
+                      </p>
+                      <p>
+                        {t.tooltipDischargeHeadroom}:{" "}
+                        {MWH_DETAIL_FORMATTER.format(point.dischargeHeadroomMwh)} MWh
+                      </p>
+                    </div>
+                  );
+                }}
               />
               <Line
                 type="monotone"
-                dataKey="socPct"
-                stroke="rgb(37,99,235)"
-                strokeWidth={2.5}
+                dataKey="residualLoadMw"
+                name={t.chartLegendResidualDeficit}
+                stroke="rgb(51,65,85)"
+                strokeWidth={1.8}
                 dot={false}
                 isAnimationActive
-                animationDuration={650}
+                animationDuration={500}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -957,7 +1261,7 @@ function ResultsPanel({
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, delay: 0.2, ease: "easeOut" }}
+        transition={{ duration: 0.45, delay: 0.18, ease: "easeOut" }}
         className="rounded-2xl border border-slate-300/55 bg-white/92 p-4 md:p-5 dark:border-slate-500/35 dark:bg-slate-900/60"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1074,11 +1378,11 @@ function ResultsPanel({
             <span className="font-semibold text-emerald-800 dark:text-emerald-300">
               {EUR_FORMATTER.format(Math.round(animRevenue))}
             </span>{" "}
-            Revenue generiert. Der SoC wäre mit{" "}
+            Revenue generiert. Der maximal erreichbare SoC bis 17:00 läge bei{" "}
             <span className="font-semibold text-sky-900 dark:text-sky-200">
-              {INTEGER_FORMATTER.format(Math.round(animAvgEveningSoc))}%
+              {INTEGER_FORMATTER.format(Math.round(animMaxReachableEveningSoc))}%
             </span>{" "}
-            relativ entspannt in den Abend gegangen.
+            (nur aus Intraday-Überschuss).
           </>
         ) : (
           <>
@@ -1094,15 +1398,31 @@ function ResultsPanel({
             <span className="font-semibold text-emerald-800 dark:text-emerald-300">
               {EUR_FORMATTER.format(Math.round(animRevenue))}
             </span>{" "}
-            in gross revenue. Average SoC through the evening window would have been near{" "}
+            in gross revenue. Maximum reachable SoC by 17:00 would be{" "}
             <span className="font-semibold text-sky-900 dark:text-sky-200">
-              {INTEGER_FORMATTER.format(Math.round(animAvgEveningSoc))}%
+              {INTEGER_FORMATTER.format(Math.round(animMaxReachableEveningSoc))}%
             </span>
-            .
+            from surplus-only charging windows.
           </>
         )}
       </motion.p>
     </motion.div>
+  );
+}
+
+function SocStatChip({ label, pct, mwh }: { label: string; pct: number; mwh: number }) {
+  return (
+    <div className="rounded-xl border border-slate-200/85 bg-white/85 px-3 py-2 dark:border-slate-600/45 dark:bg-slate-900/55">
+      <dt className="text-[10px] font-medium tracking-[0.12em] text-slate-500 uppercase dark:text-slate-400">
+        {label}
+      </dt>
+      <dd className="mt-1 text-sm font-bold leading-tight text-slate-900 dark:text-white">
+        {NUMBER_FORMATTER.format(pct)}%
+        <span className="mt-0.5 block text-[11px] font-semibold text-indigo-700 tabular-nums dark:text-indigo-300">
+          {MWH_DETAIL_FORMATTER.format(mwh)} MWh
+        </span>
+      </dd>
+    </div>
   );
 }
 

@@ -11,7 +11,7 @@ const requestSchema = z.object({
   powerMw: z.number().positive().max(10_000),
   capacityMwh: z.number().positive().max(50_000),
   rteEfficiencyPct: z.number().gt(0).lte(100),
-  strategy: z.literal("arbitrage_evening_priority"),
+  strategy: z.literal("auto_policy_v1"),
 });
 
 export async function POST(request: Request) {
