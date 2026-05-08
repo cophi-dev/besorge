@@ -81,10 +81,10 @@ export default function GermanyDayEnergyFlow({
   const t =
     language === "de"
       ? {
-          eyebrow: "Energy-Charts Tagesprofil",
-          title: "Tages-Nettobilanz",
-          subtitle:
-            "Eine kombinierte Linie: domestische Erzeugung minus Last aus Energy-Charts (Viertelstunden) — plus theoretischer Flotten-Lade-SoC, wenn diese Ueberschuss-Leistung voll eingespeichert werden koennte.",
+          eyebrow: "Energy-Charts Daily Profile",
+          title: "Deutschland-Tagesprofil – beobachteter Ueberschuss, Defizit & theoretischer Flotten-SoC",
+          subtitleFallback:
+            "Kombinierte Darstellung: domestische Erzeugung minus Last aus Energy-Charts (Viertelstunden), plus theoretischer Flotten-Lade-SoC, wenn Ueberschuss-Leistung voll mit der heutigen Kapazitaet aufgenommen werden koennte.",
           chartTitle: "Ueberschuss / Defizit",
           legendNet: "+Ueberschuss / −Defizit (Erz. − Last)",
           legendFleetSoc: "Potenzieller Flotten-SoC (nur Laden)",
@@ -103,16 +103,16 @@ export default function GermanyDayEnergyFlow({
           axisMw: "MW",
           axisSoc: "SoC (%)",
           simulatorHint:
-            "Im Simulator darunter zusätzliche Speicherleistung/Kapazität einstellen, um Marginaleffekte auf diesen Tag zu sehen.",
+            "Basierend auf diesem beobachteten Profil testen Sie im BESS Dispatch Simulator darunter, wie zusaetzliche Speicherkapazitaet sich heute verkaufen wuerde — exakt dieselbe Viertelstunden-Reihe, nur mit modellierter Zubau-Leistung und -Energie obenauf.",
           unavailable:
             "Für keine Berlin-Tag-Linie reichenzeitig genug brauchbare Viertelstunden — bitte später erneut laden.",
           loadingEyebrow: "Marktdaten werden geladen",
         }
       : {
           eyebrow: "Energy-Charts daily profile",
-          title: "Daily net balance",
-          subtitle:
-            "One combined line: domestic generation minus load from Energy-Charts (15-minute steps), plus a theoretical fleet charging SoC if that surplus power could be fully absorbed.",
+          title: "Germany Day Profile – Observed Surplus, Deficit & Theoretical Fleet SoC",
+          subtitleFallback:
+            "One combined line: domestic generation minus load from Energy-Charts (15-minute steps), plus a theoretical fleet charging SoC if surplus power could be fully absorbed with today's nameplate capacity.",
           chartTitle: "Surplus / deficit",
           legendNet: "+surplus / −deficit (gen − load)",
           legendFleetSoc: "Potential fleet SoC (charge-only)",
@@ -131,7 +131,7 @@ export default function GermanyDayEnergyFlow({
           axisMw: "MW",
           axisSoc: "SoC (%)",
           simulatorHint:
-            "Use the simulator below to layer incremental power/capacity and see marginal effects against this observed day.",
+            "Based on this observed profile, use the BESS Dispatch Simulator below to test how incremental storage capacity would perform today—the same quarter-hour series, with modeled additional power and energy layered on top.",
           unavailable: "Not enough usable quarter-hours for a Berlin-day series yet — try again shortly.",
           loadingEyebrow: "Loading market data",
         };
@@ -191,14 +191,70 @@ export default function GermanyDayEnergyFlow({
 
   const xAxisInterval = Math.max(0, Math.floor(chartRows.length / 12) - 1);
 
+  const dayStoryParagraphs = useMemo(() => {
+    if (!flow?.slots.length || !absorption) {
+      return null;
+    }
+    const pctDay = pctFormatter.format(flow.pointFractionOfDay * 100);
+    const grossFmt = formatEnergyFromMwh(absorption.grossSurplusEnergyMwh);
+    const hasFleetKpis =
+      fleetEnergyCapacityMwh !== null &&
+      fleetEnergyCapacityMwh > 0 &&
+      fleetPowerMw !== null &&
+      fleetPowerMw > 0;
+    const dateLine =
+      language === "de"
+        ? `Am Berlin-Referenzdatum ${flow.dateBerlin} liegen ${flow.samplePoints.toString()} Viertelstunden vor (${pctDay}% des Kalendertages). `
+        : `On the Berlin reference day ${flow.dateBerlin}, we have ${flow.samplePoints.toString()} quarter-hours (${pctDay}% of the calendar day). `;
+    if (language === "de") {
+      const spine =
+        `${dateLine}Die Netz-Kurve zeigt strukturelle Ueber- oder Unterdeckung der Last durch die domestische Viertelstunden-Erzeugung aus Energy-Charts, bevor Imports/Exports einkalkuliert sind.`;
+      if (!hasFleetKpis) {
+        return {
+          primary: spine,
+          secondary:
+            "Kombinierte Darstellung: domestische Erzeugung minus Last aus Energy-Charts (Viertelstunden), plus theoretischer Flotten-Lade-SoC, wenn Ueberschuss-Leistung voll mit der heutigen Kapazitaet aufgenommen werden koennte.",
+        };
+      }
+      return {
+        primary: spine,
+        secondary: `Als erste Energiesumme liegen etwa ${grossFmt} strukturelle Brutto-Ueberschussenergie ueber einen reinen Laden-Pfad ohne Netzkupplungen. Unter heute angenommenen Flotten-MW plus Energiekappe sind davon etwa ${formatEnergyFromMwh(
+          absorption.absorbedEnergyMwh
+        )} theoretisch speicherbar — rund ${formatEnergyFromMwh(
+          absorption.missedSurplusEnergyMwh
+        )} verbleiben in diesem Vereinfachungsmodell.`,
+        tertiary:
+          "Der violett gestrichelte SoC folgt denselben Viertelstunden ohne Netzzwang; das gelbe Abendfenster hebt das typische Spannungsband fuer Entladung hervor.",
+      };
+    }
+    const spineEn = `${dateLine}The balance trace alternates structural surplus versus structural deficit (generation vs load within Energy-Charts totals) before imports and exports re-balance flows.`;
+    if (!hasFleetKpis) {
+      return {
+        primary: spineEn,
+        secondary:
+          "One combined line: domestic generation minus load from Energy-Charts (15-minute steps), plus a theoretical fleet charging SoC if surplus power could be fully absorbed with today's nameplate capacity.",
+      };
+    }
+    return {
+      primary: spineEn,
+      secondary: `Gross daytime structural surplus aggregates to roughly ${grossFmt} before cross-border netting. Against today's nominal fleet MW and energy cap about ${formatEnergyFromMwh(
+        absorption.absorbedEnergyMwh
+      )} could enter a hypothetical charge-only funnel, leaving ~${formatEnergyFromMwh(
+        absorption.missedSurplusEnergyMwh
+      )} outside this simplification.`,
+      tertiary:
+        "The dashed violet SoC path mirrors the same chronological order without grid/export constraints—the amber evening band anchors the habitual discharge-pressure window.",
+    };
+  }, [absorption, flow, fleetEnergyCapacityMwh, fleetPowerMw, language]);
+
   if (isLoading) {
     return (
-      <article className="scroll-mt-8 space-y-4 rounded-2xl border border-slate-300/45 bg-white/75 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
+      <article className="scroll-mt-8 space-y-6 rounded-3xl border-2 border-slate-300/50 bg-white/80 p-6 shadow-lg md:p-8 dark:border-slate-500/40 dark:bg-slate-900/70 dark:shadow-black/35">
         <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
           {t.loadingEyebrow}
         </p>
-        <Skeleton className="h-6 max-w-xs rounded-lg" />
-        <Skeleton className="h-[min(360px,50vw)] min-h-[260px] w-full rounded-xl" />
+        <Skeleton className="h-10 max-w-xl rounded-xl" />
+        <Skeleton className="h-[min(460px,calc(72vw))] min-h-[320px] w-full rounded-2xl" />
       </article>
     );
   }
@@ -219,46 +275,58 @@ export default function GermanyDayEnergyFlow({
   return (
     <article
       id="germany-day-energy-flow"
-      className="scroll-mt-8 space-y-5 rounded-2xl border border-slate-300/45 bg-white/75 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55"
+      className="scroll-mt-8 space-y-6 rounded-3xl border-2 border-slate-400/35 bg-gradient-to-b from-white via-white to-slate-50/90 p-6 shadow-[0_24px_64px_rgba(15,23,42,0.08)] md:space-y-7 md:p-8 lg:p-10 dark:border-slate-500/45 dark:from-slate-900 dark:via-slate-900/95 dark:to-slate-950/90 dark:shadow-[0_28px_70px_rgba(0,0,0,0.45)]"
     >
-      <div>
-        <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">{t.eyebrow}</p>
-        <h2 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white md:text-2xl">
+      <header className="space-y-2">
+        <p className="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
+          {t.eyebrow}
+        </p>
+        <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-[1.95rem] md:leading-snug lg:text-4xl dark:text-white">
           {t.title}
         </h2>
-        <p className="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-300">{t.subtitle}</p>
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        <div className="mt-3 max-w-4xl space-y-3 text-[15px] leading-relaxed text-slate-700 md:text-base dark:text-slate-300">
+          {dayStoryParagraphs ? (
+            <>
+              <p>{dayStoryParagraphs.primary}</p>
+              <p>{dayStoryParagraphs.secondary}</p>
+              {dayStoryParagraphs.tertiary ? <p>{dayStoryParagraphs.tertiary}</p> : null}
+            </>
+          ) : (
+            <p>{t.subtitleFallback}</p>
+          )}
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {t.coverage(flow.samplePoints, coveragePct, flow.dateBerlin)}
         </p>
-      </div>
+      </header>
 
       {showMissedKpis && absorption ? (
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-200/80 bg-white/85 p-3 dark:border-slate-500/35 dark:bg-slate-900/50">
-            <p className="text-[10px] font-medium tracking-[0.12em] text-slate-500 uppercase dark:text-slate-400">
+          <div className="rounded-xl border border-slate-200/85 bg-white/90 p-3.5 dark:border-slate-500/35 dark:bg-slate-900/50">
+            <p className="text-[10px] font-medium tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
               {t.kpiGross}
             </p>
-            <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-white">
+            <p className="mt-1.5 text-xl font-bold tabular-nums text-slate-900 md:text-2xl dark:text-white">
               {formatEnergyFromMwh(absorption.grossSurplusEnergyMwh)}
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200/80 bg-white/85 p-3 dark:border-slate-500/35 dark:bg-slate-900/50">
-            <p className="text-[10px] font-medium tracking-[0.12em] text-slate-500 uppercase dark:text-slate-400">
+          <div className="rounded-xl border border-slate-200/85 bg-white/90 p-3.5 dark:border-slate-500/35 dark:bg-slate-900/50">
+            <p className="text-[10px] font-medium tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
               {t.kpiAbsorbed}
             </p>
-            <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-white">
+            <p className="mt-1.5 text-xl font-bold tabular-nums text-slate-900 md:text-2xl dark:text-white">
               {formatEnergyFromMwh(absorption.absorbedEnergyMwh)}
             </p>
           </div>
-          <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 p-3 dark:border-amber-400/25 dark:bg-amber-400/10">
-            <p className="text-[10px] font-medium tracking-[0.12em] text-amber-900/80 uppercase dark:text-amber-200/90">
+          <div className="rounded-xl border border-amber-200/80 bg-amber-50/95 p-3.5 dark:border-amber-400/25 dark:bg-amber-400/12">
+            <p className="text-[10px] font-medium tracking-[0.14em] text-amber-900/80 uppercase dark:text-amber-200/90">
               {t.kpiMissed}
             </p>
-            <p className="mt-1 text-lg font-bold tabular-nums text-amber-950 dark:text-amber-100">
+            <p className="mt-1.5 text-xl font-bold tabular-nums text-amber-950 md:text-2xl dark:text-amber-50">
               {formatEnergyFromMwh(absorption.missedSurplusEnergyMwh)}
             </p>
             {absorption.grossSurplusEnergyMwh > 1e-6 ? (
-              <p className="mt-1 text-[11px] text-amber-900/75 dark:text-amber-100/80">
+              <p className="mt-2 text-[11px] font-medium text-amber-950/85 dark:text-amber-50/85">
                 {pctFormatter.format(
                   (absorption.missedSurplusEnergyMwh / absorption.grossSurplusEnergyMwh) * 100
                 )}
@@ -272,7 +340,7 @@ export default function GermanyDayEnergyFlow({
         <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{t.kpiMethod}</p>
       ) : null}
 
-      <div className="rounded-2xl border border-slate-300/50 bg-white/90 p-4 dark:border-slate-500/35 dark:bg-slate-900/55 md:p-5">
+      <div className="rounded-2xl border border-slate-300/55 bg-white/95 p-4 shadow-inner dark:border-slate-500/35 dark:bg-slate-950/55 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
             {t.chartTitle}
@@ -283,7 +351,7 @@ export default function GermanyDayEnergyFlow({
             <LegendDot color="rgba(251,191,36,0.95)" label={t.legendEvening} />
           </div>
         </div>
-        <div className="mt-3 h-[min(360px,50vw)] min-h-[260px] w-full">
+        <div className="mt-3 h-[min(520px,min(72vw,900px))] min-h-[360px] w-full lg:min-h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartRows} margin={{ top: 8, right: 8, bottom: 6, left: 4 }}>
               <CartesianGrid stroke="rgba(148,163,184,0.18)" strokeDasharray="3 3" />
@@ -357,7 +425,7 @@ export default function GermanyDayEnergyFlow({
                 dataKey="netBalanceMw"
                 name={t.legendNet}
                 stroke="rgb(71,85,105)"
-                strokeWidth={2}
+                strokeWidth={2.5}
                 dot={false}
                 isAnimationActive
                 animationDuration={480}

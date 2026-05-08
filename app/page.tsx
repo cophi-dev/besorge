@@ -154,24 +154,8 @@ function formatGw(valueGw: number): string {
   return `${NUMBER_FORMATTER.format(valueGw)} GW`;
 }
 
-function formatSignedGwh(valueGwh: number, language: "en" | "de"): string {
-  const abs = Math.abs(valueGwh);
-  const sign = valueGwh >= 0 ? "+" : "−";
-  const tag = valueGwh >= 0 ? (language === "de" ? "Überschuss" : "surplus") : language === "de" ? "Defizit" : "deficit";
-  return `${sign}${NUMBER_FORMATTER.format(abs)} GWh ${tag}`;
-}
-
-function formatSignedValue(value: number, unit: string): string {
-  const sign = value >= 0 ? "+" : "−";
-  return `${sign}${NUMBER_FORMATTER.format(Math.abs(value))} ${unit}`;
-}
-
 function formatInstalledValue(value: number, unit: "GW" | "GWh"): string {
   return `${NUMBER_FORMATTER.format(value)} ${unit}`;
-}
-
-function formatCoveragePct(pointFractionOfDay: number): string {
-  return `${NUMBER_FORMATTER.format(pointFractionOfDay * 100)}%`;
 }
 
 type FleetMode = "charging" | "discharging" | "idle";
@@ -360,10 +344,6 @@ export default function Home() {
         minute: "2-digit",
       })}`
     : `${LIVE_UPDATE_LABEL[language]} • ${language === "de" ? "Datenabruf läuft" : "fetch in progress"}`;
-  const volatilityScore = assessment ? Math.round(assessment.scoreBreakdown.volatility) : null;
-  const rampScore = assessment ? Math.round(assessment.scoreBreakdown.adequacy) : null;
-  const opportunityScore = assessment ? Math.round(assessment.score) : null;
-
   const eveningResidualSourceMw =
     market?.eveningWindow?.avgResidualLoadMw ??
     (market?.realtimeSystem.residualLoadMw !== undefined
@@ -375,13 +355,6 @@ export default function Home() {
     eveningResidualSourceMw !== null && Number.isFinite(eveningResidualSourceMw)
       ? (eveningResidualSourceMw * MUST_RUN_BASELOAD_FACTOR) / 1000
       : null;
-  const eveningGapIsProxy = market?.eveningWindow == null;
-  const eveningGapValueDisplay =
-    eveningFlexibilityGapGw !== null
-      ? formatGw(eveningFlexibilityGapGw)
-      : language === "de"
-        ? "voruebergehend nicht verfuegbar"
-        : "temporarily unavailable";
 
   const socBand: SocBand = estimateEveningSoc({
     renewableShareOfLoadPct: market?.realtimeSystem.renewableShareOfLoadPct ?? null,
@@ -395,23 +368,9 @@ export default function Home() {
     eveningFlexibilityGapGw !== null && dischargeHeadroomGw !== null
       ? Math.max(0, eveningFlexibilityGapGw - dischargeHeadroomGw)
       : null;
-  const effectiveGapDisplay = effectiveGapGw !== null ? formatGw(effectiveGapGw) : null;
-  const effectiveGapValueDisplay =
-    effectiveGapDisplay ?? (language === "de" ? "voruebergehend nicht verfuegbar" : "temporarily unavailable");
-
-  const dailyEnergy = market?.dailyEnergy ?? null;
-  const dailyEnergyAvailable = dailyEnergy !== null;
-  const dailyTotalBalanceValue = dailyEnergyAvailable
-    ? formatSignedGwh(dailyEnergy.totalNetBalanceGwh, language)
-    : language === "de"
-      ? "voruebergehend nicht verfuegbar"
-      : "temporarily unavailable";
 
   const renewableSharePct = market?.realtimeSystem.renewableShareOfLoadPct ?? null;
   const unavailableShort = language === "de" ? "k. A." : "n/a";
-  const quickStatsFleetSoc = socAvailable
-    ? `~${PERCENT_FORMATTER.format(socBand.midpointPct)}%`
-    : unavailableShort;
   const renewableShareDisplay =
     renewableSharePct !== null ? `${PERCENT_FORMATTER.format(renewableSharePct)}%` : unavailableShort;
 
@@ -421,65 +380,33 @@ export default function Home() {
       ? `${MWH_COMPACT_FORMATTER.format(fleetStructuralSurplus.uncapturedStructuralSurplusMwh)} MWh`
       : unavailableShort;
 
-  const fleetSurplusMethodologyFootnote =
-    market && !fleetStructuralSurplus
-      ? language === "de"
-        ? "Hinweis: Ohne Batterieserie im Energy-Charts-total_power-Feed kann der nicht aufgenommene Ueberschuss hier nicht ermittelt werden."
-        : "Note: Without a battery series in the Energy-Charts total_power payload, observed uncaptured surplus cannot be computed here."
-      : fleetStructuralSurplus
-        ? language === "de"
-          ? `Messgroesse fuer ${fleetStructuralSurplus.dateBerlin} (${formatCoveragePct(fleetStructuralSurplus.pointFractionOfDay)} des Tages): je Viertelstunde struktureller Ueberschuss (inl. Erzeugung ohne Batterieserie minus Last); Abzug davon bis zur beobachteten Flottenladung (${MWH_COMPACT_FORMATTER.format(fleetStructuralSurplus.observedBatteryAbsorptionInSurplusMwh)} MWh gesamt), wobei negative MW in der Batterieserie als Laden gewertet werden. Nur Slots mit strukturellem Ueberschuss.`
-          : `Metric for ${fleetStructuralSurplus.dateBerlin} (${formatCoveragePct(fleetStructuralSurplus.pointFractionOfDay)} of day): quarter-hour structural surplus (domestic generation excluding battery stack − load); minus observed fleet charging (total ${MWH_COMPACT_FORMATTER.format(fleetStructuralSurplus.observedBatteryAbsorptionInSurplusMwh)} MWh), treating negative MW in the battery series as charging. Only slots with positive structural surplus.`
-        : null;
-
   const fallbackTakeawayText =
     language === "de"
-      ? "Live-Daten werden geladen. Sobald aktuelle Netto-Position, Tagesbilanz, Forecast-Signal und Fleet-SoC vorliegen, wird hier ein klarer 3-Horizonte-Takeaway angezeigt."
-      : "Live data is loading. Once current net position, full-day balance, forecast signal, and fleet SoC are available, this section will show a clear three-horizon takeaway.";
+      ? "Live-Daten werden geladen — hier erscheinen gleich drei kompakte Linien zu Systemrichtung, adjustierter Abendluecke und Dispatch-Hinweis."
+      : "Live data is loading — three compact lines will cover system direction, SoC-adjusted evening gap, and dispatch guidance.";
 
-  const takeawaySections =
-    dailyEnergy && effectiveGapGw !== null && socAvailable && netPositionMw !== null
+  /** Keep MW / GWh numbers out of the takeaway when they already appear in Live Metrics or the daily profile. */
+  const takeawayLines =
+    effectiveGapGw !== null && socAvailable && netPositionMw !== null
       ? language === "de"
         ? [
-            {
-              label: "Jetzt",
-              text: `Netto-Position: ${netPositionMw >= 0 ? "Ueberschuss" : "Defizit"} ${formatAdaptivePower(Math.abs(netPositionMw))}; BESS-Flottenmodus: ${fleetModeLabel}.`,
-            },
-            {
-              label: "Tagesbilanz Deutschland",
-              text: `${formatSignedValue(dailyEnergy.totalNetBalanceGwh, "GWh")} bis jetzt (${formatCoveragePct(dailyEnergy.pointFractionOfDay)} des Tages erfasst).`,
-            },
-            {
-              label: "Forecast / Struktursignal",
-              text: assessment?.shortTermSignal ?? "Kurzfristsignal wird geladen.",
-            },
-            {
-              label: "Abendluecke (SoC-adjustiert)",
-              text: `Bei geschaetztem Evening-SoC von rund ${PERCENT_FORMATTER.format(socBand.midpointPct)}% bleibt eine effektive Evening Gap von etwa ${formatGw(effectiveGapGw)}.`,
-            },
+            netPositionMw >= 0
+              ? `Strukturelle Ueberschusslage am Knoten; Flotte eher „${fleetModeLabel}“ — MW siehe Live Metrics.`
+              : `Strukturelle Defizitlage am Knoten; Flotte eher „${fleetModeLabel}“ — MW siehe Live Metrics.`,
+            `Effektive Abendluecke (SoC-adjustiert, einmaliger Kennwert): rund ${formatGw(effectiveGapGw)} — Restflexibilitaet nach geschaetztem Flotten-SoC.`,
+            assessment?.shortTermSignal ?? "Dispatch-Empfehlung laedt noch …",
           ]
         : [
-            {
-              label: "Now",
-              text: `Net position: ${netPositionMw >= 0 ? "surplus" : "deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}; BESS fleet mode: ${fleetModeLabel}.`,
-            },
-            {
-              label: "Germany day balance",
-              text: `${formatSignedValue(dailyEnergy.totalNetBalanceGwh, "GWh")} so far (${formatCoveragePct(dailyEnergy.pointFractionOfDay)} of the day observed).`,
-            },
-            {
-              label: "Forecast / structural signal",
-              text: assessment?.shortTermSignal ?? "Short-term signal is loading.",
-            },
-            {
-              label: "Evening gap (SoC-adjusted)",
-              text: `With estimated evening SoC near ${PERCENT_FORMATTER.format(socBand.midpointPct)}%, the effective evening gap remains around ${formatGw(effectiveGapGw)}.`,
-            },
+            netPositionMw >= 0
+              ? `Structural surplus at the bus; fleet leaning “${fleetModeLabel}”—see Live Metrics for MW.`
+              : `Structural deficit at the bus; fleet leaning “${fleetModeLabel}”—see Live Metrics for MW.`,
+            `Effective evening gap (SoC-adjusted, single KPI): ~${formatGw(effectiveGapGw)}—residual flexibility after estimated fleet headroom.`,
+            assessment?.shortTermSignal ?? "Dispatch guidance still loading…",
           ]
       : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-16 px-8 pb-24 pt-16 md:gap-20 lg:px-12">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-12 px-8 pb-24 pt-16 md:gap-16 lg:px-12">
       {isLiveDataLoading ? (
         <div className="pointer-events-none fixed top-16 left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-slate-300/60 bg-white/90 p-3 shadow-lg backdrop-blur dark:border-slate-500/40 dark:bg-slate-900/85">
           <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -502,24 +429,22 @@ export default function Home() {
           <div className="pl-3">
             <p className="inline-flex items-center gap-2 text-xs font-semibold tracking-[0.12em] text-blue-800 uppercase dark:text-blue-200">
               <Lightbulb className="h-3.5 w-3.5" />
-              Heutiger Key Takeaway
+              {language === "de" ? "Heutiger Key Takeaway" : "Today's key takeaway"}
             </p>
-            {takeawaySections ? (
-              <div className="mt-3 grid gap-2.5">
-                {takeawaySections.map((section) => (
-                  <div
-                    key={section.label}
-                    className="rounded-lg border border-slate-200/80 bg-white/70 px-3 py-2 dark:border-slate-600/45 dark:bg-slate-900/45"
+            {takeawayLines ? (
+              <ul className="mt-4 list-none space-y-3">
+                {takeawayLines.map((line, index) => (
+                  <li
+                    key={`takeaway-${index}`}
+                    className="flex gap-3 text-sm leading-snug text-slate-800 dark:text-slate-100 md:text-[15px]"
                   >
-                    <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase dark:text-slate-300">
-                      {section.label}
-                    </p>
-                    <p className="mt-1 text-sm leading-relaxed text-slate-800 dark:text-slate-100">
-                      {section.text}
-                    </p>
-                  </div>
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800 dark:bg-blue-400/20 dark:text-blue-100">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0">{line}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : (
               <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-800 dark:text-slate-100">
                 {fallbackTakeawayText}
@@ -540,52 +465,63 @@ export default function Home() {
             ? "Tägliches High-Signal-Briefing für Storage-Teams, die Nachfragestress, Erneuerbaren-Anteil und Deployment-Dynamik der BESS-Flotte verfolgen."
             : "Daily high-signal briefing for storage teams tracking demand stress, renewable penetration, and BESS deployment momentum."}
         </p>
-        <div className="mt-10 space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <KpiCard
-              title={language === "de" ? "Gesamterzeugung" : "Total generation"}
-              value={market ? formatAdaptivePower(market.realtimeSystem.domesticGenerationMw) : language === "de" ? "voruebergehend nicht verfuegbar" : "temporarily unavailable"}
-              meaning={language === "de" ? "Aktuelle inländische Stromerzeugung." : "Current domestic electricity generation."}
-              isLoading={isLiveDataLoading}
-              detailRows={[
-                { label: language === "de" ? "Erneuerbar" : "Renewable", value: renewableGenerationDisplay },
-                { label: language === "de" ? "Konventionell" : "Conventional", value: conventionalGenerationDisplay },
-              ]}
-            />
-            <KpiCard
-              title={language === "de" ? "Aktuelle Last" : "Current demand"}
-              value={market ? formatAdaptivePower(market.realtimeSystem.loadMw) : language === "de" ? "voruebergehend nicht verfuegbar" : "temporarily unavailable"}
-              meaning={language === "de" ? "Live-Leistungsbedarf im Netz." : "Live power needed in the grid."}
-              isLoading={isLiveDataLoading}
-            />
-          </div>
-          <div className="flex justify-center">
-            <KpiCard
-              className="w-full md:max-w-md"
-              title={language === "de" ? "Netto-Position" : "Net position"}
-              value={
-                netPositionMw !== null
-                  ? `${netPositionMw >= 0 ? (language === "de" ? "Überschuss" : "Surplus") : language === "de" ? "Defizit" : "Deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}`
-                  : language === "de"
-                    ? "voruebergehend nicht verfuegbar"
-                    : "temporarily unavailable"
-              }
-              meaning={language === "de" ? "Saldo aus inländischer Erzeugung und aktueller Last." : "Domestic generation balance vs current demand."}
-              sublabel={`${language === "de" ? "BESS-Status" : "BESS status"}: ${fleetModeLabel}`}
-              isLoading={isLiveDataLoading}
-            />
-          </div>
+        <p className="text-xs tracking-[0.16em] text-slate-500 uppercase dark:text-slate-400">
+          {language === "de" ? "Live-Metriken" : "Live metrics"}
+        </p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <LiveMetricTile
+            title={language === "de" ? "Erzeugung" : "Generation"}
+            value={
+              market
+                ? formatAdaptivePower(market.realtimeSystem.domesticGenerationMw)
+                : language === "de"
+                  ? "voruebergehend nicht verfuegbar"
+                  : "temporarily unavailable"
+            }
+            detailLine={
+              language === "de"
+                ? `Öko ${renewableGenerationDisplay} · Konv. ${conventionalGenerationDisplay}`
+                : `Renew. ${renewableGenerationDisplay} · Conv. ${conventionalGenerationDisplay}`
+            }
+            isLoading={isLiveDataLoading}
+          />
+          <LiveMetricTile
+            title={language === "de" ? "Last" : "Demand"}
+            value={
+              market
+                ? formatAdaptivePower(market.realtimeSystem.loadMw)
+                : language === "de"
+                  ? "voruebergehend nicht verfuegbar"
+                  : "temporarily unavailable"
+            }
+            isLoading={isLiveDataLoading}
+          />
+          <LiveMetricTile
+            title={language === "de" ? "Netto-Position" : "Net position"}
+            value={
+              netPositionMw !== null
+                ? `${netPositionMw >= 0 ? (language === "de" ? "Überschuss" : "Surplus") : language === "de" ? "Defizit" : "Deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}`
+                : language === "de"
+                  ? "voruebergehend nicht verfuegbar"
+                  : "temporarily unavailable"
+            }
+            detailLine={`${language === "de" ? "BESS" : "BESS"} · ${fleetModeLabel}`}
+            isLoading={isLiveDataLoading}
+          />
         </div>
-        <article className="rounded-2xl border border-slate-300/45 bg-white/75 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
+        <article className="mt-10 rounded-2xl border border-slate-300/45 bg-white/75 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
           <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-            {language === "de" ? "BESS-Flottenüberblick" : "BESS Fleet Overview"}
+            {language === "de" ? "Flottenkontext & Karte" : "Fleet context & map"}
           </p>
           <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
             {language === "de"
-              ? "Summen basieren auf Energy-Charts; die Größensegmentierung auf Betriebsanlagen aus dem MaStR."
-              : "Totals use Energy-Charts; size split uses MaStR operational registry units."}
+              ? "Installierte GW/GWh über Energy-Charts; Nutzungs-Split über MaStR. Darunter deutschlandweite Utility- und Small-Scale-Standorte."
+              : "Installed GW/GWh from Energy-Charts; size split from MaStR. Below that, nationwide utility-scale and small-scale pins."}
           </p>
-          <div className="mt-4 grid gap-4">
+          <p className="mt-3 text-[11px] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+            {language === "de" ? "BESS-Flottenüberblick" : "BESS Fleet Overview"}
+          </p>
+          <div className="mt-3 grid gap-4">
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
                 <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{language === "de" ? "Installierte Leistung gesamt" : "Installed Power Total"}</p>
@@ -627,8 +563,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-        </article>
-        <article className="rounded-2xl border border-slate-300/45 bg-white/75 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
+          <hr className="my-8 border-slate-200/90 dark:border-slate-600/35" />
           <div className="flex flex-wrap items-center gap-2 text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
             <span>{language === "de" ? "BESS-Deployment-Karte" : "BESS Deployment Map"}</span>
             <span className="inline-flex items-center rounded-full border border-blue-300/60 bg-blue-50/90 px-2 py-0.5 text-[10px] tracking-[0.1em] text-blue-700 dark:border-blue-300/35 dark:bg-blue-400/10 dark:text-blue-200">
@@ -638,11 +573,6 @@ export default function Home() {
               {language === "de" ? "Small-Scale-Dichte" : "Small-scale density"}
             </span>
           </div>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            {language === "de"
-              ? "Utility-Scale- und Small-Scale-BESS-Standorte in Deutschland (MaStR-Daten)."
-              : "Utility-scale and small-scale BESS locations across Germany (MaStR data)."}
-          </p>
           <div className="mt-4">
             <MegapackMap compact />
           </div>
@@ -657,115 +587,54 @@ export default function Home() {
         isLoading={isLiveDataLoading}
       />
 
-      <BessDispatchSimulator />
+      <div className="mx-auto w-full max-w-[68rem]">
+        <BessDispatchSimulator />
+      </div>
 
       <section
-        id="market-signals"
-        className="scroll-mt-8 space-y-5 border-t border-slate-200/90 pt-14 dark:border-slate-600/35 dark:pt-16"
+        id="market-snapshot"
+        className="scroll-mt-8 space-y-5 border-t border-slate-200/90 pt-10 dark:border-slate-600/35 dark:pt-12"
       >
-        <h2 className="text-2xl text-slate-800 dark:text-slate-100 md:text-3xl [font-family:var(--font-heading)]">
-          {language === "de" ? "Strategische Signale" : "Strategic Signal Review"}
-        </h2>
-        <p className="max-w-2xl text-xs text-slate-500 dark:text-slate-400">
-          {language === "de"
-            ? "Kompakte Marktindikatoren — Kontext für Ihre Dispatch-Entscheidungen."
-            : "Compact market indicators — context for dispatch decisions."}
-        </p>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <CompactSignalStat
-            label={language === "de" ? "Evening Gap" : "Evening gap"}
-            value={eveningGapValueDisplay}
-            footnote={
-              eveningGapIsProxy && market
-                ? language === "de"
-                  ? "Snapshot-Proxy"
-                  : "Snapshot proxy"
-                : undefined
-            }
-            isLoading={isLiveDataLoading}
-          />
-          <CompactSignalStat
-            label={language === "de" ? "Volatilität" : "Volatility"}
-            value={volatilityScore !== null ? `${volatilityScore}/100` : unavailableShort}
-            isLoading={isLiveDataLoading}
-          />
-          <CompactSignalStat
-            label={language === "de" ? "Rampen" : "Ramps"}
-            value={rampScore !== null ? `${rampScore}/100` : unavailableShort}
-            isLoading={isLiveDataLoading}
-          />
-          <CompactSignalStat
-            label={language === "de" ? "Opportunity" : "Opportunity"}
-            value={opportunityScore !== null ? `${opportunityScore}/100` : unavailableShort}
-            footnote={
-              assessment
-                ? language === "de"
-                  ? assessment.verdict === "beneficial_now"
-                    ? "Fazit: vorteilhaft"
-                    : assessment.verdict === "not_beneficial_now"
-                      ? "Fazit: nicht vorteilhaft"
-                      : "Fazit: unklar"
-                  : assessment.verdict === "beneficial_now"
-                    ? "Verdict: beneficial"
-                    : assessment.verdict === "not_beneficial_now"
-                      ? "Verdict: not beneficial"
-                      : "Verdict: uncertain"
-                : undefined
-            }
-            isLoading={isLiveDataLoading}
-          />
+        <div className="max-w-3xl">
+          <h2 className="text-lg text-slate-800 dark:text-slate-100 md:text-xl [font-family:var(--font-heading)]">
+            {language === "de" ? "Market Snapshot" : "Market snapshot"}
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            {language === "de"
+              ? "Vier Kennzahlen aus dem gleichen Abruf wie oben — kompakt fuer Kontext vor dem Assessments-Block."
+              : "Four indicators from the same pull as above—compact context ahead of assessment."}
+          </p>
         </div>
-      </section>
-
-      <section
-        id="quick-stats"
-        className="scroll-mt-8 space-y-4 border-t border-slate-200/90 pt-12 dark:border-slate-600/35 dark:pt-14"
-      >
-        <p className="text-xs tracking-[0.16em] text-slate-500 uppercase dark:text-slate-400">
-          {language === "de" ? "Markt-Quick-Stats" : "Market quick stats"}
-        </p>
-        <div className="flex flex-wrap gap-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:gap-4">
           <QuickStatPill
-            label={language === "de" ? "Tagesbilanz (Netto)" : "Daily net balance"}
-            value={dailyTotalBalanceValue}
-            isLoading={isLiveDataLoading || !dailyEnergyAvailable}
+            label={language === "de" ? "Netto am Knoten" : "Structural net"}
+            value={
+              netPositionMw !== null
+                ? `${netPositionMw >= 0 ? (language === "de" ? "Ueberschuss" : "Surplus") : language === "de" ? "Defizit" : "Deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}`
+                : unavailableShort
+            }
+            isLoading={isLiveDataLoading}
           />
           <QuickStatPill
-            label={language === "de" ? "Fleet-SoC (Abend)" : "Fleet SoC (eve.)"}
-            value={quickStatsFleetSoc}
-            isLoading={isLiveDataLoading || !socAvailable}
-          />
-          <QuickStatPill
-            label={language === "de" ? "Effektive Abendlücke" : "Effective evening gap"}
-            value={effectiveGapValueDisplay}
-            isLoading={isLiveDataLoading || effectiveGapDisplay === null}
-          />
-          <QuickStatPill
-            label={language === "de" ? "Erneuerbar-Anteil" : "Renewable share"}
+            label={language === "de" ? "Erneuerbarquote (Live)" : "Renewable share (live)"}
             value={renewableShareDisplay}
             isLoading={isLiveDataLoading}
           />
           <QuickStatPill
-            label={language === "de" ? "Abend-Flexlücke (brutto)" : "Evening gap (gross)"}
-            value={eveningGapValueDisplay}
+            label={language === "de" ? "Effektive Abendluecke (SoC-adj.)" : "Effective evening gap (SoC-adj.)"}
+            value={
+              effectiveGapGw !== null
+                ? `~${formatGw(effectiveGapGw)}`
+                : unavailableShort
+            }
             isLoading={isLiveDataLoading}
           />
           <QuickStatPill
-            label={language === "de" ? "Ueberschuss ohne Speicherdecke (Ist)" : "Uncaptured surplus (observed)"}
+            label={language === "de" ? "Nicht aufgenommener Restueberschuss" : "Uncaptured structural surplus"}
             value={fleetUncapturedSurplusDisplay}
             isLoading={isLiveDataLoading}
           />
         </div>
-        {fleetSurplusMethodologyFootnote ? (
-          <p className="max-w-4xl text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-            {fleetSurplusMethodologyFootnote}
-          </p>
-        ) : null}
-        {dailyEnergy ? (
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            {language === "de" ? "Datum (Berlin):" : "Date (Berlin):"} {dailyEnergy.dateBerlin}
-          </p>
-        ) : null}
       </section>
 
       <section
@@ -818,75 +687,35 @@ export default function Home() {
   );
 }
 
-function KpiCard({
+function LiveMetricTile({
   title,
   value,
-  meaning,
-  sublabel,
-  className,
-  detailRows,
+  detailLine,
   isLoading = false,
 }: {
   title: string;
   value: string;
-  meaning: string;
-  sublabel?: string;
-  className?: string;
-  detailRows?: Array<{ label: string; value: string }>;
+  detailLine?: string;
   isLoading?: boolean;
 }) {
   return (
-    <article className={`relative rounded-2xl border border-slate-300/55 bg-white/80 p-5 dark:border-slate-500/40 dark:bg-slate-900/65 ${className ?? ""}`}>
-      <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">{title}</p>
+    <article className="rounded-xl border border-slate-300/50 bg-white/85 px-4 py-3 dark:border-slate-500/40 dark:bg-slate-900/60">
+      <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
+        {title}
+      </p>
       {isLoading ? (
-        <CardLoadingSkeleton compact />
+        <div className="mt-2 space-y-2">
+          <Skeleton className="h-8 w-[min(100%,180px)]" />
+          <Skeleton className="h-3 w-4/5" />
+        </div>
       ) : (
         <>
-          <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white md:text-4xl [font-family:var(--font-sans)]">
+          <p className="mt-1.5 text-xl font-bold tabular-nums text-slate-900 md:text-2xl dark:text-white [font-family:var(--font-sans)]">
             {value}
           </p>
-          {detailRows?.length ? (
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 dark:text-slate-200">
-          {detailRows.map((detail) => (
-            <p key={detail.label} className="inline-flex items-center gap-1.5">
-              <span className="text-slate-500 dark:text-slate-300">{detail.label}:</span>
-              <span className="font-semibold text-slate-900 dark:text-white">{detail.value}</span>
-            </p>
-          ))}
-        </div>
+          {detailLine ? (
+            <p className="mt-1 text-[11px] leading-snug text-slate-600 dark:text-slate-400">{detailLine}</p>
           ) : null}
-          {sublabel ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{sublabel}</p> : null}
-          <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{meaning}</p>
-        </>
-      )}
-    </article>
-  );
-}
-
-function CompactSignalStat({
-  label,
-  value,
-  footnote,
-  isLoading = false,
-}: {
-  label: string;
-  value: string;
-  footnote?: string;
-  isLoading?: boolean;
-}) {
-  return (
-    <article className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 shadow-sm dark:border-slate-600/40 dark:bg-slate-900/45">
-      <p className="text-[10px] font-medium tracking-[0.12em] text-slate-500 uppercase dark:text-slate-400">{label}</p>
-      {isLoading ? (
-        <div className="mt-2">
-          <Skeleton className="h-7 w-20" />
-        </div>
-      ) : (
-        <>
-          <p className="mt-1.5 text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white md:text-2xl [font-family:var(--font-sans)]">
-            {value}
-          </p>
-          {footnote ? <p className="mt-1 text-[10px] leading-tight text-slate-500 dark:text-slate-400">{footnote}</p> : null}
         </>
       )}
     </article>
@@ -914,17 +743,6 @@ function QuickStatPill({
           {value}
         </p>
       )}
-    </div>
-  );
-}
-
-function CardLoadingSkeleton({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className={`${compact ? "mt-3 space-y-2" : "mt-3 space-y-3"}`}>
-      <Skeleton className={`${compact ? "h-8 w-2/3" : "h-10 w-3/4"}`} />
-      <Skeleton className="h-3 w-full" />
-      <Skeleton className="h-3 w-11/12" />
-      {!compact ? <Skeleton className="h-3 w-4/5" /> : null}
     </div>
   );
 }
