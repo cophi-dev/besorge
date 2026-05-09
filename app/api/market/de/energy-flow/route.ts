@@ -3,7 +3,11 @@ import { NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
 
 import { createLogger } from "@/lib/debug";
-import { getGermanyEnergyFlowForBerlinRange, getGermanyEnergyFlowForPeriod } from "@/lib/energyChartsApi";
+import {
+  getGermanyBessRecommendationTrailingWindow,
+  getGermanyEnergyFlowForBerlinRange,
+  getGermanyEnergyFlowForPeriod,
+} from "@/lib/energyChartsApi";
 import {
   berlinDateKeySchema,
   berlinIsoWeekKeySchema,
@@ -34,10 +38,36 @@ const getEnergyFlowCached = GERMANY_ENERGY_FLOW_PERIODS.reduce(
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const now = new Date();
+  const recommendationQuery = url.searchParams.get("recommendation");
   const dateQuery = url.searchParams.get("date");
   const weekQuery = url.searchParams.get("week");
   const monthQuery = url.searchParams.get("month");
   const customSelectors = [dateQuery, weekQuery, monthQuery].filter((entry) => entry !== null);
+
+  if (recommendationQuery !== null) {
+    if (recommendationQuery !== "trailing_12m") {
+      return NextResponse.json(
+        { message: "Invalid recommendation query. Use trailing_12m." },
+        { status: 400 }
+      );
+    }
+    try {
+      const recommendation = await getGermanyBessRecommendationTrailingWindow(365, now);
+      return NextResponse.json(recommendation, { headers: { "Cache-Control": "no-store" } });
+    } catch (error) {
+      log("failed to load Germany BESS recommendation %o", {
+        request: { method: "GET", route: "/api/market/de/energy-flow", recommendation: recommendationQuery },
+        response: { status: 502 },
+        error,
+      });
+      return NextResponse.json(
+        {
+          message: "Unable to load Germany BESS recommendation right now.",
+        },
+        { status: 502 }
+      );
+    }
+  }
 
   if (customSelectors.length > 1) {
     return NextResponse.json(

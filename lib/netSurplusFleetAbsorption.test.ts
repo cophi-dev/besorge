@@ -1,4 +1,7 @@
-import { computeNetSurplusFleetAbsorption } from "@/lib/netSurplusFleetAbsorption";
+import {
+  computeCyclingFleetSurplusAbsorption,
+  computeNetSurplusFleetAbsorption,
+} from "@/lib/netSurplusFleetAbsorption";
 
 describe("computeNetSurplusFleetAbsorption", () => {
   it("sums gross surplus when gen exceeds load each quarter-hour", () => {
@@ -44,5 +47,43 @@ describe("computeNetSurplusFleetAbsorption", () => {
     expect(r.absorbedEnergyMwh).toBe(0);
     expect(r.missedSurplusEnergyMwh).toBeCloseTo(2_500, 5);
     expect(r.inferredFleetSocPctSeries).toEqual([0]);
+  });
+});
+
+describe("computeCyclingFleetSurplusAbsorption", () => {
+  it("discharges on deficit so a later surplus slot can charge again (charge-only misses that tail)", () => {
+    /** 100 MW net for ¼ h = 25 MWh per slot cap; full–empty–full pattern. */
+    const slots = [
+      { totalGenerationMw: 100, loadMw: 0 },
+      { totalGenerationMw: 0, loadMw: 100 },
+      { totalGenerationMw: 100, loadMw: 0 },
+    ];
+    const capMwh = 25;
+    const powerMw = 500_000;
+
+    const chargeOnly = computeNetSurplusFleetAbsorption(slots, capMwh, powerMw);
+    const cycling = computeCyclingFleetSurplusAbsorption(slots, capMwh, powerMw, {
+      resetDailyByBerlin: false,
+    });
+
+    expect(chargeOnly.grossSurplusEnergyMwh).toBeCloseTo(50, 5);
+    expect(chargeOnly.absorbedEnergyMwh).toBeCloseTo(25, 5);
+
+    expect(cycling.grossSurplusEnergyMwh).toBeCloseTo(50, 5);
+    expect(cycling.absorbedEnergyMwh).toBeCloseTo(50, 5);
+    expect(cycling.missedSurplusEnergyMwh).toBeCloseTo(0, 5);
+  });
+
+  it("matches charge-only behaviour when surplus never follows a fuller battery", () => {
+    const slots = Array.from({ length: 4 }, () => ({
+      totalGenerationMw: 40_000,
+      loadMw: 30_000,
+    }));
+    const r = computeCyclingFleetSurplusAbsorption(slots, 500_000, 500_000, {
+      resetDailyByBerlin: false,
+    });
+    expect(r.grossSurplusEnergyMwh).toBeCloseTo(10_000, 5);
+    expect(r.absorbedEnergyMwh).toBeCloseTo(10_000, 5);
+    expect(r.missedSurplusEnergyMwh).toBeCloseTo(0, 5);
   });
 });

@@ -12,6 +12,40 @@ export type PracticalDispatchSlot = {
   socPct: number;
 };
 
+export type DailyBessSizingProfile = {
+  dateBerlin: string;
+  requiredEnergyMwh: number;
+  requiredChargePowerMw: number;
+  requiredDischargePowerMw: number;
+  requiredPowerMw: number;
+};
+
+export type LogicalBessRecommendationTier = {
+  label: "aggressive" | "balanced" | "conservative";
+  percentile: number;
+  recommendedEnergyMwh: number;
+  recommendedPowerMw: number;
+};
+
+export type LogicalBessRecommendation = {
+  observedDays: number;
+  tiers: LogicalBessRecommendationTier[];
+  continuousWindowRequiredEnergyMwh: number;
+  dailyEnergyP95Mwh: number;
+  dailyPowerP95Mw: number;
+};
+
+type PowerConstrainedSimulationOptions = {
+  resetDailyByBerlin?: boolean;
+  initialSocMwh?: number;
+  maxPowerMw?: number | null;
+};
+
+const resolvePowerCapMwhPerSlot = (maxPowerMw?: number | null): number =>
+  maxPowerMw !== null && maxPowerMw !== undefined && Number.isFinite(maxPowerMw) && maxPowerMw > 0
+    ? maxPowerMw * QUARTER_HOUR_H
+    : Number.POSITIVE_INFINITY;
+
 /**
  * "Optimal" energy capacity for a perfect surplus-following BESS over the given slot series:
  * - Start empty (SoC = 0).
@@ -115,10 +149,95 @@ export function computePracticalDailyCycleCapacityMwh(
   };
 }
 
+export function computeDailyBessSizingProfiles(
+  slots: OptimalCapacitySlotInput[]
+): DailyBessSizingProfile[] {
+  const perDay = new Map<string, OptimalCapacitySlotInput[]>();
+  for (const s of slots) {
+    const key = s.timestampIso
+      ? berlinDateFormatter.format(new Date(s.timestampIso))
+      : "unknown-day";
+    const arr = perDay.get(key);
+    if (arr) {
+      arr.push(s);
+    } else {
+      perDay.set(key, [s]);
+    }
+  }
+
+  const profiles: DailyBessSizingProfile[] = [];
+  for (const [dateBerlin, daySlots] of perDay.entries()) {
+    const requiredEnergyMwh = computeOptimalSurplusDeficitCapacityMwh(daySlots).optimalCapacityMwh;
+    let requiredChargePowerMw = 0;
+    let requiredDischargePowerMw = 0;
+    for (const s of daySlots) {
+      const netMw = s.totalGenerationMw - s.loadMw;
+      if (netMw > 0 && netMw > requiredChargePowerMw) {
+        requiredChargePowerMw = netMw;
+      }
+      if (netMw < 0) {
+        const deficitMw = -netMw;
+        if (deficitMw > requiredDischargePowerMw) {
+          requiredDischargePowerMw = deficitMw;
+        }
+      }
+    }
+    profiles.push({
+      dateBerlin,
+      requiredEnergyMwh,
+      requiredChargePowerMw,
+      requiredDischargePowerMw,
+      requiredPowerMw: Math.max(requiredChargePowerMw, requiredDischargePowerMw),
+    });
+  }
+  return profiles;
+}
+
+export function computeLogicalBessRecommendation(
+  slots: OptimalCapacitySlotInput[]
+): LogicalBessRecommendation {
+  const profiles = computeDailyBessSizingProfiles(slots);
+  const dailyEnergy = profiles.map((entry) => entry.requiredEnergyMwh);
+  const dailyPower = profiles.map((entry) => entry.requiredPowerMw);
+  const percentileValue = (
+    label: LogicalBessRecommendationTier["label"] | "p95"
+  ): number => {
+    switch (label) {
+      case "aggressive":
+        return 0.8;
+      case "balanced":
+        return 0.9;
+      case "conservative":
+        return 0.95;
+      case "p95":
+        return 0.95;
+      default:
+        return 0.9;
+    }
+  };
+  const tiers: LogicalBessRecommendationTier[] = ["aggressive", "balanced", "conservative"].map((label) => {
+    const p = percentileValue(label);
+    return {
+      label,
+      percentile: p,
+      recommendedEnergyMwh: percentile(dailyEnergy, p),
+      recommendedPowerMw: percentile(dailyPower, p),
+    };
+  });
+
+  return {
+    observedDays: profiles.length,
+    tiers,
+    continuousWindowRequiredEnergyMwh: computeOptimalSurplusDeficitCapacityMwh(slots).optimalCapacityMwh,
+    dailyEnergyP95Mwh: percentile(dailyEnergy, percentileValue("p95")),
+    dailyPowerP95Mw: percentile(dailyPower, percentileValue("p95")),
+  };
+}
+
 export function computeCoverageAtCapacityMwh(
   slots: OptimalCapacitySlotInput[],
   capacityMwh: number,
-  options?: { resetDailyByBerlin?: boolean }
+  options?: { resetDailyByBerlin?: boolean; maxPowerMw?: number | null }
 ): {
   totalSurplusEnergyMwh: number;
   absorbedSurplusEnergyMwh: number;
@@ -128,6 +247,7 @@ export function computeCoverageAtCapacityMwh(
   servedDeficitShare: number;
 } {
   const cap = Math.max(0, capacityMwh);
+  const powerCapMwhPerSlot = resolvePowerCapMwhPerSlot(options?.maxPowerMw);
   let socMwh = 0;
   let activeDay: string | null = null;
   let totalSurplusEnergyMwh = 0;
@@ -148,13 +268,13 @@ export function computeCoverageAtCapacityMwh(
     const netMwh = (s.totalGenerationMw - s.loadMw) * QUARTER_HOUR_H;
     if (netMwh >= 0) {
       totalSurplusEnergyMwh += netMwh;
-      const charge = Math.min(cap - socMwh, netMwh);
+      const charge = Math.min(cap - socMwh, netMwh, powerCapMwhPerSlot);
       socMwh += Math.max(0, charge);
       absorbedSurplusEnergyMwh += Math.max(0, charge);
     } else {
       const deficit = -netMwh;
       totalDeficitEnergyMwh += deficit;
-      const discharge = Math.min(socMwh, deficit);
+      const discharge = Math.min(socMwh, deficit, powerCapMwhPerSlot);
       socMwh -= discharge;
       servedDeficitEnergyMwh += discharge;
     }
@@ -175,9 +295,10 @@ export function computeCoverageAtCapacityMwh(
 export function simulateSocPctAtCapacityMwh(
   slots: OptimalCapacitySlotInput[],
   capacityMwh: number,
-  options?: { resetDailyByBerlin?: boolean; initialSocMwh?: number }
+  options?: PowerConstrainedSimulationOptions
 ): number[] {
   const cap = Math.max(0, capacityMwh);
+  const powerCapMwhPerSlot = resolvePowerCapMwhPerSlot(options?.maxPowerMw);
   if (cap <= 0) {
     return slots.map(() => 0);
   }
@@ -196,9 +317,11 @@ export function simulateSocPctAtCapacityMwh(
     }
     const netMwh = (s.totalGenerationMw - s.loadMw) * QUARTER_HOUR_H;
     if (netMwh >= 0) {
-      socMwh = Math.min(cap, socMwh + netMwh);
+      const chargeMwh = Math.min(netMwh, powerCapMwhPerSlot);
+      socMwh = Math.min(cap, socMwh + chargeMwh);
     } else {
-      socMwh = Math.max(0, socMwh + netMwh);
+      const dischargeMwh = Math.min(-netMwh, powerCapMwhPerSlot);
+      socMwh = Math.max(0, socMwh - dischargeMwh);
     }
     series.push((socMwh / cap) * 100);
   }
@@ -208,9 +331,10 @@ export function simulateSocPctAtCapacityMwh(
 export function simulateAdjustedNetMwAtCapacity(
   slots: OptimalCapacitySlotInput[],
   capacityMwh: number,
-  options?: { resetDailyByBerlin?: boolean; initialSocMwh?: number }
+  options?: PowerConstrainedSimulationOptions
 ): number[] {
   const cap = Math.max(0, capacityMwh);
+  const powerCapMwhPerSlot = resolvePowerCapMwhPerSlot(options?.maxPowerMw);
   let socMwh = Math.min(cap, Math.max(0, options?.initialSocMwh ?? 0));
   let activeDay: string | null = null;
   const adjusted: number[] = [];
@@ -228,12 +352,12 @@ export function simulateAdjustedNetMwAtCapacity(
 
     const netMwh = (s.totalGenerationMw - s.loadMw) * QUARTER_HOUR_H;
     if (netMwh >= 0) {
-      const charge = Math.min(Math.max(0, cap - socMwh), netMwh);
+      const charge = Math.min(Math.max(0, cap - socMwh), netMwh, powerCapMwhPerSlot);
       socMwh += charge;
       adjusted.push((netMwh - charge) / QUARTER_HOUR_H);
     } else {
       const deficit = -netMwh;
-      const discharge = Math.min(socMwh, deficit);
+      const discharge = Math.min(socMwh, deficit, powerCapMwhPerSlot);
       socMwh -= discharge;
       adjusted.push((-deficit + discharge) / QUARTER_HOUR_H);
     }
@@ -244,9 +368,10 @@ export function simulateAdjustedNetMwAtCapacity(
 export function simulatePracticalDispatchAtCapacity(
   slots: OptimalCapacitySlotInput[],
   capacityMwh: number,
-  options?: { resetDailyByBerlin?: boolean; initialSocMwh?: number }
+  options?: PowerConstrainedSimulationOptions
 ): PracticalDispatchSlot[] {
   const cap = Math.max(0, capacityMwh);
+  const powerCapMwhPerSlot = resolvePowerCapMwhPerSlot(options?.maxPowerMw);
   let socMwh = Math.min(cap, Math.max(0, options?.initialSocMwh ?? 0));
   let activeDay: string | null = null;
   const series: PracticalDispatchSlot[] = [];
@@ -267,11 +392,11 @@ export function simulatePracticalDispatchAtCapacity(
     let dischargeMwh = 0;
 
     if (netMwh >= 0) {
-      chargeMwh = Math.min(Math.max(0, cap - socMwh), netMwh);
+      chargeMwh = Math.min(Math.max(0, cap - socMwh), netMwh, powerCapMwhPerSlot);
       socMwh += chargeMwh;
     } else {
       const deficitMwh = -netMwh;
-      dischargeMwh = Math.min(socMwh, deficitMwh);
+      dischargeMwh = Math.min(socMwh, deficitMwh, powerCapMwhPerSlot);
       socMwh -= dischargeMwh;
     }
 

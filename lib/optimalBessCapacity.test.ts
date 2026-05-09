@@ -1,4 +1,6 @@
 import {
+  computeDailyBessSizingProfiles,
+  computeLogicalBessRecommendation,
   computeCoverageAtCapacityMwh,
   computeOptimalSurplusDeficitCapacityMwh,
   computePracticalDailyCycleCapacityMwh,
@@ -43,6 +45,49 @@ describe("computePracticalDailyCycleCapacityMwh", () => {
   });
 });
 
+describe("computeDailyBessSizingProfiles", () => {
+  it("returns daily required energy and power profiles", () => {
+    const slots = [
+      { timestampIso: "2026-04-01T00:00:00.000Z", totalGenerationMw: 1400, loadMw: 1000 }, // +100 MWh, +400 MW
+      { timestampIso: "2026-04-01T00:15:00.000Z", totalGenerationMw: 600, loadMw: 1000 }, // -100 MWh, 400 MW discharge
+      { timestampIso: "2026-04-02T00:00:00.000Z", totalGenerationMw: 1200, loadMw: 1000 }, // +50 MWh, +200 MW
+      { timestampIso: "2026-04-02T00:15:00.000Z", totalGenerationMw: 900, loadMw: 1000 }, // -25 MWh, 100 MW discharge
+    ];
+    const profiles = computeDailyBessSizingProfiles(slots);
+    expect(profiles).toHaveLength(2);
+    expect(profiles[0]?.requiredEnergyMwh).toBeCloseTo(100, 6);
+    expect(profiles[0]?.requiredPowerMw).toBeCloseTo(400, 6);
+    expect(profiles[1]?.requiredEnergyMwh).toBeCloseTo(50, 6);
+    expect(profiles[1]?.requiredPowerMw).toBeCloseTo(200, 6);
+  });
+});
+
+describe("computeLogicalBessRecommendation", () => {
+  it("derives aggressive, balanced and conservative recommendation tiers", () => {
+    const slots = [
+      // day 1
+      { timestampIso: "2026-04-01T00:00:00.000Z", totalGenerationMw: 1400, loadMw: 1000 },
+      { timestampIso: "2026-04-01T00:15:00.000Z", totalGenerationMw: 600, loadMw: 1000 },
+      // day 2
+      { timestampIso: "2026-04-02T00:00:00.000Z", totalGenerationMw: 1200, loadMw: 1000 },
+      { timestampIso: "2026-04-02T00:15:00.000Z", totalGenerationMw: 900, loadMw: 1000 },
+      // day 3
+      { timestampIso: "2026-04-03T00:00:00.000Z", totalGenerationMw: 1600, loadMw: 1000 },
+      { timestampIso: "2026-04-03T00:15:00.000Z", totalGenerationMw: 600, loadMw: 1000 },
+    ];
+    const recommendation = computeLogicalBessRecommendation(slots);
+    expect(recommendation.observedDays).toBe(3);
+    expect(recommendation.tiers.map((entry) => entry.label)).toEqual([
+      "aggressive",
+      "balanced",
+      "conservative",
+    ]);
+    expect(recommendation.tiers[0]?.recommendedEnergyMwh).toBeGreaterThan(0);
+    expect(recommendation.tiers[1]?.recommendedPowerMw).toBeGreaterThan(0);
+    expect(recommendation.continuousWindowRequiredEnergyMwh).toBeGreaterThan(0);
+  });
+});
+
 describe("computeCoverageAtCapacityMwh", () => {
   it("reports surplus and deficit coverage shares at a fixed capacity", () => {
     const slots = [
@@ -70,6 +115,16 @@ describe("computeCoverageAtCapacityMwh", () => {
     expect(continuous.servedDeficitEnergyMwh).toBeCloseTo(100, 6);
     expect(dailyReset.servedDeficitEnergyMwh).toBeCloseTo(0, 6);
   });
+
+  it("respects power cap when covering deficits and surpluses", () => {
+    const slots = [
+      { totalGenerationMw: 1400, loadMw: 1000 }, // +100 MWh
+      { totalGenerationMw: 600, loadMw: 1000 }, // -100 MWh
+    ];
+    const powerLimited = computeCoverageAtCapacityMwh(slots, 500, { maxPowerMw: 100 }); // 25 MWh/slot
+    expect(powerLimited.absorbedSurplusEnergyMwh).toBeCloseTo(25, 6);
+    expect(powerLimited.servedDeficitEnergyMwh).toBeCloseTo(25, 6);
+  });
 });
 
 describe("simulateSocPctAtCapacityMwh", () => {
@@ -92,6 +147,15 @@ describe("simulateSocPctAtCapacityMwh", () => {
     const series = simulateSocPctAtCapacityMwh(slots, 100, { initialSocMwh: 50 });
     expect(series).toEqual([50, 0]);
   });
+
+  it("applies per-slot power cap to SoC evolution", () => {
+    const slots = [
+      { totalGenerationMw: 1400, loadMw: 1000 }, // +100 MWh gross
+      { totalGenerationMw: 600, loadMw: 1000 }, // -100 MWh gross
+    ];
+    const series = simulateSocPctAtCapacityMwh(slots, 200, { maxPowerMw: 100 }); // 25 MWh/slot
+    expect(series).toEqual([12.5, 0]);
+  });
 });
 
 describe("simulateAdjustedNetMwAtCapacity", () => {
@@ -103,6 +167,12 @@ describe("simulateAdjustedNetMwAtCapacity", () => {
     ];
     const adjusted = simulateAdjustedNetMwAtCapacity(slots, 100);
     expect(adjusted).toEqual([0, 0, -200]);
+  });
+
+  it("limits net adjustment by configured power cap", () => {
+    const slots = [{ totalGenerationMw: 1400, loadMw: 1000 }]; // +400 MW
+    const adjusted = simulateAdjustedNetMwAtCapacity(slots, 500, { maxPowerMw: 100 });
+    expect(adjusted).toEqual([300]);
   });
 });
 

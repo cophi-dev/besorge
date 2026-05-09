@@ -1,7 +1,9 @@
 import { z } from "zod";
 
 import { getBerlinDateKeyFromUnixSeconds as getBerlinDateKey } from "@/lib/berlinCalendar";
+import { computeEconomics, defaultEconomicsAssumptions } from "@/lib/bessEconomics";
 import { createLogger } from "@/lib/debug";
+import { computeCoverageAtCapacityMwh, computeLogicalBessRecommendation } from "@/lib/optimalBessCapacity";
 import type {
   GermanyEnergyFlowBerlinRange,
   GermanyEnergyFlowPeriod,
@@ -86,12 +88,14 @@ const fetchJson = async <T>(
     retries?: number;
     allowStaleOnFailure?: boolean;
     staleTtlMs?: number;
+    noStore?: boolean;
   }
 ): Promise<T> => {
   const url = `${ENERGY_CHARTS_BASE_URL}${path}`;
   const retries = options?.retries ?? DEFAULT_RETRY_ATTEMPTS;
   const allowStaleOnFailure = options?.allowStaleOnFailure ?? false;
   const staleTtlMs = options?.staleTtlMs ?? ENERGY_CHARTS_STALE_TTL_MS;
+  const noStore = options?.noStore ?? false;
 
   let lastFailureMessage = "Unknown fetch failure";
 
@@ -99,8 +103,12 @@ const fetchJson = async <T>(
     try {
       const response = await fetch(url, {
         headers: { Accept: "application/json" },
-        // Keep upstream snapshots fresh enough for the 15-min cadence.
-        next: { revalidate: ENERGY_CHARTS_REVALIDATE_SECONDS },
+        ...(noStore
+          ? { cache: "no-store" as const }
+          : {
+              // Keep upstream snapshots fresh enough for the 15-min cadence.
+              next: { revalidate: ENERGY_CHARTS_REVALIDATE_SECONDS },
+            }),
       });
 
       if (!response.ok) {
@@ -441,6 +449,35 @@ export type GermanyDispatchSlotsResponse = {
   period?: GermanyEnergyFlowPeriod;
   rangeStartBerlin?: string;
   rangeEndBerlin?: string;
+};
+
+export type GermanyBessRecommendationResponse = {
+  lookbackDays: number;
+  rangeStartBerlin: string;
+  rangeEndBerlin: string;
+  observedDays: number;
+  dailyEnergyP95Mwh: number;
+  dailyPowerP95Mw: number;
+  continuousWindowRequiredEnergyMwh: number;
+  tiers: Array<{
+    label: "aggressive" | "balanced" | "conservative";
+    percentile: number;
+    recommendedEnergyMwh: number;
+    recommendedPowerMw: number;
+  }>;
+  impactAtBalancedTier: {
+    absorbedSurplusShare: number;
+    servedDeficitShare: number;
+    totalSurplusEnergyMwh: number;
+    totalDeficitEnergyMwh: number;
+  } | null;
+  indicativeEconomicsAtBalancedTier: {
+    capexEur: number;
+    annualRevenueEur: number;
+    annualOperatingCostsEur: number;
+    annualNetCashflowEur: number;
+    paybackYears: number;
+  } | null;
 };
 
 export type RecentRenewablePatternsSnapshot = {
@@ -1328,6 +1365,7 @@ export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot>
   const [totalPower, installedPower] = await Promise.all([
     fetchJson(getGermanyTotalPowerPath(), totalPowerResponseSchema, {
       allowStaleOnFailure: true,
+      noStore: true,
     }),
     fetchJson("/installed_power?country=de", installedPowerResponseSchema, {
       allowStaleOnFailure: true,
@@ -1365,6 +1403,94 @@ export const getGermanyEnergyFlowForBerlinRange = async (
     expectedQuarterHours: expected,
     period: range.period,
   });
+};
+
+const TRAILING_BESS_RECOMMENDATION_LOOKBACK_DAYS = 365;
+
+export const getGermanyBessRecommendationTrailingWindow = async (
+  lookbackDays: number = TRAILING_BESS_RECOMMENDATION_LOOKBACK_DAYS,
+  now: Date = new Date()
+): Promise<GermanyBessRecommendationResponse> => {
+  const endKey = formatCalendarDateBerlin(now);
+  const startDate = new Date(now.getTime() - lookbackDays * 86_400_000);
+  const startKey = formatCalendarDateBerlin(startDate);
+  const totalPower = await fetchJson(
+    getGermanyTotalPowerPathForCalendarRange(startKey, endKey),
+    totalPowerResponseSchema,
+    { allowStaleOnFailure: true }
+  );
+
+  const loadSeries = findSeriesOrThrow(
+    totalPower.production_types,
+    "Load (incl. self-consumption)"
+  );
+  const slots = totalPower.unix_seconds
+    .map((ts, index) => {
+      const dayKey = getBerlinDateKey(ts);
+      if (dayKey < startKey || dayKey > endKey) {
+        return null;
+      }
+      const loadMw = loadSeries.data[index];
+      if (loadMw === null || !Number.isFinite(loadMw)) {
+        return null;
+      }
+      return {
+        timestampIso: new Date(ts * 1000).toISOString(),
+        loadMw,
+        totalGenerationMw: sumDomesticGenerationMw(totalPower.production_types, index),
+      };
+    })
+    .filter((entry): entry is { timestampIso: string; loadMw: number; totalGenerationMw: number } => entry !== null);
+
+  const recommendation = computeLogicalBessRecommendation(slots);
+  const balancedTier = recommendation.tiers.find((entry) => entry.label === "balanced") ?? null;
+  const impactAtBalancedTier =
+    balancedTier === null
+      ? null
+      : computeCoverageAtCapacityMwh(slots, balancedTier.recommendedEnergyMwh, {
+          resetDailyByBerlin: true,
+          maxPowerMw: balancedTier.recommendedPowerMw,
+        });
+  const indicativeEconomicsAtBalancedTier =
+    balancedTier === null
+      ? null
+      : computeEconomics(
+          {
+            totalPowerMw: balancedTier.recommendedPowerMw,
+            totalEnergyMwh: balancedTier.recommendedEnergyMwh,
+            roundTripEfficiency: 90,
+          },
+          defaultEconomicsAssumptions
+        );
+  return {
+    lookbackDays,
+    rangeStartBerlin: startKey,
+    rangeEndBerlin: endKey,
+    observedDays: recommendation.observedDays,
+    dailyEnergyP95Mwh: recommendation.dailyEnergyP95Mwh,
+    dailyPowerP95Mw: recommendation.dailyPowerP95Mw,
+    continuousWindowRequiredEnergyMwh: recommendation.continuousWindowRequiredEnergyMwh,
+    tiers: recommendation.tiers,
+    impactAtBalancedTier:
+      impactAtBalancedTier === null
+        ? null
+        : {
+            absorbedSurplusShare: impactAtBalancedTier.absorbedSurplusShare,
+            servedDeficitShare: impactAtBalancedTier.servedDeficitShare,
+            totalSurplusEnergyMwh: impactAtBalancedTier.totalSurplusEnergyMwh,
+            totalDeficitEnergyMwh: impactAtBalancedTier.totalDeficitEnergyMwh,
+          },
+    indicativeEconomicsAtBalancedTier:
+      indicativeEconomicsAtBalancedTier === null
+        ? null
+        : {
+            capexEur: indicativeEconomicsAtBalancedTier.capex,
+            annualRevenueEur: indicativeEconomicsAtBalancedTier.annualRevenue,
+            annualOperatingCostsEur: indicativeEconomicsAtBalancedTier.annualOperatingCosts,
+            annualNetCashflowEur: indicativeEconomicsAtBalancedTier.annualNetCashflow,
+            paybackYears: indicativeEconomicsAtBalancedTier.paybackYears,
+          },
+  };
 };
 
 /**

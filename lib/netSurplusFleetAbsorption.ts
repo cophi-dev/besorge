@@ -1,8 +1,11 @@
+import { simulatePracticalDispatchAtCapacity } from "@/lib/optimalBessCapacity";
+
 const QUARTER_HOUR_H = 0.25;
 
 export type NetSurplusSlotInput = {
   totalGenerationMw: number;
   loadMw: number;
+  timestampIso?: string;
 };
 
 export type NetSurplusFleetAbsorptionResult = {
@@ -18,7 +21,56 @@ export type NetSurplusFleetAbsorptionResult = {
 };
 
 /**
+ * Same greedy rules as chart “practical” dispatch over the fleet nameplate caps: charge on surplus
+ * slots up to SOC and power caps, discharge on deficit slots — so SOC can recover before later surplus.
+ *
+ * Gross surplus sums only positive surplus MWh per slot; `absorbedEnergyMwh` sums actual charge energy
+ * (MWh) from the dispatch walk (better KPI than {@link computeNetSurplusFleetAbsorption}, which is charge-only).
+ */
+export function computeCyclingFleetSurplusAbsorption(
+  slots: NetSurplusSlotInput[],
+  fleetEnergyCapacityMwh: number,
+  fleetPowerMw: number,
+  options?: { initialSocMwh?: number; resetDailyByBerlin?: boolean }
+): NetSurplusFleetAbsorptionResult {
+  const cap = fleetEnergyCapacityMwh;
+  const dispatchSeries = simulatePracticalDispatchAtCapacity(slots, cap, {
+    initialSocMwh: options?.initialSocMwh ?? 0,
+    resetDailyByBerlin: options?.resetDailyByBerlin ?? false,
+    maxPowerMw: fleetPowerMw,
+  });
+
+  let grossSurplusEnergyMwh = 0;
+  let absorbedEnergyMwh = 0;
+
+  for (let i = 0; i < slots.length; i++) {
+    const netMw = slots[i].totalGenerationMw - slots[i].loadMw;
+    grossSurplusEnergyMwh += Math.max(0, netMw) * QUARTER_HOUR_H;
+    absorbedEnergyMwh += (dispatchSeries[i]?.chargeMw ?? 0) * QUARTER_HOUR_H;
+  }
+
+  const last = dispatchSeries[dispatchSeries.length - 1];
+  const endSocMwh =
+    cap > 0 && last !== undefined ? (Math.min(100, Math.max(0, last.socPct)) / 100) * cap : 0;
+
+  const inferredFleetSocPctSeries = dispatchSeries.map((d) =>
+    Number.isFinite(d.socPct) ? Math.min(100, Math.max(0, d.socPct)) : 0
+  );
+
+  return {
+    grossSurplusEnergyMwh,
+    absorbedEnergyMwh,
+    missedSurplusEnergyMwh: Math.max(0, grossSurplusEnergyMwh - absorbedEnergyMwh),
+    endSocMwh,
+    inferredFleetSocPctSeries,
+  };
+}
+
+/**
  * Walk quarter-hour slots in order: each slot offers `max(0, gen − load) × ¼ h` MWh of charging energy.
+ * SOC never decreases on deficits (charge-only). Prefer {@link computeCyclingFleetSurplusAbsorption} for KPIs
+ * aligned with modeled fleet cycling.
+ *
  * Absorption is limited per slot by fleet AC power (GW → MW × ¼ h) and remaining empty energy capacity (GWh → MWh).
  */
 export function computeNetSurplusFleetAbsorption(

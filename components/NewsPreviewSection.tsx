@@ -73,9 +73,10 @@ export default function NewsPreviewSection({
   }, [limit]);
 
   const title = language === "de" ? "BESS-Newsfeed" : "BESS Newsfeed";
-  const subtitle = language === "de"
-    ? "Aktuelle Updates zu Branchen-Meilensteinen, Deutschland, Tesla Megapacks und Regulierung."
-    : "Latest updates on industry milestones, Germany, Tesla Megapacks, and regulation.";
+  const subtitle =
+    language === "de"
+      ? "Meilensteine · DE · Megapacks · Regulierung."
+      : "Milestones · DE · Megapacks · regulation.";
 
   const renderedItems = useMemo(() => state.items.slice(0, limit), [state.items, limit]);
 
@@ -143,7 +144,9 @@ export default function NewsPreviewSection({
                   {item.title}
                 </a>
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{item.summary}</p>
+              {!compact ? (
+                <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{item.summary}</p>
+              ) : null}
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-300">
                 <p>
                   {item.sourceName} •{" "}
