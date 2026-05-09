@@ -22,6 +22,7 @@ import {
   formatBerlinDateKeyFromUtcDate,
   mondayBerlinIsoWeekContaining,
 } from "@/lib/berlinCalendar";
+import { berlinDateKeySchema } from "@/lib/germanyEnergyFlowPeriod";
 import { createLogger } from "@/lib/debug";
 import type { GermanyDispatchSlotsResponse } from "@/lib/energyChartsApi";
 import { germanyEnergyFlowPeriodSchema } from "@/lib/germanyEnergyFlowPeriod";
@@ -41,6 +42,8 @@ import {
   type ChartFleetSocSnapshot,
   type ChartRowTailForFleetMode,
 } from "@/lib/chartFleetSocSnapshot";
+import { BerlinDayCalendarButton } from "@/components/briefing/BerlinDayCalendarButton";
+import { FlowExportButtons } from "@/components/briefing/FlowExportButtons";
 
 const log = createLogger("germany-day-energy-flow");
 
@@ -147,6 +150,13 @@ function berlinTodayKey(): string {
   return formatBerlinDateKeyFromUtcDate(new Date());
 }
 
+function resolveSeedDateKey(seed: string | null | undefined): string {
+  if (seed && berlinDateKeySchema.safeParse(seed).success) {
+    return seed;
+  }
+  return berlinTodayKey();
+}
+
 function dateKeyToIsoWeekKey(dateKey: string): string {
   const mondayKey = mondayBerlinIsoWeekContaining(dateKey);
   const mondayDate = new Date(`${mondayKey}T00:00:00.000Z`);
@@ -200,6 +210,16 @@ export type GermanyDayEnergyFlowProps = {
   onChartFleetSocSnapshot?: (snapshot: ChartFleetSocSnapshot | null) => void;
   /** Optional LLM-generated impact blurb for simulated mode; placeholder until wired. */
   simulationAiInsight?: string | null;
+  /** Server-rendered series for the seeded Berlin day (skips first-load spinner when keys match). */
+  initialEnergyFlow?: GermanyDispatchSlotsResponse | null;
+  /** Berlin `YYYY-MM-DD` for `initialEnergyFlow`. */
+  initialBerlinDateKey?: string | null;
+  /** Optional deep-link / share param (`?date=`) to pre-select a Berlin day. */
+  seedDateKey?: string | null;
+  /** Sync selected Berlin day back to the URL or parent state. */
+  onBerlinDateChange?: (dateKey: string) => void;
+  /** Start in simulated-BESS view (e.g. `?sim=1` for morning export screenshots). */
+  initialSimulatedNet?: boolean;
 };
 
 function LegendDot({ color, label }: { color: string; label: string }) {
@@ -338,15 +358,28 @@ export default function GermanyDayEnergyFlow({
   language,
   onChartFleetSocSnapshot,
   simulationAiInsight = null,
+  initialEnergyFlow = null,
+  initialBerlinDateKey = null,
+  seedDateKey = null,
+  onBerlinDateChange,
+  initialSimulatedNet = false,
 }: GermanyDayEnergyFlowProps) {
-  const initialDateKey = berlinTodayKey();
+  const resolvedSeedKey = resolveSeedDateKey(seedDateKey ?? undefined);
   const [selectorMode, setSelectorMode] = useState<SelectorMode>("day");
-  const [selectedDate, setSelectedDate] = useState(initialDateKey);
-  const [selectedWeek, setSelectedWeek] = useState(dateKeyToIsoWeekKey(initialDateKey));
-  const [selectedMonth, setSelectedMonth] = useState(initialDateKey.slice(0, 7));
+  const [selectedDate, setSelectedDate] = useState(resolvedSeedKey);
+  const [selectedWeek, setSelectedWeek] = useState(dateKeyToIsoWeekKey(resolvedSeedKey));
+  const [selectedMonth, setSelectedMonth] = useState(resolvedSeedKey.slice(0, 7));
   const [dayModeResetAtStart, setDayModeResetAtStart] = useState(false);
-  const [showSimulatedNet, setShowSimulatedNet] = useState(false);
-  const [flow, setFlow] = useState<GermanyDispatchSlotsResponse | null>(null);
+  const [showSimulatedNet, setShowSimulatedNet] = useState(initialSimulatedNet);
+  const serverHydratedFirstLoad =
+    initialEnergyFlow !== null &&
+    initialBerlinDateKey !== null &&
+    initialBerlinDateKey === resolvedSeedKey;
+  const softFirstLoadRef = useRef(serverHydratedFirstLoad);
+
+  const [flow, setFlow] = useState<GermanyDispatchSlotsResponse | null>(() =>
+    serverHydratedFirstLoad ? initialEnergyFlow : null
+  );
   const [recommendation, setRecommendation] = useState<BessRecommendation | null>(null);
   const [previousDaySlots, setPreviousDaySlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
   /** Berlin day D−2 slots; used only in day mode with carry-in to seed D−1’s starting SoC instead of forcing 0%. */
@@ -363,7 +396,7 @@ export default function GermanyDayEnergyFlow({
   const [fleetNavigateInitialMwh, setFleetNavigateInitialMwh] = useState<number | null>(null);
   const [practicalNavigateInitialMwh, setPracticalNavigateInitialMwh] = useState<number | null>(null);
   const prevDayModeResetAtStartRef = useRef(dayModeResetAtStart);
-  const [isFlowLoading, setIsFlowLoading] = useState(true);
+  const [isFlowLoading, setIsFlowLoading] = useState(!serverHydratedFirstLoad);
   const [isRecommendationLoading, setIsRecommendationLoading] = useState(true);
   const [flowLoadError, setFlowLoadError] = useState(false);
   const [recommendationLoadError, setRecommendationLoadError] = useState(false);
@@ -384,7 +417,12 @@ export default function GermanyDayEnergyFlow({
   useEffect(() => {
     const controller = new AbortController();
     const load = async () => {
-      setIsFlowLoading(true);
+      const softOpen = softFirstLoadRef.current;
+      if (softOpen) {
+        softFirstLoadRef.current = false;
+      } else {
+        setIsFlowLoading(true);
+      }
       setFlowLoadError(false);
       try {
         const query =
@@ -431,6 +469,18 @@ export default function GermanyDayEnergyFlow({
     void load();
     return () => controller.abort();
   }, [selectorMode, selectedDate, selectedWeek, selectedMonth]);
+
+  const skipBerlinUrlNotifyRef = useRef(true);
+  useEffect(() => {
+    if (selectorMode !== "day" || !onBerlinDateChange) {
+      return;
+    }
+    if (skipBerlinUrlNotifyRef.current) {
+      skipBerlinUrlNotifyRef.current = false;
+      return;
+    }
+    onBerlinDateChange(selectedDate);
+  }, [selectedDate, selectorMode, onBerlinDateChange]);
 
   /** Loads D−1 and D−2 for carry-in maths only — intentionally not keyed on the reset checkbox to avoid reloading the chart. */
   useEffect(() => {
@@ -1432,12 +1482,12 @@ export default function GermanyDayEnergyFlow({
                 ←
               </button>
               {selectorMode === "day" ? (
-                <input
-                  type="date"
+                <BerlinDayCalendarButton
                   value={selectedDate}
                   max={todayKey}
-                  onChange={(event) => setSelectedDate(event.target.value)}
-                  className="min-w-[8.5rem] flex-1 rounded-md border border-slate-200/90 bg-white px-2 py-1.5 text-xs font-medium text-slate-900 outline-none focus-visible:ring-1 focus-visible:ring-slate-400/60 dark:border-slate-600/70 dark:bg-slate-950 dark:text-slate-100"
+                  onChange={setSelectedDate}
+                  language={language}
+                  className="min-w-[8.5rem] flex-1"
                 />
               ) : null}
               {selectorMode === "week" ? (
@@ -1530,6 +1580,7 @@ export default function GermanyDayEnergyFlow({
       </header>
 
       <div
+        id="aether-germany-flow-capture"
         className={`rounded-[1.65rem] border p-5 shadow-inner md:p-7 ${
           showSimulatedNet
             ? "border-slate-200/90 bg-white/98 shadow-[inset_0_0_0_1px_rgba(34,193,115,0.06)] dark:border-slate-600/50 dark:bg-slate-950/78 dark:shadow-[inset_0_0_0_1px_rgba(52,211,153,0.08)]"
@@ -1551,7 +1602,12 @@ export default function GermanyDayEnergyFlow({
               {chartHeading}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <div className="flex flex-col items-end gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2">
+            <FlowExportButtons
+              language={language}
+              flow={flow}
+              captureElementId="aether-germany-flow-capture"
+            />
             <LegendDot color={netLineColor} label={activeNetLegend} />
             <LegendDot
               color={showSimulatedNet ? SIM_CHART_SOC_STROKE : "rgb(129,119,239)"}
@@ -1628,11 +1684,14 @@ export default function GermanyDayEnergyFlow({
               />
               <Tooltip
                 contentStyle={{
-                  background: "rgba(255,255,255,0.97)",
-                  border: "1px solid rgba(148,163,184,0.45)",
+                  background: "var(--popover)",
+                  border: "1px solid var(--border)",
                   borderRadius: 12,
                   fontSize: 12,
+                  color: "var(--popover-foreground)",
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
                 }}
+                labelStyle={{ color: "var(--muted-foreground)", fontWeight: 600, marginBottom: 4 }}
                 formatter={(value, name) => {
                   const n = typeof value === "number" ? value : Number(value ?? 0);
                   const label = typeof name === "string" ? name : String(name ?? "");
@@ -1654,8 +1713,8 @@ export default function GermanyDayEnergyFlow({
                 stroke={netLineColor}
                 strokeWidth={showSimulatedNet ? 3 : 2.5}
                 dot={false}
-                isAnimationActive
-                animationDuration={180}
+                isAnimationActive={!chartLayoutCompact}
+                animationDuration={chartLayoutCompact ? 0 : 180}
               />
               {showSimulatedNet ? (
                 <>
@@ -1688,8 +1747,8 @@ export default function GermanyDayEnergyFlow({
                 strokeLinejoin={showSimulatedNet ? "round" : undefined}
                 strokeDasharray={showSimulatedNet ? undefined : "5 4"}
                 dot={false}
-                isAnimationActive
-                animationDuration={180}
+                isAnimationActive={!chartLayoutCompact}
+                animationDuration={chartLayoutCompact ? 0 : 180}
               />
             </ComposedChart>
           </ResponsiveContainer>

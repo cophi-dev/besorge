@@ -84,24 +84,25 @@
 }
 
 .dark {
-  --background: #090d16;
-  --foreground: #f8fafc;
-  --card: #111827;
+  /* Premium deep navy / charcoal — high contrast + emerald / amber accents */
+  --background: #070b14;
+  --foreground: #f1f5f9;
+  --card: #0d1324;
   --card-foreground: #f8fafc;
-  --popover: #111827;
+  --popover: #101a2e;
   --popover-foreground: #f8fafc;
-  --primary: #60a5fa;
-  --primary-foreground: #0b1220;
-  --secondary: #182235;
+  --primary: #34d399;
+  --primary-foreground: #022c22;
+  --secondary: #151f33;
   --secondary-foreground: #e2e8f0;
-  --muted: #0f172a;
-  --muted-foreground: #9ca3af;
-  --accent: #60a5fa;
-  --accent-foreground: #0b1220;
-  --destructive: #f87171;
-  --border: rgb(148 163 184 / 24%);
-  --input: rgb(148 163 184 / 28%);
-  --ring: rgb(96 165 250 / 42%);
+  --muted: #0c1220;
+  --muted-foreground: #94a3b8;
+  --accent: #fbbf24;
+  --accent-foreground: #1c1917;
+  --destructive: #fb7185;
+  --border: rgb(148 163 184 / 22%);
+  --input: rgb(148 163 184 / 26%);
+  --ring: rgb(52 211 153 / 45%);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -128,6 +129,13 @@
   html {
     @apply font-sans;
   }
+}
+
+/* Leaflet: larger tap targets on mobile */
+.leaflet-control-zoom a {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  line-height: 2.25rem;
 }
 
 @layer utilities {

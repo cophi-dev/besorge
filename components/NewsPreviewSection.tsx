@@ -126,40 +126,54 @@ export default function NewsPreviewSection({
       ) : null}
 
       {state.status === "ready" && renderedItems.length > 0 ? (
-        <div className="mt-4 grid gap-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-1">
           {renderedItems.map((item) => (
             <article
               key={item.id}
-              className="rounded-xl border border-slate-200/70 bg-white/85 p-4 dark:border-slate-500/40 dark:bg-slate-900/55"
+              className="group relative overflow-hidden rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm transition hover:border-emerald-500/30 hover:shadow-md md:p-5"
             >
-              <div className="flex flex-wrap items-center gap-2 text-[11px] tracking-[0.08em] text-slate-500 uppercase dark:text-slate-300">
-                {item.categories.map((category) => (
-                  <span key={category} className="rounded-full border border-slate-300/65 px-2 py-0.5 dark:border-slate-500/50">
-                    {(categoryLabels[category]?.[language] ?? category).replaceAll("_", " ")}
-                  </span>
-                ))}
-              </div>
-              <h3 className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
-                <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                  {item.title}
-                </a>
-              </h3>
-              {!compact ? (
-                <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{item.summary}</p>
-              ) : null}
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-300">
-                <p>
-                  {item.sourceName} •{" "}
-                  {new Date(item.publishedAtIso).toLocaleString(language === "de" ? "de-DE" : "en-GB")}
-                </p>
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-semibold text-primary hover:underline dark:text-emerald-200"
-                >
-                  {language === "de" ? "Artikel lesen" : "Read article"}
-                </a>
+              <div
+                className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-emerald-500/90 via-amber-400/70 to-sky-500/70 opacity-90 transition group-hover:opacity-100"
+                aria-hidden
+              />
+              <div className="relative pl-2">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] tracking-[0.08em] text-muted-foreground uppercase">
+                  {item.categories.map((category) => (
+                    <span
+                      key={category}
+                      className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-0.5"
+                    >
+                      {(categoryLabels[category]?.[language] ?? category).replaceAll("_", " ")}
+                    </span>
+                  ))}
+                </div>
+                <h3 className="mt-3 text-base font-semibold leading-snug text-foreground md:text-lg">
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="transition hover:text-emerald-600 hover:underline dark:hover:text-emerald-300"
+                  >
+                    {item.title}
+                  </a>
+                </h3>
+                {!compact ? (
+                  <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-muted-foreground">{item.summary}</p>
+                ) : null}
+                <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/50 pt-3 text-xs text-muted-foreground">
+                  <p>
+                    {item.sourceName} ·{" "}
+                    {new Date(item.publishedAtIso).toLocaleString(language === "de" ? "de-DE" : "en-GB")}
+                  </p>
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-emerald-600 hover:underline dark:text-emerald-400/90"
+                  >
+                    {language === "de" ? "Lesen" : "Read"}
+                  </a>
+                </div>
               </div>
             </article>
           ))}

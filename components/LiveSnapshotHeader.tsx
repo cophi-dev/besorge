@@ -179,7 +179,7 @@ export function LiveSnapshotHeader({
       : netPositionGw > 0
         ? "text-emerald-700 dark:text-emerald-300"
         : netPositionGw < 0
-          ? "text-red-600 dark:text-red-400"
+          ? "text-rose-600 dark:text-rose-300"
           : "text-slate-700 dark:text-slate-200";
 
   const netBar =
@@ -188,7 +188,7 @@ export function LiveSnapshotHeader({
       : netPositionGw > 0
         ? "from-emerald-500/35 to-emerald-400/10"
         : netPositionGw < 0
-          ? "from-red-500/35 to-red-400/10"
+          ? "from-rose-500/35 to-rose-400/10"
           : "from-slate-300/60 to-slate-200/30 dark:from-slate-600/50 dark:to-slate-700/30";
 
   const resolvedFleetMode = chartFleetSoc !== null ? chartFleetSoc.fleetMode : fleetMode;
@@ -214,7 +214,7 @@ export function LiveSnapshotHeader({
     );
 
   return (
-    <header className="sticky top-[88px] z-[100] -mx-5 mb-8 border-b border-slate-200/70 bg-[#f8f7f4]/92 pb-5 backdrop-blur-md dark:border-slate-600/35 dark:bg-slate-950/80 md:-mx-8 lg:-mx-12">
+    <header className="sticky top-[72px] z-[100] -mx-5 mb-8 border-b border-border/60 bg-background/90 pb-5 backdrop-blur-md md:top-[76px] md:-mx-8 lg:-mx-12">
       <div className="px-0 pt-1">
         <div className="mb-3 flex flex-col gap-0.5 sm:mb-4 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
           <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
@@ -291,7 +291,7 @@ export function LiveSnapshotHeader({
                 : netPositionGw > 0
                   ? "border-emerald-300/60 dark:border-emerald-500/35"
                   : netPositionGw < 0
-                    ? "border-red-300/60 dark:border-red-500/35"
+                    ? "border-rose-300/60 dark:border-rose-500/35"
                     : "border-slate-200/90 dark:border-slate-600/40"
             }`}
           >

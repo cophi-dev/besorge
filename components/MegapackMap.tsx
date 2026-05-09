@@ -4,7 +4,7 @@ import "leaflet/dist/leaflet.css";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, Rectangle, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, Marker, Rectangle, TileLayer, Tooltip, useMap, ZoomControl } from "react-leaflet";
 
 import type { GermanyBessProject } from "@/lib/germanyBessProjects";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -355,7 +355,9 @@ export default function MegapackMap({ compact = false }: { compact?: boolean }) 
           zoom={DEFAULT_ZOOM}
           className={isFullscreen ? "h-screen w-screen" : "h-[460px] w-full"}
           scrollWheelZoom={!compact}
+          doubleClickZoom={!compact}
         >
+          <ZoomControl position="bottomright" />
           <MapSizeInvalidator resizeSignal={mapResizeSignal} />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
