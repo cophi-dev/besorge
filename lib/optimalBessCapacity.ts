@@ -215,7 +215,9 @@ export function computeLogicalBessRecommendation(
         return 0.9;
     }
   };
-  const tiers: LogicalBessRecommendationTier[] = ["aggressive", "balanced", "conservative"].map((label) => {
+  const tiers: LogicalBessRecommendationTier[] = (
+    ["aggressive", "balanced", "conservative"] as const
+  ).map((label) => {
     const p = percentileValue(label);
     return {
       label,
