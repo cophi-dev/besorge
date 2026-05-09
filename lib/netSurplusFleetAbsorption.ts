@@ -24,7 +24,8 @@ export type NetSurplusFleetAbsorptionResult = {
 export function computeNetSurplusFleetAbsorption(
   slots: NetSurplusSlotInput[],
   fleetEnergyCapacityMwh: number | null,
-  fleetPowerMw: number | null
+  fleetPowerMw: number | null,
+  options?: { initialSocMwh?: number }
 ): NetSurplusFleetAbsorptionResult {
   const powerCapMwhPerSlot =
     fleetPowerMw !== null && Number.isFinite(fleetPowerMw) && fleetPowerMw > 0
@@ -38,7 +39,10 @@ export function computeNetSurplusFleetAbsorption(
       ? fleetEnergyCapacityMwh
       : null;
 
-  let socMwh = 0;
+  let socMwh =
+    energyCapMwh !== null
+      ? Math.min(energyCapMwh, Math.max(0, options?.initialSocMwh ?? 0))
+      : 0;
   let grossSurplusEnergyMwh = 0;
   let absorbedEnergyMwh = 0;
   const inferredFleetSocPctSeries: number[] = [];

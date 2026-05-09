@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Lightbulb, MessageCircle } from "lucide-react";
+import { ChevronDown, Lightbulb } from "lucide-react";
 import dynamic from "next/dynamic";
 import { z } from "zod";
 
-import type { AssessmentResponse } from "@/components/BessAssessmentCenter";
 import NewsPreviewSection from "@/components/NewsPreviewSection";
 import { useLanguage } from "@/components/language-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createLogger } from "@/lib/debug";
+import { computeNetSurplusFleetAbsorption } from "@/lib/netSurplusFleetAbsorption";
+import { computePracticalDailyCycleCapacityMwh } from "@/lib/optimalBessCapacity";
 import { estimateEveningSoc, type SocBand } from "@/lib/socEstimator";
 
 const log = createLogger("market-snapshot");
@@ -17,15 +18,35 @@ const log = createLogger("market-snapshot");
 const MegapackMap = dynamic(() => import("@/components/MegapackMap"), {
   ssr: false,
 });
-const BessAssessmentCenter = dynamic(() => import("@/components/BessAssessmentCenter"), {
-  ssr: false,
-});
-const BessDispatchSimulator = dynamic(() => import("@/components/BessDispatchSimulator"), {
-  ssr: false,
-});
 const GermanyDayEnergyFlow = dynamic(() => import("@/components/GermanyDayEnergyFlow"), {
   ssr: false,
 });
+
+const recommendationFlowSchema = z.object({
+  slots: z.array(
+    z.object({
+      timestampIso: z.string(),
+      hourBerlin: z.number(),
+      residualLoadMw: z.number(),
+      loadMw: z.number(),
+      totalGenerationMw: z.number(),
+      renewableGenerationMw: z.number().nullable(),
+    })
+  ),
+});
+
+type FourWeekRecommendation = {
+  p95PracticalCapacityMwh: number;
+  coveredDays: number;
+};
+
+type KeyNumbersSummary = {
+  practicalCapacityMwh: number;
+  grossSurplusMwh: number;
+  theoreticallyStorableMwh: number;
+  missedSurplusMwh: number;
+  dateLabel: string;
+};
 
 const marketSnapshotSchema = z.object({
   retrievedAtIso: z.string(),
@@ -111,7 +132,6 @@ const marketSnapshotSchema = z.object({
 type MarketSnapshot = z.infer<typeof marketSnapshotSchema>;
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
-const PERCENT_FORMATTER = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
 const MWH_COMPACT_FORMATTER = new Intl.NumberFormat("de-DE", {
   maximumFractionDigits: 2,
   minimumFractionDigits: 0,
@@ -121,6 +141,7 @@ const LIVE_UPDATE_LABEL: Record<"en" | "de", string> = {
   de: "Live aktualisiert",
 };
 const DATA_FETCH_RETRIES = 2;
+const DAY_MILLISECONDS = 24 * 60 * 60 * 1000;
 /**
  * Conservative adjustment factor mapping evening residual load to the slice
  * that genuinely needs new flexibility (i.e. excluding must-run baseload that
@@ -151,12 +172,16 @@ function formatAdaptivePower(valueMw: number): string {
   return `${NUMBER_FORMATTER.format(valueMw)} MW`;
 }
 
-function formatGw(valueGw: number): string {
-  return `${NUMBER_FORMATTER.format(valueGw)} GW`;
-}
-
 function formatInstalledValue(value: number, unit: "GW" | "GWh"): string {
   return `${NUMBER_FORMATTER.format(value)} ${unit}`;
+}
+
+function formatEnergyFromMwh(mwh: number): string {
+  const gwh = mwh / 1_000;
+  if (Math.abs(gwh) >= 1) {
+    return `${MWH_COMPACT_FORMATTER.format(gwh)} GWh`;
+  }
+  return `${MWH_COMPACT_FORMATTER.format(mwh)} MWh`;
 }
 
 type FleetMode = "charging" | "discharging" | "idle";
@@ -181,11 +206,10 @@ function inferFleetMode(params: {
 export default function Home() {
   const { language } = useLanguage();
   const [market, setMarket] = useState<MarketSnapshot | null>(null);
-  const [assessment, setAssessment] = useState<AssessmentResponse | null>(null);
-  const [isAssessmentPending, setIsAssessmentPending] = useState(true);
-  const [showAiAssessmentSection, setShowAiAssessmentSection] = useState(false);
   const [liveLoadProgress, setLiveLoadProgress] = useState(10);
   const [isLiveDataLoading, setIsLiveDataLoading] = useState(true);
+  const [fourWeekRecommendation, setFourWeekRecommendation] = useState<FourWeekRecommendation | null>(null);
+  const [keyNumbersSummary, setKeyNumbersSummary] = useState<KeyNumbersSummary | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -211,22 +235,92 @@ export default function Home() {
 
     const loadData = async () => {
       setIsLiveDataLoading(true);
-      setIsAssessmentPending(true);
       setLiveLoadProgress(10);
-
-      const marketPromise = fetchJsonWithRetry<unknown>("/api/market/de", "no-store");
-      const assessmentPromise = fetchJsonWithRetry<AssessmentResponse>("/api/assessment/de");
+      setFourWeekRecommendation(null);
+      setKeyNumbersSummary(null);
 
       try {
-        const marketResult = await marketPromise;
+        const [marketResult, thisMonthRaw, lastMonthRaw, yesterdayRaw] = await Promise.all([
+          fetchJsonWithRetry<unknown>("/api/market/de", "no-store"),
+          fetchJsonWithRetry<unknown>("/api/market/de/energy-flow?period=this_month", "no-store").catch(
+            () => null
+          ),
+          fetchJsonWithRetry<unknown>("/api/market/de/energy-flow?period=last_month", "no-store").catch(
+            () => null
+          ),
+          fetchJsonWithRetry<unknown>("/api/market/de/energy-flow?period=yesterday", "no-store").catch(
+            () => null
+          ),
+        ]);
+
         const parsed = marketSnapshotSchema.safeParse(marketResult);
         if (parsed.success) {
           setMarket(parsed.data);
+          const todaySlots = parsed.data.dayEnergyFlow?.slots ?? [];
+          const yesterdayParsed = recommendationFlowSchema.safeParse(yesterdayRaw);
+          const yesterdaySlots = yesterdayParsed.success ? yesterdayParsed.data.slots : [];
+          const candidates: Array<{ slots: typeof todaySlots; dateLabel: string }> = [
+            { slots: todaySlots, dateLabel: parsed.data.dayEnergyFlow?.dateBerlin ?? "today" },
+            { slots: yesterdaySlots, dateLabel: "yesterday" },
+          ];
+          for (const candidate of candidates) {
+            if (candidate.slots.length < 4) {
+              continue;
+            }
+            const practical = computePracticalDailyCycleCapacityMwh(candidate.slots);
+            const absorption = computeNetSurplusFleetAbsorption(
+              candidate.slots,
+              parsed.data.bess.installedCapacityGwh * 1_000,
+              parsed.data.bess.installedPowerGw * 1_000
+            );
+            const hasSignal =
+              practical !== null &&
+              (practical.practicalCapacityMwh > 0 ||
+                absorption.grossSurplusEnergyMwh > 0 ||
+                absorption.absorbedEnergyMwh > 0 ||
+                absorption.missedSurplusEnergyMwh > 0);
+            if (practical && hasSignal) {
+              setKeyNumbersSummary({
+                practicalCapacityMwh: practical.practicalCapacityMwh,
+                grossSurplusMwh: absorption.grossSurplusEnergyMwh,
+                theoreticallyStorableMwh: absorption.absorbedEnergyMwh,
+                missedSurplusMwh: absorption.missedSurplusEnergyMwh,
+                dateLabel: candidate.dateLabel,
+              });
+              break;
+            }
+          }
         } else {
           log("market snapshot failed schema validation %o", {
             request: { url: "/api/market/de" },
             errors: parsed.error.flatten(),
           });
+        }
+
+        const monthPayloads = [thisMonthRaw, lastMonthRaw]
+          .map((entry) => recommendationFlowSchema.safeParse(entry))
+          .filter((entry) => entry.success)
+          .map((entry) => entry.data);
+        const mergedSlots = monthPayloads
+          .flatMap((entry) => entry.slots)
+          .sort((a, b) => new Date(a.timestampIso).getTime() - new Date(b.timestampIso).getTime());
+        if (mergedSlots.length > 0) {
+          const latestTs = new Date(mergedSlots[mergedSlots.length - 1].timestampIso).getTime();
+          const minTs = latestTs - 28 * DAY_MILLISECONDS;
+          const lastFourWeeksSlots = mergedSlots.filter((slot) => {
+            const ts = new Date(slot.timestampIso).getTime();
+            return Number.isFinite(ts) && ts >= minTs;
+          });
+          const recommendation = computePracticalDailyCycleCapacityMwh(lastFourWeeksSlots);
+          if (recommendation) {
+            const uniqueDays = new Set(
+              lastFourWeeksSlots.map((slot) => slot.timestampIso.slice(0, 10))
+            ).size;
+            setFourWeekRecommendation({
+              p95PracticalCapacityMwh: recommendation.practicalCapacityMwh,
+              coveredDays: uniqueDays,
+            });
+          }
         }
       } catch {
         // Individual cards fall back to temporary-unavailable messaging.
@@ -238,17 +332,6 @@ export default function Home() {
           setIsLiveDataLoading(false);
         }
       }, 220);
-
-      try {
-        const assessmentResult = await assessmentPromise;
-        if (!controller.signal.aborted) {
-          setAssessment(assessmentResult);
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsAssessmentPending(false);
-        }
-      }
     };
     const progressIntervalId = window.setInterval(() => {
       setLiveLoadProgress((current) => Math.min(92, current + (current < 55 ? 8 : 4)));
@@ -259,29 +342,6 @@ export default function Home() {
       controller.abort();
     };
   }, []);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setShowAiAssessmentSection(true);
-    }, 350);
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, []);
-
-  const openAiChat = () => {
-    window.dispatchEvent(
-      new CustomEvent("aether:open-ai-chat", {
-        detail: {
-          prompt:
-            language === "de"
-              ? "Frage Grok zu den Daten: Wo liegen aktuell die größten Chancen und Risiken?"
-              : "Ask Grok about the data: what are the biggest opportunities and risks right now?",
-        },
-      })
-    );
-    window.location.hash = "ai-chat";
-  };
 
   const renewableGenerationValue = market
     ? market.realtimeSystem.residualLoadMw !== undefined
@@ -370,21 +430,12 @@ export default function Home() {
       ? Math.max(0, eveningFlexibilityGapGw - dischargeHeadroomGw)
       : null;
 
-  const renewableSharePct = market?.realtimeSystem.renewableShareOfLoadPct ?? null;
   const unavailableShort = language === "de" ? "k. A." : "n/a";
-  const renewableShareDisplay =
-    renewableSharePct !== null ? `${PERCENT_FORMATTER.format(renewableSharePct)}%` : unavailableShort;
-
-  const fleetStructuralSurplus = market?.fleetStructuralSurplus ?? null;
-  const fleetUncapturedSurplusDisplay =
-    fleetStructuralSurplus !== null
-      ? `${MWH_COMPACT_FORMATTER.format(fleetStructuralSurplus.uncapturedStructuralSurplusMwh)} MWh`
-      : unavailableShort;
 
   const fallbackTakeawayText =
     language === "de"
-      ? "Live-Daten werden geladen — hier erscheinen gleich drei kompakte Linien zu Systemrichtung, adjustierter Abendluecke und Dispatch-Hinweis."
-      : "Live data is loading — three compact lines will cover system direction, SoC-adjusted evening gap, and dispatch guidance.";
+      ? "In Kürze siehst du die Kernbotschaft aus Live-Lage, Tagesprofil und Handlungsempfehlung."
+      : "The core message from live position, daily profile, and recommendation will appear shortly.";
 
   /** Keep MW / GWh numbers out of the takeaway when they already appear in Live Metrics or the daily profile. */
   const takeawayLines =
@@ -392,22 +443,22 @@ export default function Home() {
       ? language === "de"
         ? [
             netPositionMw >= 0
-              ? `Strukturelle Ueberschusslage am Knoten; Flotte eher „${fleetModeLabel}“ — MW siehe Live Metrics.`
-              : `Strukturelle Defizitlage am Knoten; Flotte eher „${fleetModeLabel}“ — MW siehe Live Metrics.`,
-            `Effektive Abendluecke (SoC-adjustiert, einmaliger Kennwert): rund ${formatGw(effectiveGapGw)} — Restflexibilitaet nach geschaetztem Flotten-SoC.`,
-            assessment?.shortTermSignal ?? "Dispatch-Empfehlung laedt noch …",
+              ? "Der Markt startet heute mit strukturellem Überschuss und klar nutzbaren Ladefenstern."
+              : "Der Markt startet heute mit strukturellem Defizit und engem Flexibilitätsfenster.",
+            "Das Daily Profile zeigt, wann Überschüsse real in nutzbare Speicherarbeit übergehen und wo Energie liegen bleibt.",
+            "Nutze die Empfehlung unten als pragmatische Zielgröße für BESS-Kapazität auf Basis der letzten vier Wochen.",
           ]
         : [
             netPositionMw >= 0
-              ? `Structural surplus at the bus; fleet leaning “${fleetModeLabel}”—see Live Metrics for MW.`
-              : `Structural deficit at the bus; fleet leaning “${fleetModeLabel}”—see Live Metrics for MW.`,
-            `Effective evening gap (SoC-adjusted, single KPI): ~${formatGw(effectiveGapGw)}—residual flexibility after estimated fleet headroom.`,
-            assessment?.shortTermSignal ?? "Dispatch guidance still loading…",
+              ? "The market opens with structural surplus and clear charging windows."
+              : "The market opens with structural deficit and a tighter flexibility window.",
+            "The daily profile shows when surplus turns into usable storage work and where energy is still missed.",
+            "Use the recommendation below as a practical BESS capacity target based on the last four weeks.",
           ]
       : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-12 px-8 pb-24 pt-16 md:gap-16 lg:px-12">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-5 pb-20 pt-12 md:gap-14 md:px-8 lg:px-12">
       {isLiveDataLoading ? (
         <div className="pointer-events-none fixed top-16 left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-slate-300/60 bg-white/90 p-3 shadow-lg backdrop-blur dark:border-slate-500/40 dark:bg-slate-900/85">
           <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -423,53 +474,13 @@ export default function Home() {
           </div>
         </div>
       ) : null}
-      <section id="overview" className="space-y-10 pb-4 md:space-y-12">
-        <p className="text-xs tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{liveUpdateLabel}</p>
-        <article className="relative overflow-hidden rounded-2xl border border-blue-200/80 bg-gradient-to-r from-blue-50 via-blue-50/80 to-white p-4 md:p-5 dark:border-blue-300/35 dark:from-blue-400/12 dark:via-slate-900/85 dark:to-slate-900/80">
-          <span className="absolute inset-y-0 left-0 w-1.5 bg-emerald-500/90 dark:bg-emerald-300/90" />
-          <div className="pl-3">
-            <p className="inline-flex items-center gap-2 text-xs font-semibold tracking-[0.12em] text-blue-800 uppercase dark:text-blue-200">
-              <Lightbulb className="h-3.5 w-3.5" />
-              {language === "de" ? "Heutiger Key Takeaway" : "Today's key takeaway"}
-            </p>
-            {takeawayLines ? (
-              <ul className="mt-4 list-none space-y-3">
-                {takeawayLines.map((line, index) => (
-                  <li
-                    key={`takeaway-${index}`}
-                    className="flex gap-3 text-sm leading-snug text-slate-800 dark:text-slate-100 md:text-[15px]"
-                  >
-                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800 dark:bg-blue-400/20 dark:text-blue-100">
-                      {index + 1}
-                    </span>
-                    <span className="min-w-0">{line}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-800 dark:text-slate-100">
-                {fallbackTakeawayText}
-              </p>
-            )}
-          </div>
-        </article>
-        <h1 className="max-w-5xl text-5xl leading-tight text-slate-900 md:text-7xl dark:text-white [font-family:var(--font-heading)]">
-          AETHER
-        </h1>
-        <p className="max-w-3xl text-xl text-slate-700 dark:text-slate-200 md:text-2xl">
-          {language === "de"
-            ? "Klarheit für Deutschlands Energiewende"
-            : "Clarity for Germany's energy transition"}
+      <p className="text-xs tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{liveUpdateLabel}</p>
+
+      <section className="space-y-2">
+        <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
+          {language === "de" ? "Live Snapshot" : "Live snapshot"}
         </p>
-        <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-          {language === "de"
-            ? "Tägliches High-Signal-Briefing für Storage-Teams, die Nachfragestress, Erneuerbaren-Anteil und Deployment-Dynamik der BESS-Flotte verfolgen."
-            : "Daily high-signal briefing for storage teams tracking demand stress, renewable penetration, and BESS deployment momentum."}
-        </p>
-        <p className="text-xs tracking-[0.16em] text-slate-500 uppercase dark:text-slate-400">
-          {language === "de" ? "Live-Metriken" : "Live metrics"}
-        </p>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <div className="grid gap-2.5 sm:grid-cols-3">
           <LiveMetricTile
             title={language === "de" ? "Erzeugung" : "Generation"}
             value={
@@ -498,7 +509,7 @@ export default function Home() {
             isLoading={isLiveDataLoading}
           />
           <LiveMetricTile
-            title={language === "de" ? "Netto-Position" : "Net position"}
+            title={language === "de" ? "Netto + BESS" : "Net position + BESS"}
             value={
               netPositionMw !== null
                 ? `${netPositionMw >= 0 ? (language === "de" ? "Überschuss" : "Surplus") : language === "de" ? "Defizit" : "Deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}`
@@ -506,183 +517,142 @@ export default function Home() {
                   ? "voruebergehend nicht verfuegbar"
                   : "temporarily unavailable"
             }
-            detailLine={`${language === "de" ? "BESS" : "BESS"} · ${fleetModeLabel}`}
+            detailLine={`${language === "de" ? "Status" : "Status"} · ${fleetModeLabel}`}
             isLoading={isLiveDataLoading}
           />
         </div>
-        <article className="mt-10 rounded-2xl border border-slate-300/45 bg-white/75 p-5 md:p-6 dark:border-slate-500/35 dark:bg-slate-900/55">
-          <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-            {language === "de" ? "Flottenkontext & Karte" : "Fleet context & map"}
-          </p>
-          <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
-            {language === "de"
-              ? "Installierte GW/GWh über Energy-Charts; Nutzungs-Split über MaStR. Darunter deutschlandweite Utility- und Small-Scale-Standorte."
-              : "Installed GW/GWh from Energy-Charts; size split from MaStR. Below that, nationwide utility-scale and small-scale pins."}
-          </p>
-          <p className="mt-3 text-[11px] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
-            {language === "de" ? "BESS-Flottenüberblick" : "BESS Fleet Overview"}
-          </p>
-          <div className="mt-3 grid gap-4">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
-                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{language === "de" ? "Installierte Leistung gesamt" : "Installed Power Total"}</p>
-                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {formatInstalledValue(BESS_OVERVIEW.power.totalGw, "GW")}
-                </p>
-              </div>
-              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
-                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{language === "de" ? "Utility-Scale (&gt;10 MW)" : "Utility-scale (&gt;10 MW)"}</p>
-                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {formatInstalledValue(BESS_OVERVIEW.power.utilityScaleGw, "GW")}
-                </p>
-              </div>
-              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
-                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{language === "de" ? "Small-Scale (&lt;10 MW)" : "Small-scale (&lt;10 MW)"}</p>
-                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {formatInstalledValue(BESS_OVERVIEW.power.smallScaleGw, "GW")}
-                </p>
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
-                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{language === "de" ? "Installierte Energie gesamt" : "Installed Energy Total"}</p>
-                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {formatInstalledValue(BESS_OVERVIEW.energy.totalGwh, "GWh")}
-                </p>
-              </div>
-              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
-                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{language === "de" ? "Utility-Scale (&gt;10 MW)" : "Utility-scale (&gt;10 MW)"}</p>
-                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {formatInstalledValue(BESS_OVERVIEW.energy.utilityScaleGwh, "GWh")}
-                </p>
-              </div>
-              <div className="rounded-xl border border-slate-200/75 bg-white/85 p-3 dark:border-slate-500/40 dark:bg-slate-900/55">
-                <p className="text-[11px] tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">{language === "de" ? "Small-Scale (&lt;10 MW)" : "Small-scale (&lt;10 MW)"}</p>
-                <p className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-                  {formatInstalledValue(BESS_OVERVIEW.energy.smallScaleGwh, "GWh")}
-                </p>
-              </div>
-            </div>
-          </div>
-          <hr className="my-8 border-slate-200/90 dark:border-slate-600/35" />
-          <div className="flex flex-wrap items-center gap-2 text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-            <span>{language === "de" ? "BESS-Deployment-Karte" : "BESS Deployment Map"}</span>
-            <span className="inline-flex items-center rounded-full border border-blue-300/60 bg-blue-50/90 px-2 py-0.5 text-[10px] tracking-[0.1em] text-blue-700 dark:border-blue-300/35 dark:bg-blue-400/10 dark:text-blue-200">
-              {language === "de" ? "Utility-Scale-Pins" : "Utility-scale pins"}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-cyan-300/60 bg-cyan-50/90 px-2 py-0.5 text-[10px] tracking-[0.1em] text-cyan-700 dark:border-cyan-300/35 dark:bg-cyan-400/10 dark:text-cyan-200">
-              {language === "de" ? "Small-Scale-Dichte" : "Small-scale density"}
-            </span>
-          </div>
-          <div className="mt-4">
-            <MegapackMap compact />
-          </div>
-        </article>
       </section>
 
-      <GermanyDayEnergyFlow
-        flow={market?.dayEnergyFlow ?? null}
-        fleetCapacityGwh={market?.bess.installedCapacityGwh}
-        fleetPowerGw={market?.bess.installedPowerGw}
-        language={language}
-        isLoading={isLiveDataLoading}
-      />
-
-      <div className="mx-auto w-full max-w-[68rem]">
-        <BessDispatchSimulator />
-      </div>
-
       <section
-        id="market-snapshot"
-        className="scroll-mt-8 space-y-5 border-t border-slate-200/90 pt-10 dark:border-slate-600/35 dark:pt-12"
+        id="overview"
+        className="space-y-6 border-t border-slate-200/90 pt-8 md:space-y-8 dark:border-slate-600/35"
       >
-        <div className="max-w-3xl">
-          <h2 className="text-lg text-slate-800 dark:text-slate-100 md:text-xl [font-family:var(--font-heading)]">
-            {language === "de" ? "Market Snapshot" : "Market snapshot"}
+        <div className="max-w-3xl space-y-1.5">
+          <h2 className="text-xl text-slate-900 dark:text-slate-100 md:text-2xl [font-family:var(--font-heading)]">
+            {language === "de" ? "ENERGY-CHARTS DAILY PROFILE" : "ENERGY-CHARTS DAILY PROFILE"}
           </h2>
-          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+          <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
             {language === "de"
-              ? "Vier Kennzahlen aus dem gleichen Abruf wie oben — kompakt fuer Kontext vor dem Assessments-Block."
-              : "Four indicators from the same pull as above—compact context ahead of assessment."}
+              ? "Klarer Fokus auf Tagesprofil, praktische Speichergröße und verpasste Überschüsse."
+              : "Clear focus on daily profile, practical storage size, and missed surplus."}
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:gap-4">
-          <QuickStatPill
-            label={language === "de" ? "Netto am Knoten" : "Structural net"}
-            value={
-              netPositionMw !== null
-                ? `${netPositionMw >= 0 ? (language === "de" ? "Ueberschuss" : "Surplus") : language === "de" ? "Defizit" : "Deficit"} ${formatAdaptivePower(Math.abs(netPositionMw))}`
-                : unavailableShort
-            }
-            isLoading={isLiveDataLoading}
-          />
-          <QuickStatPill
-            label={language === "de" ? "Erneuerbarquote (Live)" : "Renewable share (live)"}
-            value={renewableShareDisplay}
-            isLoading={isLiveDataLoading}
-          />
-          <QuickStatPill
-            label={language === "de" ? "Effektive Abendluecke (SoC-adj.)" : "Effective evening gap (SoC-adj.)"}
-            value={
-              effectiveGapGw !== null
-                ? `~${formatGw(effectiveGapGw)}`
-                : unavailableShort
-            }
-            isLoading={isLiveDataLoading}
-          />
-          <QuickStatPill
-            label={language === "de" ? "Nicht aufgenommener Restueberschuss" : "Uncaptured structural surplus"}
-            value={fleetUncapturedSurplusDisplay}
-            isLoading={isLiveDataLoading}
-          />
-        </div>
+        <GermanyDayEnergyFlow
+          fleetCapacityGwh={market?.bess.installedCapacityGwh}
+          fleetPowerGw={market?.bess.installedPowerGw}
+          language={language}
+        />
       </section>
 
-      <section
-        className="mx-auto w-full max-w-4xl border-t border-slate-200/90 pt-14 dark:border-slate-600/35 dark:pt-16"
-        id="ai-assessment"
-      >
-        {showAiAssessmentSection ? (
-          <BessAssessmentCenter
-            variant="minimal"
-            compact
-            initialData={assessment}
-            pendingInitialData={isAssessmentPending}
-            skipInitialFetch
-          />
-        ) : (
-          <div className="space-y-3">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-11 w-2/3" />
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-11/12" />
+      <section className="space-y-4 border-t border-slate-200/90 pt-8 dark:border-slate-600/35">
+        <p className="inline-flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-blue-800 uppercase dark:text-blue-200">
+          <Lightbulb className="h-3.5 w-3.5" />
+          {language === "de" ? "Key Takeaway" : "Key takeaway"}
+        </p>
+        {takeawayLines ? (
+          <div className="rounded-2xl border border-blue-200/75 bg-blue-50/80 p-5 dark:border-blue-300/35 dark:bg-blue-400/10">
+            <div className="space-y-2.5 text-sm leading-relaxed text-slate-800 md:text-base dark:text-slate-100">
+              {takeawayLines.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
           </div>
+        ) : (
+          <p className="rounded-xl border border-slate-300/50 bg-white/80 p-4 text-sm text-slate-700 dark:border-slate-500/40 dark:bg-slate-900/50 dark:text-slate-200">
+            {fallbackTakeawayText}
+          </p>
         )}
       </section>
 
-      <section id="news" className="space-y-8 border-t border-slate-200/90 pt-14 dark:border-slate-600/35 dark:pt-16">
-        <NewsPreviewSection limit={4} showHeaderLink />
+      <section className="border-t border-slate-200/90 pt-8 dark:border-slate-600/35">
+        <details className="group rounded-2xl border border-slate-300/45 bg-white/75 p-4 dark:border-slate-500/35 dark:bg-slate-900/55">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-xl px-2 py-2 text-left">
+            <div>
+              <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
+                {language === "de" ? "Fleet Context + Map" : "Fleet context + map"}
+              </p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                {language === "de"
+                  ? "Sekundärer Kontext zu installierter Flotte und Standorten."
+                  : "Secondary context for installed fleet and deployment footprint."}
+              </p>
+            </div>
+            <ChevronDown className="h-5 w-5 shrink-0 text-slate-500 transition group-open:rotate-180 dark:text-slate-300" />
+          </summary>
+          <div className="mt-3 space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <QuickStatPill
+                label={language === "de" ? "Installierte Leistung (DE)" : "Installed power (DE)"}
+                value={formatInstalledValue(BESS_OVERVIEW.power.totalGw, "GW")}
+                isLoading={false}
+              />
+              <QuickStatPill
+                label={language === "de" ? "Installierte Energie (DE)" : "Installed energy (DE)"}
+                value={formatInstalledValue(BESS_OVERVIEW.energy.totalGwh, "GWh")}
+                isLoading={false}
+              />
+            </div>
+            <MegapackMap compact />
+          </div>
+        </details>
       </section>
 
-      <button
-        type="button"
-        onClick={openAiChat}
-        className="group fixed right-6 bottom-6 z-[1000] w-[min(340px,calc(100vw-3rem))] rounded-3xl border border-primary/35 bg-[#fbfaf8]/95 px-5 py-4 text-left text-slate-900 shadow-[0_18px_42px_rgba(15,118,110,0.16)] backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-[0_22px_48px_rgba(15,118,110,0.24)] dark:border-emerald-200/30 dark:bg-slate-900/95 dark:text-slate-100 dark:hover:border-emerald-200/60"
-        aria-label={language === "de" ? "Frage AETHER alles" : "Ask AETHER anything"}
-      >
-        <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.14em] text-primary uppercase dark:text-emerald-200">
-          <MessageCircle className="h-4 w-4" />
-          {language === "de" ? "AETHER Chat" : "AETHER Chat"}
-        </span>
-        <span className="mt-1 block text-sm font-semibold md:text-base">
-          {language === "de" ? "Sprechen Sie mit AETHER." : "Talk with AETHER."}
-        </span>
-        <span className="mt-1 block text-xs text-slate-600 dark:text-slate-300">
-          {language === "de"
-            ? "Trends, Risiken und nächste Schritte auf einen Blick."
-            : "Trends, risks, and next steps in one conversation."}
-        </span>
-      </button>
+      <section id="market-snapshot" className="scroll-mt-8 space-y-4 border-t border-slate-200/90 pt-10 dark:border-slate-600/35">
+        <div className="max-w-3xl">
+          <h2 className="text-lg text-slate-800 dark:text-slate-100 md:text-xl [font-family:var(--font-heading)]">
+            {language === "de" ? "Key Numbers & Recommendation" : "Key Numbers & Recommendation"}
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            {language === "de"
+              ? "Kernaussagen aus Tagesprofil plus empfohlene BESS-Kapazität aus den letzten vier Wochen."
+              : "Core day-profile numbers plus a recommended BESS capacity from the last four weeks."}
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <QuickStatPill
+            label={language === "de" ? "P95 Practical Capacity" : "P95 Practical Capacity"}
+            value={keyNumbersSummary ? formatEnergyFromMwh(keyNumbersSummary.practicalCapacityMwh) : unavailableShort}
+            isLoading={isLiveDataLoading}
+          />
+          <QuickStatPill
+            label={language === "de" ? "Gross Surplus" : "Gross Surplus"}
+            value={keyNumbersSummary ? formatEnergyFromMwh(keyNumbersSummary.grossSurplusMwh) : unavailableShort}
+            isLoading={isLiveDataLoading}
+          />
+        </div>
+        {keyNumbersSummary ? (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {language === "de"
+              ? `Key Numbers basieren auf: ${keyNumbersSummary.dateLabel}.`
+              : `Key numbers are based on: ${keyNumbersSummary.dateLabel}.`}
+          </p>
+        ) : null}
+        <article className="rounded-2xl border border-emerald-300/45 bg-emerald-50/60 p-5 dark:border-emerald-300/30 dark:bg-emerald-500/10">
+          <p className="text-[11px] font-semibold tracking-[0.12em] text-emerald-800 uppercase dark:text-emerald-200">
+            {language === "de"
+              ? "Recommended BESS Capacity based on last 4 weeks"
+              : "Recommended BESS Capacity based on last 4 weeks"}
+          </p>
+          <p className="mt-2 text-2xl font-extrabold text-emerald-900 dark:text-emerald-100">
+            {fourWeekRecommendation
+              ? `${formatEnergyFromMwh(fourWeekRecommendation.p95PracticalCapacityMwh)} (P95)`
+              : unavailableShort}
+          </p>
+          <p className="mt-2 text-xs text-emerald-900/85 dark:text-emerald-100/85">
+            {fourWeekRecommendation
+              ? language === "de"
+                ? `Berechnet aus ${fourWeekRecommendation.coveredDays.toString()} beobachteten Berlin-Tagen in den jüngsten 4 Wochen.`
+                : `Computed from ${fourWeekRecommendation.coveredDays.toString()} observed Berlin days across the latest 4 weeks.`
+              : language === "de"
+                ? "Empfehlung wird geladen, sobald genügend veröffentlichte Viertelstunden vorliegen."
+                : "Recommendation appears once enough published quarter-hours are available."}
+          </p>
+        </article>
+      </section>
+
+      <section className="border-t border-slate-200/90 pt-8 dark:border-slate-600/35">
+        <NewsPreviewSection limit={5} compact showHeaderLink={false} />
+      </section>
 
     </div>
   );

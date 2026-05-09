@@ -1,6 +1,16 @@
 import { z } from "zod";
 
+import { getBerlinDateKeyFromUnixSeconds as getBerlinDateKey } from "@/lib/berlinCalendar";
 import { createLogger } from "@/lib/debug";
+import type {
+  GermanyEnergyFlowBerlinRange,
+  GermanyEnergyFlowPeriod,
+} from "@/lib/germanyEnergyFlowPeriod";
+import {
+  expectedQuarterHoursInFlowRange,
+  resolveGermanyEnergyFlowBerlinRange,
+  totalPowerFetchStartDateForRange,
+} from "@/lib/germanyEnergyFlowPeriod";
 
 const log = createLogger("energy-charts");
 
@@ -28,12 +38,15 @@ const formatCalendarDateBerlin = (date: Date): string =>
     day: "2-digit",
   }).format(date);
 
+const getGermanyTotalPowerPathForCalendarRange = (startStr: string, endStr: string): string =>
+  `/total_power?country=de&start=${startStr}&end=${endStr}`;
+
 const getGermanyTotalPowerPath = (): string => {
   const end = new Date();
   const startMs = end.getTime() - GERMANY_TOTAL_POWER_LOOKBACK_DAYS * 86_400_000;
   const startStr = formatCalendarDateBerlin(new Date(startMs));
   const endStr = formatCalendarDateBerlin(end);
-  return `/total_power?country=de&start=${startStr}&end=${endStr}`;
+  return getGermanyTotalPowerPathForCalendarRange(startStr, endStr);
 };
 
 const seriesSchema = z.object({
@@ -424,6 +437,10 @@ export type GermanyDispatchSlotsResponse = {
   source: "energy-charts.total_power";
   /** Quarter-hour slots in chronological order. */
   slots: GermanyDispatchSlot[];
+  /** Present when the series was built for a named multi-day or day-partial window. */
+  period?: GermanyEnergyFlowPeriod;
+  rangeStartBerlin?: string;
+  rangeEndBerlin?: string;
 };
 
 export type RecentRenewablePatternsSnapshot = {
@@ -561,18 +578,8 @@ const berlinHourFormatter = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
 });
 
-const berlinDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Berlin",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
 const getBerlinHour = (timestampSeconds: number): number =>
   Number.parseInt(berlinHourFormatter.format(new Date(timestampSeconds * 1000)), 10);
-
-const getBerlinDateKey = (timestampSeconds: number): string =>
-  berlinDateFormatter.format(new Date(timestampSeconds * 1000));
 
 const summarizeRenewableShareForecast = (
   payload: z.infer<typeof renewableShareForecastResponseSchema>,
@@ -1027,9 +1034,13 @@ const MIN_DISPATCH_SLOTS = 4;
 /** Backfill stale / null ECMWF residual points using recent published values (¼ h grain). */
 const RESIDUAL_LOAD_BACKFILL_STEPS = 96;
 
-const extractGermanyDispatchSlotsFromTotalPower = (
-  totalPower: TotalPowerResponse
-): GermanyDispatchSlotsResponse | null => {
+type TotalPowerSlotBuildContext = {
+  loadSeries: ProductionSeries;
+  residualSeries: ProductionSeries | undefined;
+  mergedRenewableShareSeries: Array<number | null>;
+};
+
+const buildTotalPowerSlotContext = (totalPower: TotalPowerResponse): TotalPowerSlotBuildContext => {
   const loadSeries = findSeriesOrThrow(
     totalPower.production_types,
     "Load (incl. self-consumption)"
@@ -1046,76 +1057,90 @@ const extractGermanyDispatchSlotsFromTotalPower = (
     renewableShareSeriesDirect === undefined
       ? derivedRenewableShareSeries
       : mergeRenewableShareSeries(renewableShareSeriesDirect.data, derivedRenewableShareSeries);
+  return { loadSeries, residualSeries, mergedRenewableShareSeries };
+};
 
+const buildGermanyDispatchSlotsForIndices = (
+  totalPower: TotalPowerResponse,
+  indices: readonly number[],
+  ctx: TotalPowerSlotBuildContext
+): GermanyDispatchSlot[] => {
+  const { loadSeries, residualSeries, mergedRenewableShareSeries } = ctx;
+  const slots: GermanyDispatchSlot[] = [];
+  for (const index of indices) {
+    const ts = totalPower.unix_seconds[index];
+    const loadMw = loadSeries.data[index];
+    if (loadMw === null || !Number.isFinite(loadMw)) {
+      continue;
+    }
+
+    const renewableMw = sumSeriesAtIndex(
+      totalPower.production_types,
+      isRenewableGenerationSeries,
+      index
+    );
+    const sharePct = valueAtIndexWithFallback(mergedRenewableShareSeries, index, 96);
+    const renewableMwFromShare =
+      sharePct !== null && Number.isFinite(sharePct) && loadMw > 0 ? (sharePct / 100) * loadMw : null;
+
+    let residualMw: number | null = null;
+    if (residualSeries) {
+      const direct = residualSeries.data[index];
+      if (direct !== null && Number.isFinite(direct)) {
+        residualMw = direct;
+      }
+    }
+    if (residualMw === null && renewableMw !== null && Number.isFinite(renewableMw)) {
+      residualMw = loadMw - renewableMw;
+    }
+    if (
+      residualMw === null &&
+      renewableMwFromShare !== null &&
+      Number.isFinite(renewableMwFromShare)
+    ) {
+      residualMw = loadMw - renewableMwFromShare;
+    }
+    if (residualMw === null && residualSeries) {
+      const backfilled = valueAtIndexWithFallback(
+        residualSeries.data,
+        index,
+        RESIDUAL_LOAD_BACKFILL_STEPS
+      );
+      if (backfilled !== null && Number.isFinite(backfilled)) {
+        residualMw = backfilled;
+      }
+    }
+
+    const renewableGenerationMwForSlot =
+      renewableMw ?? (renewableMwFromShare !== null ? renewableMwFromShare : null);
+
+    if (residualMw === null || !Number.isFinite(residualMw)) {
+      continue;
+    }
+
+    slots.push({
+      timestampIso: new Date(ts * 1000).toISOString(),
+      hourBerlin: getBerlinHour(ts),
+      residualLoadMw: residualMw,
+      loadMw,
+      totalGenerationMw: sumDomesticGenerationMw(totalPower.production_types, index),
+      renewableGenerationMw: renewableGenerationMwForSlot,
+    });
+  }
+  return slots;
+};
+
+const extractGermanyDispatchSlotsFromTotalPower = (
+  totalPower: TotalPowerResponse
+): GermanyDispatchSlotsResponse | null => {
+  const ctx = buildTotalPowerSlotContext(totalPower);
   const indicesByDate = groupIndicesByBerlinDate(totalPower.unix_seconds);
   const dateKeys = [...indicesByDate.keys()].sort();
 
   for (let i = dateKeys.length - 1; i >= 0; i -= 1) {
     const dateKey = dateKeys[i];
     const indices = indicesByDate.get(dateKey) ?? [];
-    const slots: GermanyDispatchSlot[] = [];
-
-    for (const index of indices) {
-      const ts = totalPower.unix_seconds[index];
-      const loadMw = loadSeries.data[index];
-      if (loadMw === null || !Number.isFinite(loadMw)) {
-        continue;
-      }
-
-      const renewableMw = sumSeriesAtIndex(
-        totalPower.production_types,
-        isRenewableGenerationSeries,
-        index
-      );
-      const sharePct = valueAtIndexWithFallback(mergedRenewableShareSeries, index, 96);
-      const renewableMwFromShare =
-        sharePct !== null && Number.isFinite(sharePct) && loadMw > 0 ? (sharePct / 100) * loadMw : null;
-
-      let residualMw: number | null = null;
-      if (residualSeries) {
-        const direct = residualSeries.data[index];
-        if (direct !== null && Number.isFinite(direct)) {
-          residualMw = direct;
-        }
-      }
-      if (residualMw === null && renewableMw !== null && Number.isFinite(renewableMw)) {
-        residualMw = loadMw - renewableMw;
-      }
-      if (
-        residualMw === null &&
-        renewableMwFromShare !== null &&
-        Number.isFinite(renewableMwFromShare)
-      ) {
-        residualMw = loadMw - renewableMwFromShare;
-      }
-      if (residualMw === null && residualSeries) {
-        const backfilled = valueAtIndexWithFallback(
-          residualSeries.data,
-          index,
-          RESIDUAL_LOAD_BACKFILL_STEPS
-        );
-        if (backfilled !== null && Number.isFinite(backfilled)) {
-          residualMw = backfilled;
-        }
-      }
-
-      const renewableGenerationMwForSlot =
-        renewableMw ??
-        (renewableMwFromShare !== null ? renewableMwFromShare : null);
-
-      if (residualMw === null || !Number.isFinite(residualMw)) {
-        continue;
-      }
-
-      slots.push({
-        timestampIso: new Date(ts * 1000).toISOString(),
-        hourBerlin: getBerlinHour(ts),
-        residualLoadMw: residualMw,
-        loadMw,
-        totalGenerationMw: sumDomesticGenerationMw(totalPower.production_types, index),
-        renewableGenerationMw: renewableGenerationMwForSlot,
-      });
-    }
+    const slots = buildGermanyDispatchSlotsForIndices(totalPower, indices, ctx);
 
     if (slots.length >= MIN_DISPATCH_SLOTS) {
       return {
@@ -1129,6 +1154,53 @@ const extractGermanyDispatchSlotsFromTotalPower = (
   }
 
   return null;
+};
+
+const extractGermanyDispatchSlotsForBerlinCalendarRange = (
+  totalPower: TotalPowerResponse,
+  params: {
+    startKey: string;
+    endKey: string;
+    capSlotsAtNow: boolean;
+    nowMs: number;
+    expectedQuarterHours: number;
+    period: GermanyEnergyFlowPeriod;
+  }
+): GermanyDispatchSlotsResponse | null => {
+  const ctx = buildTotalPowerSlotContext(totalPower);
+  const nowSec = Math.floor(params.nowMs / 1000);
+  const indices: number[] = [];
+  for (let index = 0; index < totalPower.unix_seconds.length; index += 1) {
+    const ts = totalPower.unix_seconds[index];
+    const key = getBerlinDateKey(ts);
+    if (key < params.startKey || key > params.endKey) {
+      continue;
+    }
+    if (params.capSlotsAtNow && key === params.endKey && ts > nowSec) {
+      continue;
+    }
+    indices.push(index);
+  }
+  if (indices.length === 0) {
+    return null;
+  }
+  const slots = buildGermanyDispatchSlotsForIndices(totalPower, indices, ctx);
+  if (slots.length < MIN_DISPATCH_SLOTS) {
+    return null;
+  }
+  const denom = Math.max(1, params.expectedQuarterHours);
+  const dateLabel =
+    params.startKey === params.endKey ? params.startKey : `${params.startKey}–${params.endKey}`;
+  return {
+    dateBerlin: dateLabel,
+    samplePoints: slots.length,
+    pointFractionOfDay: Math.min(1, slots.length / denom),
+    source: "energy-charts.total_power",
+    slots,
+    period: params.period,
+    rangeStartBerlin: params.startKey,
+    rangeEndBerlin: params.endKey,
+  };
 };
 
 const buildGermanyMarketSnapshot = ({
@@ -1263,6 +1335,36 @@ export const getGermanyMarketSnapshot = async (): Promise<GermanyMarketSnapshot>
   ]);
 
   return buildGermanyMarketSnapshot({ totalPower, installedPower });
+};
+
+/** Factual quarter-hour series from Energy-Charts for a named Berlin window (no interpolation). */
+export const getGermanyEnergyFlowForPeriod = async (
+  period: GermanyEnergyFlowPeriod
+): Promise<GermanyDispatchSlotsResponse | null> => {
+  const now = new Date();
+  const range = resolveGermanyEnergyFlowBerlinRange(period, now);
+  return getGermanyEnergyFlowForBerlinRange(range, now);
+};
+
+export const getGermanyEnergyFlowForBerlinRange = async (
+  range: GermanyEnergyFlowBerlinRange,
+  now: Date = new Date()
+): Promise<GermanyDispatchSlotsResponse | null> => {
+  const fetchStart = totalPowerFetchStartDateForRange(range);
+  const fetchEnd = formatCalendarDateBerlin(now);
+  const path = getGermanyTotalPowerPathForCalendarRange(fetchStart, fetchEnd);
+  const totalPower = await fetchJson(path, totalPowerResponseSchema, {
+    allowStaleOnFailure: true,
+  });
+  const expected = expectedQuarterHoursInFlowRange(range, now);
+  return extractGermanyDispatchSlotsForBerlinCalendarRange(totalPower, {
+    startKey: range.startKey,
+    endKey: range.endKey,
+    capSlotsAtNow: range.capSlotsAtNow,
+    nowMs: now.getTime(),
+    expectedQuarterHours: expected,
+    period: range.period,
+  });
 };
 
 /**

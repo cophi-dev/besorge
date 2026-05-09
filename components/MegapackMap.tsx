@@ -165,6 +165,7 @@ export default function MegapackMap({ compact = false }: { compact?: boolean }) 
   const [nationalInstalledEnergyGwh, setNationalInstalledEnergyGwh] = useState<number | null>(null);
   const [nationalInstalledPowerGw, setNationalInstalledPowerGw] = useState<number | null>(null);
   const mapWrapperRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
   const visibleKnownProjects = useMemo(() => knownProjects, [knownProjects]);
   const mapVisibleMinMw =
     knownProjectsSource === "mastr_zenodo" ? MASTR_MAP_MARKER_MIN_MW : CURATED_MAP_MIN_MW;
@@ -179,6 +180,16 @@ export default function MegapackMap({ compact = false }: { compact?: boolean }) 
       smallProjectsHeatmap.filter((cell) => isPointInPolygon(cell.lat, cell.lng, GERMANY_POLYGON)),
     [smallProjectsHeatmap]
   );
+
+  useEffect(() => {
+    return () => {
+      try {
+        mapInstanceRef.current?.remove();
+      } finally {
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -339,6 +350,7 @@ export default function MegapackMap({ compact = false }: { compact?: boolean }) 
         className={`overflow-hidden rounded-xl border border-slate-300/60 bg-slate-950 dark:border-slate-500/30 ${isFullscreen ? "h-screen w-screen rounded-none border-none" : ""}`}
       >
         <MapContainer
+          ref={mapInstanceRef}
           center={DEFAULT_CENTER}
           zoom={DEFAULT_ZOOM}
           className={isFullscreen ? "h-screen w-screen" : "h-[460px] w-full"}
