@@ -3,7 +3,6 @@ import {
   getGermanyEnergyFlowForBerlinRange,
   getGermanyMarketSnapshot,
   type GermanyDispatchSlotsResponse,
-  type GermanyMarketSnapshot,
 } from "@/lib/energyChartsApi";
 import { resolveGermanyEnergyFlowBerlinRangeForDate } from "@/lib/germanyEnergyFlowPeriod";
 import {

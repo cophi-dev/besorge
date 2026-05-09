@@ -1288,7 +1288,7 @@ export default function GermanyDayEnergyFlow({
 
   if (isFlowLoading) {
     return (
-      <article className="scroll-mt-8 space-y-6 rounded-3xl border-2 border-slate-300/50 bg-white/80 p-6 shadow-lg md:p-8 dark:border-slate-500/40 dark:bg-slate-900/70 dark:shadow-black/35">
+      <article className="scroll-mt-8 space-y-5 rounded-2xl border-2 border-border/60 bg-card p-5 shadow-md md:p-6 dark:border-slate-500/40 dark:bg-slate-900/70 dark:shadow-black/35">
         <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
           {t.loadingEyebrow}
         </p>
@@ -1383,10 +1383,10 @@ export default function GermanyDayEnergyFlow({
   return (
     <article
       id="germany-day-energy-flow"
-      className="scroll-mt-8 space-y-9 rounded-[1.65rem] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.90))] p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:space-y-11 md:p-8 lg:p-10 dark:border-slate-600/35 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(17,24,39,0.93))] dark:shadow-[0_18px_48px_rgba(0,0,0,0.35)]"
+      className="scroll-mt-8 space-y-6 rounded-2xl border border-border/80 bg-card p-5 shadow-[0_1px_0_rgb(255_255_255_/_0.7)_inset,0_12px_36px_rgb(15_23_42_/_0.06)] md:space-y-8 md:p-6 lg:p-8 dark:border-slate-600/35 dark:bg-[linear-gradient(180deg,rgb(13_19_33_/_0.98),rgb(15_23_42_/_0.94))] dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_16px_44px_rgb(0_0_0_/_0.38)]"
     >
-      <header className="flex flex-col gap-5 md:gap-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
+      <header className="flex flex-col gap-4 md:gap-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
           <div className="min-w-0 space-y-1 lg:max-w-xl">
             <h2 className="text-2xl font-bold leading-tight tracking-tight text-slate-950 md:text-3xl dark:text-white [font-family:var(--font-heading)]">
               {t.profileTitle}
@@ -1432,8 +1432,8 @@ export default function GermanyDayEnergyFlow({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-slate-200/80 pt-4 dark:border-slate-600/40">
-          <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-2">
+        <div className="flex flex-col gap-2 border-t border-border/70 pt-3 dark:border-slate-600/40">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1.5">
             <div
               className="inline-flex shrink-0 rounded-lg border border-slate-200/90 bg-slate-100/90 p-[3px] dark:border-slate-600/55 dark:bg-slate-800/90"
               role="tablist"
@@ -1581,10 +1581,10 @@ export default function GermanyDayEnergyFlow({
 
       <div
         id="aether-germany-flow-capture"
-        className={`rounded-[1.65rem] border p-5 shadow-inner md:p-7 ${
+        className={`rounded-2xl border p-4 shadow-inner md:p-6 ${
           showSimulatedNet
-            ? "border-slate-200/90 bg-white/98 shadow-[inset_0_0_0_1px_rgba(34,193,115,0.06)] dark:border-slate-600/50 dark:bg-slate-950/78 dark:shadow-[inset_0_0_0_1px_rgba(52,211,153,0.08)]"
-            : "border-slate-200/80 bg-white/95 dark:border-slate-600/55 dark:bg-slate-950/70"
+            ? "border-border/90 bg-card shadow-[inset_0_0_0_1px_rgb(34_193_115_/_0.05)] dark:border-slate-600/50 dark:bg-slate-950/78 dark:shadow-[inset_0_0_0_1px_rgba(52,211,153,0.08)]"
+            : "border-border/80 bg-card/95 dark:border-slate-600/55 dark:bg-slate-950/70"
         }`}
       >
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1758,8 +1758,8 @@ export default function GermanyDayEnergyFlow({
         </p>
       </div>
 
-      <section className="space-y-5 md:space-y-7" aria-labelledby="germany-energy-key-metrics-heading">
-        <div className="flex flex-col gap-1.5 md:flex-row md:items-baseline md:justify-between">
+      <section className="space-y-4 md:space-y-5" aria-labelledby="germany-energy-key-metrics-heading">
+        <div className="flex flex-col gap-1 md:flex-row md:items-baseline md:justify-between">
           <h3
             id="germany-energy-key-metrics-heading"
             className="text-base font-semibold tracking-tight text-slate-800 md:text-[1.0625rem] dark:text-slate-100 [font-family:var(--font-heading)]"
@@ -1782,56 +1782,56 @@ export default function GermanyDayEnergyFlow({
         </div>
 
         {!showSimulatedNet ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
-            <div className="flex min-h-[118px] flex-col justify-between rounded-xl border border-emerald-200/85 bg-white px-4 py-4 shadow-sm dark:border-emerald-600/28 dark:bg-emerald-950/18">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
+            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-emerald-200/80 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-emerald-600/28 dark:bg-emerald-950/18">
               <div className="pointer-events-none h-1 w-14 rounded-full bg-emerald-400/80 dark:bg-emerald-300/60" aria-hidden />
               <div>
-                <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-900 dark:text-emerald-200">{t.kpiGrossSurplusEyebrow}</p>
-                <p className="mt-2 text-2xl font-extrabold tabular-nums text-emerald-950 dark:text-emerald-50 [font-family:var(--font-sans)]">
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-900 dark:text-emerald-200">{t.kpiGrossSurplusEyebrow}</p>
+                <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-emerald-950 dark:text-emerald-50 [font-family:var(--font-sans)]">
                   {absorption ? formatEnergyFromMwh(absorption.grossSurplusEnergyMwh) : "—"}
                 </p>
               </div>
-              <p className="mt-4 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{t.kpiGrossSurplusSubtitle}</p>
+              <p className="mt-3 text-xs leading-snug text-muted-foreground dark:text-slate-300">{t.kpiGrossSurplusSubtitle}</p>
             </div>
 
-            <div className="relative flex min-h-[118px] flex-col justify-between overflow-hidden rounded-xl border border-amber-200/90 bg-white px-4 py-4 shadow-sm dark:border-amber-500/42 dark:bg-amber-950/28">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-amber-400 via-amber-500 to-orange-400" aria-hidden />
+            <div className="relative flex min-h-[100px] flex-col justify-between overflow-hidden rounded-xl border border-amber-200/85 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-amber-500/42 dark:bg-amber-950/28">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-orange-400" aria-hidden />
               <div>
-                <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-950 dark:text-amber-100">{t.kpiMissedSurplusEyebrow}</p>
-                <p className="mt-2 text-2xl font-extrabold tabular-nums text-amber-950 dark:text-amber-50 [font-family:var(--font-sans)]">
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-950 dark:text-amber-100">{t.kpiMissedSurplusEyebrow}</p>
+                <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-amber-950 dark:text-amber-50 [font-family:var(--font-sans)]">
                   {showMissedKpis && absorption ? formatEnergyFromMwh(absorption.missedSurplusEnergyMwh) : "—"}
                 </p>
                 {showMissedKpis && absorption && absorption.grossSurplusEnergyMwh > 1e-6 ? (
-                  <p className="mt-2 text-sm font-bold tabular-nums text-amber-900 dark:text-amber-50">
+                  <p className="mt-1.5 text-sm font-bold tabular-nums text-amber-900 dark:text-amber-50">
                     {t.kpiMissedOfGross(pctFormatter.format((absorption.missedSurplusEnergyMwh / absorption.grossSurplusEnergyMwh) * 100))}
                   </p>
                 ) : showMissedKpis ? (
-                  <p className="mt-2 text-xs font-semibold text-amber-900/80 dark:text-amber-200/85">—</p>
+                  <p className="mt-1.5 text-xs font-semibold text-amber-900/80 dark:text-amber-200/85">—</p>
                 ) : (
-                  <p className="mt-2 text-[11px] leading-snug text-amber-900/85 dark:text-amber-50/85">{t.kpiFleetRequiredShort}</p>
+                  <p className="mt-1.5 text-[11px] leading-snug text-amber-900/85 dark:text-amber-50/85">{t.kpiFleetRequiredShort}</p>
                 )}
               </div>
-              <p className="mt-4 text-xs leading-relaxed text-amber-950/92 dark:text-amber-100/90">{t.kpiMissedSurplusSubtitle}</p>
+              <p className="mt-3 text-xs leading-snug text-amber-950/92 dark:text-amber-100/90">{t.kpiMissedSurplusSubtitle}</p>
             </div>
 
-            <div className="flex min-h-[118px] flex-col justify-between rounded-xl border border-slate-200/95 bg-white px-4 py-4 shadow-sm dark:border-slate-600/55 dark:bg-slate-950/70">
-              <div className="pointer-events-none h-1 w-14 rounded-full bg-slate-300/95 dark:bg-slate-600/95" aria-hidden />
+            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-border/80 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-slate-600/55 dark:bg-slate-950/70">
+              <div className="pointer-events-none h-1 w-14 rounded-full bg-sky-500/70 dark:bg-sky-500/50" aria-hidden />
               <div>
-                <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{t.kpiBaselineSelfConsumptionEyebrow}</p>
-                <p className="mt-2 text-2xl font-extrabold tabular-nums text-slate-950 dark:text-white [font-family:var(--font-sans)]">
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t.kpiBaselineSelfConsumptionEyebrow}</p>
+                <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-slate-950 dark:text-white [font-family:var(--font-sans)]">
                   {baselineSelfConsumptionPct !== null ? `${integerFormatter.format(Math.round(baselineSelfConsumptionPct))}%` : "—"}
                 </p>
               </div>
-              <p className="mt-4 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{t.kpiBaselineSelfConsumptionSubtitle}</p>
+              <p className="mt-3 text-xs leading-snug text-muted-foreground dark:text-slate-300">{t.kpiBaselineSelfConsumptionSubtitle}</p>
             </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
-            <div className="flex min-h-[118px] flex-col justify-between rounded-xl border border-emerald-200/90 bg-emerald-50/40 px-4 py-4 shadow-sm dark:border-emerald-500/38 dark:bg-emerald-950/30">
+            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-emerald-200/85 bg-emerald-50/50 px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-emerald-500/38 dark:bg-emerald-950/30">
               <div className="pointer-events-none h-1 w-14 rounded-full bg-emerald-500/90" aria-hidden />
               <div>
-                <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-900 dark:text-emerald-100">{t.kpiCapturedSurplusEyebrow}</p>
-                <p className="mt-2 text-2xl font-extrabold tabular-nums text-emerald-950 dark:text-emerald-50 [font-family:var(--font-sans)]">
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-900 dark:text-emerald-100">{t.kpiCapturedSurplusEyebrow}</p>
+                <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-emerald-950 dark:text-emerald-50 [font-family:var(--font-sans)]">
                   {recommendedCoverage ? formatEnergyFromMwh(recommendedCoverage.absorbedSurplusEnergyMwh) : "—"}
                 </p>
                 {recommendedCoverage && recommendedCoverage.totalSurplusEnergyMwh > 1e-9 ? (
@@ -1841,10 +1841,10 @@ export default function GermanyDayEnergyFlow({
                   </p>
                 ) : null}
               </div>
-              <p className="mt-4 text-xs leading-relaxed text-emerald-950/92 dark:text-emerald-100/90">{t.kpiCapturedSurplusSubtitle}</p>
+              <p className="mt-3 text-xs leading-snug text-emerald-950/92 dark:text-emerald-100/90">{t.kpiCapturedSurplusSubtitle}</p>
             </div>
 
-            <div className="flex min-h-[118px] flex-col justify-between rounded-xl border border-sky-200/95 bg-white px-4 py-4 shadow-sm dark:border-sky-700/55 dark:bg-slate-950/70">
+            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-sky-200/90 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-sky-700/55 dark:bg-slate-950/70">
               <div className="pointer-events-none h-1 w-14 rounded-full bg-sky-500/75" aria-hidden />
               <div>
                 <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-950 dark:text-sky-100">{t.kpiDeficitCoveredEyebrow}</p>
@@ -1858,10 +1858,10 @@ export default function GermanyDayEnergyFlow({
                   </p>
                 ) : null}
               </div>
-              <p className="mt-4 text-xs leading-relaxed text-slate-700 dark:text-slate-300">{t.kpiDeficitCoveredSubtitle}</p>
+              <p className="mt-3 text-xs leading-snug text-slate-700 dark:text-slate-300">{t.kpiDeficitCoveredSubtitle}</p>
             </div>
 
-            <div className="flex min-h-[118px] flex-col justify-between rounded-xl border border-teal-200/90 bg-white px-4 py-4 shadow-sm dark:border-teal-700/55 dark:bg-slate-950/65">
+            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-teal-200/85 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-teal-700/55 dark:bg-slate-950/65">
               <div className="pointer-events-none h-1 w-14 rounded-full bg-teal-500/80" aria-hidden />
               <div>
                 <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-950 dark:text-teal-100">{t.kpiNewSelfConsumptionEyebrow}</p>
@@ -1869,10 +1869,10 @@ export default function GermanyDayEnergyFlow({
                   {selfConsumptionOptimalPct !== null ? `${integerFormatter.format(Math.round(selfConsumptionOptimalPct))}%` : "—"}
                 </p>
               </div>
-              <p className="mt-4 text-xs leading-relaxed text-slate-700 dark:text-slate-300">{t.kpiNewSelfConsumptionSubtitle}</p>
+              <p className="mt-3 text-xs leading-snug text-slate-700 dark:text-slate-300">{t.kpiNewSelfConsumptionSubtitle}</p>
             </div>
 
-            <div className="flex min-h-[118px] flex-col justify-between rounded-xl border border-slate-200/95 bg-white px-4 py-4 shadow-sm dark:border-slate-600/55 dark:bg-slate-950/70">
+            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-border/80 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-slate-600/55 dark:bg-slate-950/70">
               <div className="pointer-events-none h-1 w-14 rounded-full bg-fuchsia-500/70" aria-hidden />
               <div>
                 <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:text-slate-300">{t.kpiGridImpactEyebrow}</p>
@@ -1887,17 +1887,17 @@ export default function GermanyDayEnergyFlow({
                   <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">—</p>
                 )}
               </div>
-              <p className="mt-4 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{t.kpiGridImpactSubtitle}</p>
+              <p className="mt-3 text-xs leading-snug text-slate-600 dark:text-slate-300">{t.kpiGridImpactSubtitle}</p>
             </div>
           </div>
         )}
       </section>
 
       <section
-        className="space-y-5 rounded-[1.35rem] border border-slate-200/80 bg-slate-50/45 px-5 py-6 md:space-y-6 md:px-7 md:py-7 dark:border-slate-600/45 dark:bg-slate-950/45"
+        className="space-y-4 rounded-xl border border-border/80 bg-muted/30 px-4 py-5 md:space-y-5 md:px-6 md:py-6 dark:border-slate-600/45 dark:bg-slate-950/45"
         aria-labelledby="reco-impact-heading"
       >
-        <header className="space-y-1">
+        <header className="space-y-0.5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             {t.recoImpactEyebrow}
           </p>
@@ -1909,7 +1909,7 @@ export default function GermanyDayEnergyFlow({
           </h3>
         </header>
 
-        <div className="space-y-2 border-b border-slate-200/85 pb-5 dark:border-slate-600/40">
+        <div className="space-y-2 border-b border-border/70 pb-4 dark:border-slate-600/40">
           <div className="flex flex-wrap items-end gap-x-3 gap-y-1" aria-live="polite">
             {showSimulatedNet ? (
               simulatedCapacityGwhLabel ? (
@@ -1957,7 +1957,7 @@ export default function GermanyDayEnergyFlow({
           {showSimulatedNet ? simulatedBriefCopy : t.observedModeLead}
         </p>
 
-        <div className="rounded-xl border border-indigo-200/65 bg-white/90 px-4 py-3.5 shadow-sm dark:border-indigo-500/35 dark:bg-indigo-950/35">
+        <div className="rounded-lg border border-indigo-200/60 bg-card px-3.5 py-3 shadow-sm dark:border-indigo-500/35 dark:bg-indigo-950/35">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.65)]" aria-hidden />
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-800 dark:text-indigo-200">
@@ -1969,7 +1969,7 @@ export default function GermanyDayEnergyFlow({
           </p>
         </div>
 
-        <div className="flex flex-col gap-4 border-t border-slate-200/80 pt-5 dark:border-slate-600/40 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3 border-t border-border/70 pt-4 dark:border-slate-600/40 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="flex flex-wrap gap-3">
             {!showSimulatedNet ? (
               <button
@@ -1998,7 +1998,7 @@ export default function GermanyDayEnergyFlow({
       </section>
 
       <section
-        className="space-y-4 border-t border-slate-200/85 pt-8 dark:border-slate-600/40"
+        className="space-y-3 border-t border-border/70 pt-6 dark:border-slate-600/40"
         aria-labelledby="trailing-bess-analysis-heading"
       >
         <div className="space-y-1">

@@ -32,9 +32,9 @@ export function MethodologySection({ language }: MethodologySectionProps) {
         };
 
   return (
-    <section className="border-t border-border/60 pt-10 md:pt-12">
-      <details className="group rounded-2xl border border-border/80 bg-card/40 backdrop-blur-sm">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-2xl px-4 py-4 text-left md:px-6 md:py-5">
+    <section className="border-t border-border/50 pt-8 md:pt-10">
+      <details className="group rounded-xl border border-border/70 bg-card/50 shadow-sm backdrop-blur-sm dark:bg-card/30">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 text-left md:px-5 md:py-4">
           <div>
             <p className="text-[10px] font-semibold tracking-[0.22em] text-muted-foreground uppercase">
               {language === "de" ? "Details" : "Details"}
@@ -45,9 +45,9 @@ export function MethodologySection({ language }: MethodologySectionProps) {
           </div>
           <ChevronDown className="size-5 shrink-0 text-muted-foreground transition group-open:rotate-180" />
         </summary>
-        <div className="border-t border-border/60 px-4 pb-5 md:px-6 md:pb-6">
-          <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{t.lead}</p>
-          <ul className="mt-4 list-disc space-y-3 pl-5 text-sm leading-relaxed text-foreground/90 marker:text-emerald-500/90">
+        <div className="border-t border-border/60 px-4 pb-4 md:px-5 md:pb-5">
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{t.lead}</p>
+          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-foreground/90 marker:text-emerald-500/90">
             <li>{t.p95}</li>
             <li>{t.greedy}</li>
             <li>{t.losses}</li>

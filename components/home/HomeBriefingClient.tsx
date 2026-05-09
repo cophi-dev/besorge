@@ -2,13 +2,12 @@
 
 import dynamic from "next/dynamic";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { z } from "zod";
 
-import { BriefingKeyInsights } from "@/components/briefing/BriefingKeyInsights";
-import { BriefingLiveBar } from "@/components/briefing/BriefingLiveBar";
-import { DataAttributionBanner } from "@/components/briefing/DataAttributionBanner";
+import { BriefingDailyStory } from "@/components/briefing/BriefingDailyStory";
+import { BriefingLiveStrip } from "@/components/briefing/BriefingLiveStrip";
 import { MethodologySection } from "@/components/briefing/MethodologySection";
 import { LiveSnapshotHeader } from "@/components/LiveSnapshotHeader";
 import NewsPreviewSection from "@/components/NewsPreviewSection";
@@ -18,7 +17,7 @@ import { createLogger } from "@/lib/debug";
 import type { HomeBriefingInitialData } from "@/lib/homeBriefingData";
 import type { ChartFleetSocSnapshot } from "@/lib/chartFleetSocSnapshot";
 import { berlinDateKeySchema } from "@/lib/germanyEnergyFlowPeriod";
-import { buildXPostIntentUrl } from "@/lib/xIntent";
+import { formatBerlinDateKeyFromUtcDate } from "@/lib/berlinCalendar";
 import { estimateFleetSocAtMoment, computeSlotSurplusFraction } from "@/lib/socEstimator";
 
 const log = createLogger("home-briefing");
@@ -30,9 +29,9 @@ const MegapackMap = dynamic(() => import("@/components/MegapackMap"), {
 const GermanyDayEnergyFlow = dynamic(() => import("@/components/GermanyDayEnergyFlow"), {
   ssr: false,
   loading: () => (
-    <div className="space-y-4 rounded-3xl border border-border/60 bg-card/30 p-6">
+    <div className="space-y-3 rounded-xl border border-border/60 bg-card/30 p-4">
       <Skeleton className="h-8 w-2/3 max-w-md" />
-      <Skeleton className="h-[min(460px,72vw)] min-h-[280px] w-full rounded-2xl" />
+      <Skeleton className="h-[min(460px,72vw)] min-h-[280px] w-full rounded-xl" />
     </div>
   ),
 });
@@ -196,6 +195,8 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
   const [isLiveDataLoading, setIsLiveDataLoading] = useState(() => initial.market === null);
   const [chartFleetSoc, setChartFleetSoc] = useState<ChartFleetSocSnapshot | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
+  /** Bumped on every user-initiated Refresh so the LLM story re-rolls. */
+  const [storyRefreshNonce, setStoryRefreshNonce] = useState(0);
 
   const handleChartFleetSoc = useCallback((snapshot: ChartFleetSocSnapshot | null) => {
     setChartFleetSoc(snapshot);
@@ -261,6 +262,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
 
   const handleRefresh = useCallback(() => {
     void loadMarketData();
+    setStoryRefreshNonce((n) => n + 1);
     router.refresh();
   }, [loadMarketData, router]);
 
@@ -302,45 +304,6 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
   const demandGw = market !== null ? market.realtimeSystem.loadMw / 1000 : null;
   const netPositionGw = netPositionMw !== null ? netPositionMw / 1000 : null;
 
-  const xPostVia =
-    process.env.NEXT_PUBLIC_X_POST_VIA?.replace(/^@/, "").trim() ||
-    process.env.NEXT_PUBLIC_X_SITE_HANDLE?.replace(/^@/, "").trim();
-
-  const tweetBody = useMemo(() => {
-    if (!market) {
-      return language === "de"
-        ? "AETHER · Deutschland-Tagesbriefing · Energy-Charts / Berlin."
-        : "AETHER · Germany daily energy briefing · Energy-Charts / Berlin.";
-    }
-    if (market.dailyEnergy) {
-      const n = market.dailyEnergy.totalNetBalanceGwh;
-      const sign = n >= 0 ? "+" : "";
-      return language === "de"
-        ? `AETHER · Tagesbilanz ${market.dailyEnergy.dateBerlin}: ${sign}${NUMBER_FORMATTER.format(n)} GWh (Energy-Charts).`
-        : `AETHER · Daily balance ${market.dailyEnergy.dateBerlin}: ${sign}${NUMBER_FORMATTER.format(n)} GWh (Energy-Charts).`;
-    }
-    if (netPositionGw !== null) {
-      const sign = netPositionGw >= 0 ? "+" : "";
-      return language === "de"
-        ? `AETHER · Netto ${sign}${NUMBER_FORMATTER.format(Math.abs(netPositionGw))} GW (Live-Snapshot).`
-        : `AETHER · Net ${sign}${NUMBER_FORMATTER.format(Math.abs(netPositionGw))} GW (live snapshot).`;
-    }
-    return language === "de"
-      ? "AETHER · Live-Snapshot Deutschland — BESS & Erzeugung."
-      : "AETHER · Germany live snapshot — BESS & generation.";
-  }, [language, market, netPositionGw]);
-
-  const handlePostToX = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString());
-    const href = `${window.location.origin}${pathname}${params.toString() ? `?${params.toString()}` : ""}`;
-    const intent = buildXPostIntentUrl({
-      text: tweetBody.slice(0, 240),
-      url: href,
-      ...(xPostVia ? { via: xPostVia } : {}),
-    });
-    window.open(intent, "_blank", "noopener,noreferrer");
-  }, [pathname, searchParams, tweetBody, xPostVia]);
-
   const renewableSharePct =
     market &&
     renewableGenerationValue !== null &&
@@ -360,44 +323,17 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         })
       : null;
 
-  const insightLines = useMemo(() => {
-    const lines: string[] = [];
-    if (!market) {
-      return lines;
-    }
-    if (market.dailyEnergy) {
-      const n = market.dailyEnergy.totalNetBalanceGwh;
-      lines.push(
-        language === "de"
-          ? `Tagesbilanz (${market.dailyEnergy.dateBerlin}): ${n >= 0 ? "+" : ""}${NUMBER_FORMATTER.format(n)} GWh — Erzeugung vs. Last über alle verfügbaren Viertelstunden.`
-          : `Daily balance (${market.dailyEnergy.dateBerlin}): ${n >= 0 ? "+" : ""}${NUMBER_FORMATTER.format(n)} GWh — generation vs. load across published quarter-hours.`
-      );
-    }
-    if (market.fleetStructuralSurplus && market.fleetStructuralSurplus.uncapturedStructuralSurplusMwh > 0) {
-      lines.push(
-        language === "de"
-          ? `Nicht aufgenommene strukturelle Überschüsse (Flotte, Indikator): ${NUMBER_FORMATTER.format(market.fleetStructuralSurplus.uncapturedStructuralSurplusMwh / 1_000)} GWh.`
-          : `Uncaptured structural surplus (fleet, indicative): ${NUMBER_FORMATTER.format(market.fleetStructuralSurplus.uncapturedStructuralSurplusMwh / 1_000)} GWh.`
-      );
-    }
-    if (chartFleetSoc !== null) {
-      lines.push(
-        language === "de"
-          ? `Aktuelles Diagramm-SoC: ${NUMBER_FORMATTER.format(chartFleetSoc.socPct)} % (Modell, keine Telemetrie).`
-          : `Chart SoC: ${NUMBER_FORMATTER.format(chartFleetSoc.socPct)}% (modeled, not telemetry).`
-      );
-    } else if (fleetSocMoment !== null) {
-      lines.push(
-        language === "de"
-          ? `Geschätztes Flotten-SoC-Fenster: ~${NUMBER_FORMATTER.format(fleetSocMoment.lowPct)}–${NUMBER_FORMATTER.format(fleetSocMoment.highPct)} %.`
-          : `Estimated fleet SoC band: ~${NUMBER_FORMATTER.format(fleetSocMoment.lowPct)}–${NUMBER_FORMATTER.format(fleetSocMoment.highPct)}%.`
-      );
-    }
-    return lines;
-  }, [chartFleetSoc, fleetSocMoment, language, market]);
+  /**
+   * Berlin date the page is showing right now — drives both the energy-flow
+   * chart and the LLM "story of the day". URL `?date=YYYY-MM-DD` wins, then
+   * the SSR-resolved `initial.berlinDateKey`, then today (very last fallback
+   * in case the SSR seed is missing).
+   */
+  const activeBerlinDateKey =
+    seedDateKey ?? initial.berlinDateKey ?? formatBerlinDateKeyFromUtcDate(new Date());
 
   return (
-    <div id="aether-briefing-root" className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-5 pb-24 pt-8 md:gap-14 md:px-8 lg:px-12">
+    <div id="aether-briefing-root" className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-5 pb-16 pt-4 md:gap-7 md:px-8 md:pb-20 md:pt-5 lg:px-12">
       {isLiveDataLoading && initial.market === null ? (
         <div className="pointer-events-none fixed top-16 left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-md">
           <p className="text-xs text-muted-foreground">
@@ -414,19 +350,20 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         </div>
       ) : null}
 
-      <DataAttributionBanner language={language} />
-
-      <BriefingLiveBar
+      <BriefingLiveStrip
         language={language}
         lastUpdatedIso={market?.realtimeSystem.timestampIso ?? initial.market?.realtimeSystem.timestampIso ?? null}
         isRefreshing={isLiveDataLoading}
         onRefresh={handleRefresh}
         onShare={handleShare}
-        onPostToX={handlePostToX}
         shareBusy={shareBusy}
       />
 
-      <BriefingKeyInsights language={language} lines={insightLines} />
+      <BriefingDailyStory
+        language={language}
+        dateKey={activeBerlinDateKey}
+        refreshNonce={storyRefreshNonce}
+      />
 
       <LiveSnapshotHeader
         language={language}
@@ -441,7 +378,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         updatedAtIso={market?.realtimeSystem.timestampIso ?? null}
       />
 
-      <section id="overview" className="border-t border-border/50 pt-10 md:pt-12">
+      <section id="overview" className="border-t border-border/50 pt-8 md:pt-10">
         <GermanyDayEnergyFlow
           key={seedDateKey ?? initial.berlinDateKey}
           fleetCapacityGwh={market?.bess.installedCapacityGwh}
@@ -458,8 +395,8 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
 
       <MethodologySection language={language} />
 
-      <section className="border-t border-border/50 pt-10 md:pt-12">
-        <details className="group rounded-2xl border border-border/60 bg-card/35 p-4 backdrop-blur-sm dark:bg-card/25">
+      <section className="border-t border-border/50 pt-8 md:pt-10">
+        <details className="group rounded-xl border border-border/60 bg-card/40 p-3 backdrop-blur-sm dark:bg-card/25">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-xl px-2 py-2 text-left">
             <div>
               <p className="text-xs tracking-[0.14em] text-muted-foreground uppercase">
@@ -486,7 +423,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         </details>
       </section>
 
-      <section className="border-t border-border/50 pt-10 md:pt-12">
+      <section className="border-t border-border/50 pt-8 md:pt-10">
         <NewsPreviewSection limit={5} compact showHeaderLink={false} />
       </section>
     </div>

@@ -214,9 +214,9 @@ export function LiveSnapshotHeader({
     );
 
   return (
-    <header className="sticky top-[72px] z-[100] -mx-5 mb-8 border-b border-border/60 bg-background/90 pb-5 backdrop-blur-md md:top-[76px] md:-mx-8 lg:-mx-12">
-      <div className="px-0 pt-1">
-        <div className="mb-3 flex flex-col gap-0.5 sm:mb-4 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+    <header className="sticky top-16 z-[100] -mx-5 mb-6 border-b border-border/50 bg-background/92 pb-4 backdrop-blur-md md:-mx-8 lg:top-[68px] lg:-mx-12">
+      <div className="px-0 pt-0.5">
+        <div className="mb-2 flex flex-col gap-0.5 sm:mb-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
           <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
             {labels.title}
           </p>
@@ -228,10 +228,10 @@ export function LiveSnapshotHeader({
             </p>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
           {/* Generation */}
-          <article className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 px-4 py-4 shadow-[0_8px_30px_rgba(15,23,42,0.06)] dark:border-slate-600/40 dark:bg-slate-900/75 dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
-            <div className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-full bg-emerald-500/70" aria-hidden />
+          <article className="group relative overflow-hidden rounded-xl border border-border/80 bg-card px-3.5 py-3 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:border-slate-600/45 dark:bg-slate-900/80 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)]">
+            <div className="pointer-events-none absolute inset-y-2.5 left-0 w-1 rounded-full bg-emerald-500/70" aria-hidden />
             <div className="pl-2.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
@@ -263,7 +263,7 @@ export function LiveSnapshotHeader({
           </article>
 
           {/* Demand */}
-          <article className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 px-4 py-4 shadow-[0_8px_30px_rgba(15,23,42,0.06)] dark:border-slate-600/40 dark:bg-slate-900/75 dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
+          <article className="group relative overflow-hidden rounded-xl border border-border/80 bg-card px-3.5 py-3 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:border-slate-600/45 dark:bg-slate-900/80 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)]">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
                 {labels.demand}
@@ -285,14 +285,14 @@ export function LiveSnapshotHeader({
 
           {/* Net position */}
           <article
-            className={`relative overflow-hidden rounded-2xl border bg-white/95 px-4 py-4 shadow-[0_8px_30px_rgba(15,23,42,0.06)] dark:bg-slate-900/75 dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] ${
+            className={`group relative overflow-hidden rounded-xl border bg-card px-3.5 py-3 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:bg-slate-900/80 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)] ${
               netPositionGw === null
-                ? "border-slate-200/90 dark:border-slate-600/40"
+                ? "border-border/80 dark:border-slate-600/45"
                 : netPositionGw > 0
-                  ? "border-emerald-300/60 dark:border-emerald-500/35"
+                  ? "border-emerald-300/70 dark:border-emerald-500/35"
                   : netPositionGw < 0
-                    ? "border-rose-300/60 dark:border-rose-500/35"
-                    : "border-slate-200/90 dark:border-slate-600/40"
+                    ? "border-rose-300/70 dark:border-rose-500/35"
+                    : "border-border/80 dark:border-slate-600/45"
             }`}
           >
             <div
@@ -331,8 +331,8 @@ export function LiveSnapshotHeader({
           </article>
 
           {/* BESS fleet inference */}
-          <article className="relative overflow-hidden rounded-2xl border border-violet-200/55 bg-white/95 px-4 py-4 shadow-[0_8px_30px_rgba(15,23,42,0.06)] dark:border-violet-500/25 dark:bg-slate-900/75 dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
-            <div className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-full bg-violet-500/65 dark:bg-violet-400/55" aria-hidden />
+          <article className="group relative overflow-hidden rounded-xl border border-violet-200/60 bg-card px-3.5 py-3 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:border-violet-500/28 dark:bg-slate-900/80 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)]">
+            <div className="pointer-events-none absolute inset-y-2.5 left-0 w-1 rounded-full bg-violet-500/65 dark:bg-violet-400/55" aria-hidden />
             <div className="flex items-start justify-between gap-3 pl-2.5">
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
