@@ -1,7 +1,16 @@
 "use client";
 
-import { Info } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Info } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Bar,
   CartesianGrid,
@@ -218,8 +227,17 @@ export type GermanyDayEnergyFlowProps = {
   seedDateKey?: string | null;
   /** Sync selected Berlin day back to the URL or parent state. */
   onBerlinDateChange?: (dateKey: string) => void;
+  /**
+   * Representative Berlin calendar day for the homepage daily story (day = that day;
+   * week = ISO Monday; month = first of month). Does not replace `onBerlinDateChange`.
+   */
+  onBriefingStoryDateKeyChange?: (dateKey: string) => void;
+  /** Rendered after “What this selection shows” and before BESS recommendation. */
+  dailyStorySlot?: ReactNode;
   /** Start in simulated-BESS view (e.g. `?sim=1` for morning export screenshots). */
   initialSimulatedNet?: boolean;
+  /** Sync simulated mode to the URL or parent so it survives remounts when the date changes. */
+  onSimulatedModeChange?: (simulated: boolean) => void;
 };
 
 function LegendDot({ color, label }: { color: string; label: string }) {
@@ -362,7 +380,10 @@ export default function GermanyDayEnergyFlow({
   initialBerlinDateKey = null,
   seedDateKey = null,
   onBerlinDateChange,
+  onBriefingStoryDateKeyChange,
+  dailyStorySlot = null,
   initialSimulatedNet = false,
+  onSimulatedModeChange,
 }: GermanyDayEnergyFlowProps) {
   const resolvedSeedKey = resolveSeedDateKey(seedDateKey ?? undefined);
   const [selectorMode, setSelectorMode] = useState<SelectorMode>("day");
@@ -371,6 +392,13 @@ export default function GermanyDayEnergyFlow({
   const [selectedMonth, setSelectedMonth] = useState(resolvedSeedKey.slice(0, 7));
   const [dayModeResetAtStart, setDayModeResetAtStart] = useState(false);
   const [showSimulatedNet, setShowSimulatedNet] = useState(initialSimulatedNet);
+  const commitSimulatedMode = useCallback(
+    (next: boolean) => {
+      setShowSimulatedNet(next);
+      onSimulatedModeChange?.(next);
+    },
+    [onSimulatedModeChange]
+  );
   const serverHydratedFirstLoad =
     initialEnergyFlow !== null &&
     initialBerlinDateKey !== null &&
@@ -481,6 +509,23 @@ export default function GermanyDayEnergyFlow({
     }
     onBerlinDateChange(selectedDate);
   }, [selectedDate, selectorMode, onBerlinDateChange]);
+
+  const briefingStoryDateKey = useMemo(() => {
+    if (selectorMode === "day") {
+      return selectedDate;
+    }
+    if (selectorMode === "week") {
+      return isoWeekKeyToStartKey(selectedWeek);
+    }
+    return `${selectedMonth}-01`;
+  }, [selectorMode, selectedDate, selectedWeek, selectedMonth]);
+
+  useEffect(() => {
+    if (!onBriefingStoryDateKeyChange) {
+      return;
+    }
+    onBriefingStoryDateKeyChange(briefingStoryDateKey);
+  }, [briefingStoryDateKey, onBriefingStoryDateKeyChange]);
 
   /** Loads D−1 and D−2 for carry-in maths only — intentionally not keyed on the reset checkbox to avoid reloading the chart. */
   useEffect(() => {
@@ -707,7 +752,7 @@ export default function GermanyDayEnergyFlow({
           storyStepIndicatorsLead: "Was zeigt diese Auswahl?",
           keyMetricsEyebrow: "Indikatoren",
           recoImpactEyebrow: "Aus diesem Profil",
-          recoImpactTitle: "Empfehlung · Wirkung",
+          recoImpactTitle: "BESS-Empfehlung",
           simulatedCtaObserved: "Zu Beobachtet wechseln",
           longTermEyebrow: "Langfristige Einordnung",
           longTermTitle: "Zwölf Monate · BESS-Analyse",
@@ -806,7 +851,7 @@ export default function GermanyDayEnergyFlow({
           storyStepIndicatorsLead: "What this selection shows",
           keyMetricsEyebrow: "Key indicators",
           recoImpactEyebrow: "From this profile",
-          recoImpactTitle: "Recommendation & impact",
+          recoImpactTitle: "BESS recommendation",
           simulatedCtaObserved: "Back to Observed mode",
           longTermEyebrow: "Long-term view",
           longTermTitle: "12-month BESS analysis",
@@ -1286,6 +1331,10 @@ export default function GermanyDayEnergyFlow({
   const yNetWidth = chartLayoutCompact ? 40 : 48;
   const ySocWidth = chartLayoutCompact ? 36 : 44;
 
+  const dailyStoryWrapped = dailyStorySlot ? (
+    <div className="mt-6 md:mt-8 [&>*]:max-w-none">{dailyStorySlot}</div>
+  ) : null;
+
   if (isFlowLoading) {
     return (
       <article className="scroll-mt-8 space-y-5 rounded-2xl border-2 border-border/60 bg-card p-5 shadow-md md:p-6 dark:border-slate-500/40 dark:bg-slate-900/70 dark:shadow-black/35">
@@ -1294,6 +1343,7 @@ export default function GermanyDayEnergyFlow({
         </p>
         <Skeleton className="h-10 max-w-xl rounded-xl" />
         <Skeleton className="h-[min(460px,calc(72vw))] min-h-[320px] w-full rounded-2xl" />
+        {dailyStoryWrapped}
       </article>
     );
   }
@@ -1406,7 +1456,7 @@ export default function GermanyDayEnergyFlow({
                 type="button"
                 role="radio"
                 aria-checked={!showSimulatedNet}
-                onClick={() => setShowSimulatedNet(false)}
+                onClick={() => commitSimulatedMode(false)}
                 className={`relative min-h-[3rem] flex-1 rounded-[0.65rem] px-3 py-2.5 text-center text-sm font-semibold leading-snug outline-none transition duration-150 focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 sm:min-h-[3.35rem] sm:px-4 sm:text-[0.9375rem] dark:focus-visible:ring-offset-slate-900 ${
                   !showSimulatedNet
                     ? "bg-white text-slate-900 shadow-[0_2px_8px_rgba(15,23,42,0.12),0_1px_2px_rgba(15,23,42,0.06)] dark:bg-slate-950 dark:text-white dark:shadow-[0_4px_14px_rgba(0,0,0,0.4)]"
@@ -1419,7 +1469,7 @@ export default function GermanyDayEnergyFlow({
                 type="button"
                 role="radio"
                 aria-checked={showSimulatedNet}
-                onClick={() => setShowSimulatedNet(true)}
+                onClick={() => commitSimulatedMode(true)}
                 className={`relative min-h-[3rem] flex-1 rounded-[0.65rem] px-3 py-2.5 text-center text-sm font-semibold leading-snug outline-none transition duration-150 focus-visible:ring-2 focus-visible:ring-emerald-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 sm:min-h-[3.35rem] sm:px-4 sm:text-[0.9375rem] dark:focus-visible:ring-offset-slate-900 ${
                   showSimulatedNet
                     ? "bg-gradient-to-b from-emerald-500 to-emerald-600 text-white shadow-[0_4px_20px_rgba(16,185,129,0.45),0_2px_6px_rgba(5,150,105,0.35),inset_0_1px_0_rgba(255,255,255,0.2)] ring-2 ring-emerald-400/35 ring-offset-2 ring-offset-slate-100 dark:from-emerald-500 dark:to-emerald-600 dark:shadow-[0_6px_28px_rgba(16,185,129,0.5)] dark:ring-emerald-300/35 dark:ring-offset-2 dark:ring-offset-slate-950"
@@ -1432,141 +1482,149 @@ export default function GermanyDayEnergyFlow({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-border/70 pt-3 dark:border-slate-600/40">
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1.5">
-            <div
-              className="inline-flex shrink-0 rounded-lg border border-slate-200/90 bg-slate-100/90 p-[3px] dark:border-slate-600/55 dark:bg-slate-800/90"
-              role="tablist"
-              aria-label={t.timeframeLabelShort}
-            >
-              {([
-                { mode: "day", label: t.dayMode },
-                { mode: "week", label: t.weekMode },
-                { mode: "month", label: t.monthMode },
-              ] as const).map((option) => (
-                <button
-                  key={option.mode}
-                  type="button"
-                  role="tab"
-                  aria-selected={selectorMode === option.mode}
-                  onClick={() => setSelectorMode(option.mode)}
-                  className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition sm:px-3.5 sm:text-xs ${
-                    selectorMode === option.mode
-                      ? "bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-white"
-                      : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+        <div className="relative border-t border-border/70 pt-4 dark:border-slate-600/40">
+          <div
+            className="sticky top-16 z-[1100] -mx-5 flex flex-col gap-3 border-b border-border/60 bg-card/90 px-5 py-3 shadow-[0_12px_40px_-24px_rgba(15,23,42,0.35)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/75 md:-mx-6 md:px-6 lg:-mx-8 lg:top-[68px] lg:px-8 dark:border-slate-600/45 dark:bg-[rgba(11,17,29,0.92)] dark:shadow-[0_16px_48px_-28px_rgba(0,0,0,0.65)] dark:supports-[backdrop-filter]:bg-[rgba(11,17,29,0.82)]"
+          >
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+              <div
+                className="inline-flex min-h-9 w-full max-w-full shrink-0 overflow-x-auto rounded-full border border-slate-200/90 bg-slate-100/95 p-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/55 dark:bg-slate-900/80 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] [&::-webkit-scrollbar]:hidden sm:w-auto"
+                role="tablist"
+                aria-label={t.timeframeLabelShort}
+              >
+                {([
+                  { mode: "day", label: t.dayMode },
+                  { mode: "week", label: t.weekMode },
+                  { mode: "month", label: t.monthMode },
+                ] as const).map((option) => (
+                  <button
+                    key={option.mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={selectorMode === option.mode}
+                    onClick={() => setSelectorMode(option.mode)}
+                    className={`min-h-8 shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-tight transition sm:px-4 sm:text-xs ${
+                      selectorMode === option.mode
+                        ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90 dark:bg-slate-950 dark:text-white dark:ring-slate-600/70"
+                        : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
 
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:min-w-0">
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectorMode === "day") {
-                    setSelectedDate((current) => addBerlinCalendarDays(current, -1));
-                    return;
-                  }
-                  if (selectorMode === "week") {
-                    const currentStart = isoWeekKeyToStartKey(selectedWeek);
-                    setSelectedWeek(dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, -7)));
-                    return;
-                  }
-                  setSelectedMonth((current) => shiftMonthKey(current, -1));
-                }}
-                className="rounded-md border border-slate-200/90 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 dark:border-slate-600/70 dark:bg-slate-950 dark:text-slate-300"
-                aria-label={t.previousRange}
-              >
-                ←
-              </button>
-              {selectorMode === "day" ? (
-                <BerlinDayCalendarButton
-                  value={selectedDate}
-                  max={todayKey}
-                  onChange={setSelectedDate}
-                  language={language}
-                  className="min-w-[8.5rem] flex-1"
-                />
-              ) : null}
-              {selectorMode === "week" ? (
-                <input
-                  type="week"
-                  value={selectedWeek}
-                  max={currentWeekKey}
-                  onChange={(event) => setSelectedWeek(event.target.value)}
-                  className="min-w-[9.5rem] flex-1 rounded-md border border-slate-200/90 bg-white px-2 py-1.5 text-xs font-medium text-slate-900 outline-none focus-visible:ring-1 focus-visible:ring-slate-400/60 dark:border-slate-600/70 dark:bg-slate-950 dark:text-slate-100"
-                />
-              ) : null}
-              {selectorMode === "month" ? (
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  max={currentMonthKey}
-                  onChange={(event) => setSelectedMonth(event.target.value)}
-                  className="min-w-[9rem] flex-1 rounded-md border border-slate-200/90 bg-white px-2 py-1.5 text-xs font-medium text-slate-900 outline-none focus-visible:ring-1 focus-visible:ring-slate-400/60 dark:border-slate-600/70 dark:bg-slate-950 dark:text-slate-100"
-                />
-              ) : null}
-              <button
-                type="button"
-                disabled={nextDisabled}
-                onClick={() => {
-                  if (selectorMode === "day") {
-                    setSelectedDate((current) => {
-                      const next = addBerlinCalendarDays(current, 1);
-                      return next > todayKey ? todayKey : next;
-                    });
-                    return;
-                  }
-                  if (selectorMode === "week") {
-                    const currentStart = isoWeekKeyToStartKey(selectedWeek);
-                    const nextWeek = dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, 7));
-                    setSelectedWeek(nextWeek > currentWeekKey ? currentWeekKey : nextWeek);
-                    return;
-                  }
-                  setSelectedMonth((current) => {
-                    const next = shiftMonthKey(current, 1);
-                    return next > currentMonthKey ? currentMonthKey : next;
-                  });
-                }}
-                className="rounded-md border border-slate-200/90 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600/70 dark:bg-slate-950 dark:text-slate-300"
-                aria-label={t.nextRange}
-              >
-                →
-              </button>
-            </div>
+              <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 lg:w-auto lg:flex-1 lg:justify-end">
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:flex-nowrap">
+                  <div className="inline-flex min-w-0 flex-1 items-center gap-1 rounded-2xl border border-slate-200/90 bg-white/95 p-1 shadow-sm dark:border-slate-600/60 dark:bg-slate-950/95 sm:flex-initial">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectorMode === "day") {
+                          setSelectedDate((current) => addBerlinCalendarDays(current, -1));
+                          return;
+                        }
+                        if (selectorMode === "week") {
+                          const currentStart = isoWeekKeyToStartKey(selectedWeek);
+                          setSelectedWeek(dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, -7)));
+                          return;
+                        }
+                        setSelectedMonth((current) => shiftMonthKey(current, -1));
+                      }}
+                      className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      aria-label={t.previousRange}
+                    >
+                      <ChevronLeft className="size-4" aria-hidden />
+                    </button>
+                    {selectorMode === "day" ? (
+                      <BerlinDayCalendarButton
+                        value={selectedDate}
+                        max={todayKey}
+                        onChange={setSelectedDate}
+                        language={language}
+                        className="min-w-0 flex-1 border-0 bg-transparent shadow-none dark:bg-transparent"
+                      />
+                    ) : null}
+                    {selectorMode === "week" ? (
+                      <input
+                        type="week"
+                        value={selectedWeek}
+                        max={currentWeekKey}
+                        onChange={(event) => setSelectedWeek(event.target.value)}
+                        className="h-9 min-w-[min(100%,10.5rem)] flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
+                      />
+                    ) : null}
+                    {selectorMode === "month" ? (
+                      <input
+                        type="month"
+                        value={selectedMonth}
+                        max={currentMonthKey}
+                        onChange={(event) => setSelectedMonth(event.target.value)}
+                        className="h-9 min-w-[min(100%,10rem)] flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={nextDisabled}
+                      onClick={() => {
+                        if (selectorMode === "day") {
+                          setSelectedDate((current) => {
+                            const next = addBerlinCalendarDays(current, 1);
+                            return next > todayKey ? todayKey : next;
+                          });
+                          return;
+                        }
+                        if (selectorMode === "week") {
+                          const currentStart = isoWeekKeyToStartKey(selectedWeek);
+                          const nextWeek = dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, 7));
+                          setSelectedWeek(nextWeek > currentWeekKey ? currentWeekKey : nextWeek);
+                          return;
+                        }
+                        setSelectedMonth((current) => {
+                          const next = shiftMonthKey(current, 1);
+                          return next > currentMonthKey ? currentMonthKey : next;
+                        });
+                      }}
+                      className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      aria-label={t.nextRange}
+                    >
+                      <ChevronRight className="size-4" aria-hidden />
+                    </button>
+                  </div>
 
-            <div
-              className="group/cov relative inline-flex w-full min-w-0 flex-wrap items-center gap-1 sm:ml-auto sm:w-auto"
-              title={t.dataCoverageTooltip}
-            >
-              <span className="inline-flex min-w-0 items-baseline gap-x-1.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
-                <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">{coveragePct}%</span>
-                <span className="text-slate-400 dark:text-slate-500">·</span>
-                <span className="min-w-0 text-slate-500 dark:text-slate-400">{t.coverageBadgeSuffix}</span>
-              </span>
-              <button
-                type="button"
-                className="shrink-0 rounded-full p-1 text-slate-400 outline-none transition hover:bg-slate-200/80 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-slate-400/60 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-                aria-label={t.dataCoverageInfoAria}
-                aria-describedby={dataCoverageTooltipId}
-                title={t.dataCoverageTooltip}
-              >
-                <Info className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-              </button>
-              <span
-                id={dataCoverageTooltipId}
-                role="tooltip"
-                className="pointer-events-none invisible absolute bottom-[calc(100%+8px)] right-0 z-[80] w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-slate-200/95 bg-white px-3 py-2 text-[11px] leading-snug text-slate-600 opacity-0 shadow-lg transition duration-100 group-hover/cov:visible group-hover/cov:opacity-100 group-focus-within/cov:visible group-focus-within/cov:opacity-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 sm:right-auto sm:left-0"
-              >
-                {t.dataCoverageTooltip}
-              </span>
+                  <div
+                    className="group/cov relative inline-flex max-w-full min-w-0 flex-wrap items-center justify-end gap-1"
+                    title={t.dataCoverageTooltip}
+                  >
+                    <span className="inline-flex min-w-0 items-baseline gap-x-1.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
+                      <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">{coveragePct}%</span>
+                      <span className="text-slate-400 dark:text-slate-500">·</span>
+                      <span className="min-w-0 text-slate-500 dark:text-slate-400">{t.coverageBadgeSuffix}</span>
+                    </span>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-full p-1 text-slate-400 outline-none transition hover:bg-slate-200/80 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-slate-400/60 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                      aria-label={t.dataCoverageInfoAria}
+                      aria-describedby={dataCoverageTooltipId}
+                      title={t.dataCoverageTooltip}
+                    >
+                      <Info className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                    </button>
+                    <span
+                      id={dataCoverageTooltipId}
+                      role="tooltip"
+                      className="pointer-events-none invisible absolute bottom-[calc(100%+8px)] right-0 z-[1300] w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-slate-200/95 bg-white px-3 py-2 text-[11px] leading-snug text-slate-600 opacity-0 shadow-lg transition duration-100 group-hover/cov:visible group-hover/cov:opacity-100 group-focus-within/cov:visible group-focus-within/cov:opacity-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 sm:right-auto sm:left-0"
+                    >
+                      {t.dataCoverageTooltip}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {selectorMode === "day" ? (
-            <label className="flex max-w-3xl cursor-pointer items-start gap-2 text-[10px] leading-snug text-slate-400 dark:text-slate-500">
+            <label className="mt-3 flex max-w-3xl cursor-pointer items-start gap-2 px-0 text-[10px] leading-snug text-slate-400 dark:text-slate-500">
               <input
                 type="checkbox"
                 checked={dayModeResetAtStart}
@@ -1893,6 +1951,8 @@ export default function GermanyDayEnergyFlow({
         )}
       </section>
 
+      {dailyStoryWrapped}
+
       <section
         className="space-y-4 rounded-xl border border-border/80 bg-muted/30 px-4 py-5 md:space-y-5 md:px-6 md:py-6 dark:border-slate-600/45 dark:bg-slate-950/45"
         aria-labelledby="reco-impact-heading"
@@ -1974,7 +2034,7 @@ export default function GermanyDayEnergyFlow({
             {!showSimulatedNet ? (
               <button
                 type="button"
-                onClick={() => setShowSimulatedNet(true)}
+                onClick={() => commitSimulatedMode(true)}
                 className="rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-600 px-6 py-3 text-center text-sm font-semibold text-white shadow-[0_4px_14px_rgba(16,185,129,0.35)] transition hover:from-emerald-600 hover:to-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/80 focus-visible:ring-offset-2 dark:shadow-[0_4px_18px_rgba(6,95,70,0.45)] dark:focus-visible:ring-offset-slate-950"
               >
                 {t.observedCtaSimulated}
@@ -1982,7 +2042,7 @@ export default function GermanyDayEnergyFlow({
             ) : (
               <button
                 type="button"
-                onClick={() => setShowSimulatedNet(false)}
+                onClick={() => commitSimulatedMode(false)}
                 className="rounded-xl border border-slate-300/90 bg-white px-6 py-3 text-center text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 dark:border-slate-600/75 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900 dark:focus-visible:ring-offset-slate-950"
               >
                 {t.simulatedCtaObserved}

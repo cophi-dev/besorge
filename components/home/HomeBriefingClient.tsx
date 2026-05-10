@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { z } from "zod";
 
@@ -178,6 +178,46 @@ type HomeBriefingClientProps = {
   initial: HomeBriefingInitialData;
 };
 
+/**
+ * Owns daily-story state that can diverge from the URL when the chart is in
+ * week/month mode. Remounting this block (via `key={url date}` on the parent)
+ * clears the override so a new route `?date=` wins without a sync effect.
+ */
+function GermanyFlowStoryBridge({
+  urlAnchoredBerlinDateKey,
+  language,
+  storyRefreshNonce,
+  children,
+}: {
+  urlAnchoredBerlinDateKey: string;
+  language: "en" | "de";
+  storyRefreshNonce: number;
+  children: (args: {
+    dailyStorySlot: ReactNode;
+    onBriefingStoryDateKeyChange: (dateKey: string) => void;
+  }) => ReactNode;
+}) {
+  const [chartStoryOverrideKey, setChartStoryOverrideKey] = useState<string | null>(null);
+  const storyDateKey = chartStoryOverrideKey ?? urlAnchoredBerlinDateKey;
+  const onBriefingStoryDateKeyChange = useCallback(
+    (dateKey: string) => {
+      setChartStoryOverrideKey((prev) => {
+        const next = dateKey === urlAnchoredBerlinDateKey ? null : dateKey;
+        return prev === next ? prev : next;
+      });
+    },
+    [urlAnchoredBerlinDateKey]
+  );
+  const dailyStorySlot = (
+    <BriefingDailyStory
+      language={language}
+      dateKey={storyDateKey}
+      refreshNonce={storyRefreshNonce}
+    />
+  );
+  return <>{children({ dailyStorySlot, onBriefingStoryDateKeyChange })}</>;
+}
+
 export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
   const { language } = useLanguage();
   const router = useRouter();
@@ -288,6 +328,20 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
     [pathname, router, searchParams]
   );
 
+  const handleSimulatedModeChange = useCallback(
+    (simulated: boolean) => {
+      const next = new URLSearchParams(searchParams.toString());
+      if (simulated) {
+        next.set("sim", "1");
+      } else {
+        next.delete("sim");
+      }
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
   const renewableGenerationValue = market
     ? market.realtimeSystem.residualLoadMw !== undefined
       ? Math.max(0, market.realtimeSystem.loadMw - market.realtimeSystem.residualLoadMw)
@@ -323,13 +377,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         })
       : null;
 
-  /**
-   * Berlin date the page is showing right now — drives both the energy-flow
-   * chart and the LLM "story of the day". URL `?date=YYYY-MM-DD` wins, then
-   * the SSR-resolved `initial.berlinDateKey`, then today (very last fallback
-   * in case the SSR seed is missing).
-   */
-  const activeBerlinDateKey =
+  const urlAnchoredBerlinDateKey =
     seedDateKey ?? initial.berlinDateKey ?? formatBerlinDateKeyFromUtcDate(new Date());
 
   return (
@@ -359,12 +407,6 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         shareBusy={shareBusy}
       />
 
-      <BriefingDailyStory
-        language={language}
-        dateKey={activeBerlinDateKey}
-        refreshNonce={storyRefreshNonce}
-      />
-
       <LiveSnapshotHeader
         language={language}
         isLoading={isLiveDataLoading}
@@ -379,18 +421,29 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
       />
 
       <section id="overview" className="border-t border-border/50 pt-8 md:pt-10">
-        <GermanyDayEnergyFlow
-          key={seedDateKey ?? initial.berlinDateKey}
-          fleetCapacityGwh={market?.bess.installedCapacityGwh}
-          fleetPowerGw={market?.bess.installedPowerGw}
+        <GermanyFlowStoryBridge
+          key={urlAnchoredBerlinDateKey}
+          urlAnchoredBerlinDateKey={urlAnchoredBerlinDateKey}
           language={language}
-          onChartFleetSocSnapshot={handleChartFleetSoc}
-          initialEnergyFlow={initial.todayEnergyFlow}
-          initialBerlinDateKey={initial.berlinDateKey}
-          seedDateKey={seedDateKey}
-          onBerlinDateChange={handleBerlinDateChange}
-          initialSimulatedNet={initialSimulatedNet}
-        />
+          storyRefreshNonce={storyRefreshNonce}
+        >
+          {({ dailyStorySlot, onBriefingStoryDateKeyChange }) => (
+            <GermanyDayEnergyFlow
+              fleetCapacityGwh={market?.bess.installedCapacityGwh}
+              fleetPowerGw={market?.bess.installedPowerGw}
+              language={language}
+              onChartFleetSocSnapshot={handleChartFleetSoc}
+              initialEnergyFlow={initial.todayEnergyFlow}
+              initialBerlinDateKey={initial.berlinDateKey}
+              seedDateKey={seedDateKey}
+              onBerlinDateChange={handleBerlinDateChange}
+              onBriefingStoryDateKeyChange={onBriefingStoryDateKeyChange}
+              dailyStorySlot={dailyStorySlot}
+              initialSimulatedNet={initialSimulatedNet}
+              onSimulatedModeChange={handleSimulatedModeChange}
+            />
+          )}
+        </GermanyFlowStoryBridge>
       </section>
 
       <MethodologySection language={language} />
