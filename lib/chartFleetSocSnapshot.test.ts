@@ -6,6 +6,8 @@ const baseLast = {
   netBalanceMw: 0,
   practicalChargeMw: 0,
   practicalDischargeMw: 0,
+  fleetChargeMw: 0,
+  fleetDischargeMw: 0,
 };
 
 describe("inferFleetModeFromChartTail", () => {
@@ -41,6 +43,25 @@ describe("inferFleetModeFromChartTail", () => {
         simulatedPracticalSocPct: 55,
         practicalChargeMw: 0,
         practicalDischargeMw: 0,
+      },
+    });
+    expect(mode).toBe("charging");
+  });
+
+  it("uses fleet dispatch MW when estimated fleet SoC is flat", () => {
+    const mode = inferFleetModeFromChartTail({
+      showSimulatedNet: false,
+      last: {
+        ...baseLast,
+        estimatedFleetSocPct: 51,
+        fleetChargeMw: 90,
+        fleetDischargeMw: 2,
+      },
+      previous: {
+        ...baseLast,
+        estimatedFleetSocPct: 51,
+        fleetChargeMw: 0,
+        fleetDischargeMw: 0,
       },
     });
     expect(mode).toBe("charging");

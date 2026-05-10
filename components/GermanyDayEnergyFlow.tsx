@@ -209,6 +209,10 @@ type ChartRow = GermanyDispatchSlotsResponse["slots"][number] & {
   practicalChargeSignedMw: number;
   practicalChargeMw: number;
   practicalDischargeMw: number;
+  /** Fleet-capacity heuristic (same series as estimated SoC line). */
+  fleetChargeSignedMw: number;
+  fleetChargeMw: number;
+  fleetDischargeMw: number;
 };
 
 export type GermanyDayEnergyFlowProps = {
@@ -685,6 +689,10 @@ export default function GermanyDayEnergyFlow({
           legendPracticalSoc: "SoC",
           legendPracticalCharge: "Laden",
           legendPracticalDischarge: "Entladen",
+          legendEstimatedCharge: "Geschaetzte Ladung",
+          legendEstimatedDischarge: "Geschaetzte Entladung",
+          observedChargeDischargeFootnote:
+            "Laden und Entladen folgen demselben geschaetzten Flottenmodell wie der SoC (keine Echtzeitmesswerte).",
           legendSimulatedPrefix: "Simuliert:",
           legendEvening: "Abendfenster",
           toggleNetSimulation: "Praktische BESS-Simulation auf Netto anwenden",
@@ -787,6 +795,10 @@ export default function GermanyDayEnergyFlow({
           legendPracticalSoc: "SoC",
           legendPracticalCharge: "Charge",
           legendPracticalDischarge: "Discharge",
+          legendEstimatedCharge: "Estimated charge",
+          legendEstimatedDischarge: "Estimated discharge",
+          observedChargeDischargeFootnote:
+            "Charge/discharge bars use the same estimated fleet model as SoC (not real-time telemetry).",
           legendSimulatedPrefix: "Simulated:",
           legendEvening: "Evening window",
           toggleNetSimulation: "Apply practical BESS simulation to net line",
@@ -1180,6 +1192,9 @@ export default function GermanyDayEnergyFlow({
         practicalChargeSignedMw: -(practicalDispatchSeries[i]?.chargeMw ?? 0),
         practicalChargeMw: practicalDispatchSeries[i]?.chargeMw ?? 0,
         practicalDischargeMw: practicalDispatchSeries[i]?.dischargeMw ?? 0,
+        fleetChargeSignedMw: -(fleetDispatchSeries[i]?.chargeMw ?? 0),
+        fleetChargeMw: fleetDispatchSeries[i]?.chargeMw ?? 0,
+        fleetDischargeMw: fleetDispatchSeries[i]?.dischargeMw ?? 0,
       };
     });
   }, [
@@ -1257,6 +1272,8 @@ export default function GermanyDayEnergyFlow({
       netBalanceMw: row.netBalanceMw,
       practicalChargeMw: row.practicalChargeMw,
       practicalDischargeMw: row.practicalDischargeMw,
+      fleetChargeMw: row.fleetChargeMw,
+      fleetDischargeMw: row.fleetDischargeMw,
     });
     const fleetMode = inferFleetModeFromChartTail({
       showSimulatedNet,
@@ -1671,8 +1688,14 @@ export default function GermanyDayEnergyFlow({
               color={showSimulatedNet ? SIM_CHART_SOC_STROKE : "rgb(129,119,239)"}
               label={activeSocLegend}
             />
-            {showSimulatedNet ? <LegendDot color={SIM_CHART_CHARGE_FILL} label={t.legendPracticalCharge} /> : null}
-            {showSimulatedNet ? <LegendDot color="rgb(249,115,22)" label={t.legendPracticalDischarge} /> : null}
+            <LegendDot
+              color={SIM_CHART_CHARGE_FILL}
+              label={showSimulatedNet ? t.legendPracticalCharge : t.legendEstimatedCharge}
+            />
+            <LegendDot
+              color="rgb(249,115,22)"
+              label={showSimulatedNet ? t.legendPracticalDischarge : t.legendEstimatedDischarge}
+            />
             <LegendDot color="rgba(251,191,36,0.95)" label={t.legendEvening} />
           </div>
         </div>
@@ -1793,6 +1816,25 @@ export default function GermanyDayEnergyFlow({
                     maxBarSize={8}
                   />
                 </>
+              ) : fleetEnergyCapacityMwh !== null && fleetEnergyCapacityMwh > 0 ? (
+                <>
+                  <Bar
+                    yAxisId="net"
+                    dataKey="fleetChargeSignedMw"
+                    name={t.legendEstimatedCharge}
+                    fill={SIM_CHART_CHARGE_FILL}
+                    radius={[3, 3, 0, 0]}
+                    maxBarSize={8}
+                  />
+                  <Bar
+                    yAxisId="net"
+                    dataKey="fleetDischargeMw"
+                    name={t.legendEstimatedDischarge}
+                    fill="rgb(249,115,22)"
+                    radius={[3, 3, 0, 0]}
+                    maxBarSize={8}
+                  />
+                </>
               ) : null}
               <Line
                 yAxisId="soc"
@@ -1813,6 +1855,11 @@ export default function GermanyDayEnergyFlow({
         </div>
         <p className="mt-4 text-[11px] leading-snug tracking-wide text-slate-400 dark:text-slate-500">
           {t.netFootnote} {t.socFootnote}
+          {!showSimulatedNet &&
+          fleetEnergyCapacityMwh !== null &&
+          fleetEnergyCapacityMwh > 0 ? (
+            <> {t.observedChargeDischargeFootnote}</>
+          ) : null}
         </p>
       </div>
 

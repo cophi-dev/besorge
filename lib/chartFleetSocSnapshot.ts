@@ -13,6 +13,8 @@ export type ChartRowTailForFleetMode = {
   netBalanceMw: number;
   practicalChargeMw: number;
   practicalDischargeMw: number;
+  fleetChargeMw: number;
+  fleetDischargeMw: number;
 };
 
 /**
@@ -55,6 +57,14 @@ export function inferFleetModeFromChartTail(params: {
     if (dSoc <= -0.35) {
       return "discharging";
     }
+  }
+  const ch = last.fleetChargeMw;
+  const dis = last.fleetDischargeMw;
+  if (ch >= 25 && ch > dis * 1.05) {
+    return "charging";
+  }
+  if (dis >= 25 && dis > ch * 1.05) {
+    return "discharging";
   }
   const net = last.netBalanceMw;
   if (net > 1_200) {
