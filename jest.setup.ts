@@ -14,10 +14,22 @@ class RequestShim {
   url: string;
   method: string;
   headers: Map<string, string>;
-  constructor(input: string, init?: { method?: string; headers?: Record<string, string> }) {
+  private readonly _body: string | null;
+  constructor(
+    input: string,
+    init?: { method?: string; headers?: Record<string, string>; body?: BodyInit | null }
+  ) {
     this.url = input;
     this.method = init?.method ?? "GET";
     this.headers = new Map(Object.entries(init?.headers ?? {}));
+    const b = init?.body;
+    this._body = typeof b === "string" ? b : null;
+  }
+  async json(): Promise<unknown> {
+    if (this._body === null || this._body === "") {
+      throw new TypeError("Request body unavailable");
+    }
+    return JSON.parse(this._body) as unknown;
   }
 }
 

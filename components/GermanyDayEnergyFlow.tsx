@@ -31,6 +31,7 @@ import {
   formatBerlinDateKeyFromUtcDate,
   mondayBerlinIsoWeekContaining,
 } from "@/lib/berlinCalendar";
+import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
 import { berlinDateKeySchema } from "@/lib/germanyEnergyFlowPeriod";
 import { createLogger } from "@/lib/debug";
 import type { GermanyDispatchSlotsResponse } from "@/lib/energyChartsApi";
@@ -43,6 +44,7 @@ import {
   computeLogicalBessRecommendation,
   computeCoverageAtCapacityMwh,
   computePracticalDailyCycleCapacityMwh,
+  computeStitchedPracticalInitialSocMwh,
   simulateAdjustedNetMwAtCapacity,
   simulatePracticalDispatchAtCapacity,
 } from "@/lib/optimalBessCapacity";
@@ -53,6 +55,10 @@ import {
 } from "@/lib/chartFleetSocSnapshot";
 import { BerlinDayCalendarButton } from "@/components/briefing/BerlinDayCalendarButton";
 import { FlowExportButtons } from "@/components/briefing/FlowExportButtons";
+import { FlowPosterKpiStrip, type FlowPosterKpiItem } from "@/components/briefing/FlowPosterKpiStrip";
+import { FlowShareToXButton } from "@/components/briefing/FlowShareToXButton";
+import type { FlowSharePayload } from "@/lib/flowSharePayload";
+import { flowSharePayloadSchema } from "@/lib/flowSharePayload";
 
 const log = createLogger("germany-day-energy-flow");
 
@@ -60,9 +66,14 @@ const EVENING_HOUR_START = 17;
 const EVENING_HOUR_END = 21;
 const QUARTER_HOUR_H = 0.25;
 
-/** Simulated chart palette: strong SoC stroke + lighter charge bars only (discharge stays orange). */
+/**
+ * Simulated chart palette: net (structural MW) vs BESS charge bars must not share the same hue.
+ * Net = bright teal line (thin); charge = indigo bars; discharge = orange; SoC = green.
+ */
+const SIM_CHART_NET_STROKE = "#2DD4BF"; // teal-400 — reads as “net / balance” line
 const SIM_CHART_SOC_STROKE = "#22C173";
-const SIM_CHART_CHARGE_FILL = "#34D399";
+const SIM_CHART_CHARGE_FILL = "#6366F1"; // indigo-500 — clearly separate from net + SoC
+const SIM_CHART_DISCHARGE_FILL = "#F97316"; // orange-500
 
 const timeFormatterSingleDay = new Intl.DateTimeFormat("de-DE", {
   timeZone: "Europe/Berlin",
@@ -232,11 +243,11 @@ export type GermanyDayEnergyFlowProps = {
   /** Sync selected Berlin day back to the URL or parent state. */
   onBerlinDateChange?: (dateKey: string) => void;
   /**
-   * Representative Berlin calendar day for the homepage daily story (day = that day;
-   * week = ISO Monday; month = first of month). Does not replace `onBerlinDateChange`.
+   * Which window the homepage hero story should narrate — aligned with the chart
+   * selector (day / ISO week / calendar month). Does not replace `onBerlinDateChange`.
    */
-  onBriefingStoryDateKeyChange?: (dateKey: string) => void;
-  /** Rendered after “What this selection shows” and before BESS recommendation. */
+  onBriefingStoryWindowChange?: (window: BriefingStoryWindow) => void;
+  /** Rendered after the poster/chart block and before the BESS recommendation section. */
   dailyStorySlot?: ReactNode;
   /** Start in simulated-BESS view (e.g. `?sim=1` for morning export screenshots). */
   initialSimulatedNet?: boolean;
@@ -327,8 +338,8 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
       const sd = pctFormatter.format(recommendedCoverageSim.servedDeficitShare * 100);
       parts.push(
         language === "de"
-          ? `Bei dieser modellierten Schicht sind ~${as} % der Brutto-Ueberschussenergie eingelagert und ~${sd} % der strukturellen Defizitenergie ausgeliefert (Idealbilanz ohne Verluste).`
-          : `At this modeled size ~${as}% of gross surplus energy is stored and ~${sd}% of structural deficit energy is met from storage (lossless heuristic).`
+          ? `Bei dieser modellierten Schicht sind ~${as} % der Brutto-Ueberschussenergie eingelagert und ~${sd} % der Brutto-Defizitenergie ausgeliefert (Idealbilanz ohne Verluste).`
+          : `At this modeled size ~${as}% of gross surplus energy is stored and ~${sd}% of gross deficit energy is met from storage (lossless heuristic).`
       );
     }
     return parts.length > 0 ? parts.join(" ") : null;
@@ -384,7 +395,7 @@ export default function GermanyDayEnergyFlow({
   initialBerlinDateKey = null,
   seedDateKey = null,
   onBerlinDateChange,
-  onBriefingStoryDateKeyChange,
+  onBriefingStoryWindowChange,
   dailyStorySlot = null,
   initialSimulatedNet = false,
   onSimulatedModeChange,
@@ -514,22 +525,22 @@ export default function GermanyDayEnergyFlow({
     onBerlinDateChange(selectedDate);
   }, [selectedDate, selectorMode, onBerlinDateChange]);
 
-  const briefingStoryDateKey = useMemo(() => {
+  const briefingStoryWindow = useMemo((): BriefingStoryWindow => {
     if (selectorMode === "day") {
-      return selectedDate;
+      return { type: "day", date: selectedDate };
     }
     if (selectorMode === "week") {
-      return isoWeekKeyToStartKey(selectedWeek);
+      return { type: "week", weekKey: selectedWeek };
     }
-    return `${selectedMonth}-01`;
+    return { type: "month", monthKey: selectedMonth };
   }, [selectorMode, selectedDate, selectedWeek, selectedMonth]);
 
   useEffect(() => {
-    if (!onBriefingStoryDateKeyChange) {
+    if (!onBriefingStoryWindowChange) {
       return;
     }
-    onBriefingStoryDateKeyChange(briefingStoryDateKey);
-  }, [briefingStoryDateKey, onBriefingStoryDateKeyChange]);
+    onBriefingStoryWindowChange(briefingStoryWindow);
+  }, [briefingStoryWindow, onBriefingStoryWindowChange]);
 
   /** Loads D−1 and D−2 for carry-in maths only — intentionally not keyed on the reset checkbox to avoid reloading the chart. */
   useEffect(() => {
@@ -683,8 +694,10 @@ export default function GermanyDayEnergyFlow({
           eyebrow: "Energy-Charts Profile",
           title: "Deutschland-Tagesprofil – beobachteter Ueberschuss, Defizit & geschaetzter Flotten-SoC",
           chartTitle: "Ueberschuss / Defizit",
+          chartSimulatedPanelTitle:
+            "Viertelstunden-Leistung, SoC, modelliertes Laden und Entladen · Fenster",
           legendNet: "+Ueberschuss / −Defizit (Erz. − Last)",
-          legendNetSimulated: "Netto",
+          legendNetSimulated: "Netto (nach BESS)",
           legendFleetSoc: "Geschaetzter SoC",
           legendPracticalSoc: "SoC",
           legendPracticalCharge: "Laden",
@@ -697,6 +710,8 @@ export default function GermanyDayEnergyFlow({
           legendEvening: "Abendfenster",
           toggleNetSimulation: "Praktische BESS-Simulation auf Netto anwenden",
           netFootnote: "Netto = Erzeugung − Last je Slot.",
+          netFootnoteSimulated:
+            "Netto = strukturelles Netto nach modelliertem BESS (nicht Roh-Gen−Last).",
           socFootnote: "SoC: Modell ueber Reihenvolge der Viertelstunden, nicht Messwert.",
           kpiGross: "Brutto-Ueberschuss (Erz. − Last)",
           kpiAbsorbed: "Theoretisch speicherbar (Kap. + MW)",
@@ -757,8 +772,6 @@ export default function GermanyDayEnergyFlow({
           coverageBadgeSuffix: "Datenabdeckung",
           observedChartTitle:
             "Beobachteter Ueberschuss, Defizit & geschaetzter Flotten-SoC",
-          storyStepIndicatorsLead: "Was zeigt diese Auswahl?",
-          keyMetricsEyebrow: "Indikatoren",
           recoImpactEyebrow: "Aus diesem Profil",
           recoImpactTitle: "BESS-Empfehlung",
           simulatedCtaObserved: "Zu Beobachtet wechseln",
@@ -766,15 +779,16 @@ export default function GermanyDayEnergyFlow({
           longTermTitle: "Zwölf Monate · BESS-Analyse",
           kpiBaselineSelfConsumptionEyebrow: "Eigenverbrauchsquote (jetzt)",
           kpiBaselineSelfConsumptionSubtitle: "Erzeugung deckt Last direkt",
-          kpiCapturedSurplusEyebrow: "Aufgenommener Ueberschuss",
-          kpiCapturedSurplusSubtitle: "In modelliertem BESS",
+          kpiCapturedSurplusEyebrow: "Struktureller Ueberschuss (aufgenommen)",
+          kpiCapturedSurplusSubtitle: "Greedy-Simulation, idealer Rundweg (ohne Verluste)",
           kpiDeficitCoveredEyebrow: "Gedecktes Defizit",
           kpiDeficitCoveredSubtitle: "Aus Speicher gefüllt",
           kpiNewSelfConsumptionEyebrow: "Neue Eigenverbrauchsquote",
           kpiNewSelfConsumptionSubtitle: "Mit optimalem BESS",
-          kpiGridImpactEyebrow: "Netzauswirkung",
-          kpiGridImpactSubtitle: "Strukturelle Lücke",
-          kpiGridImpactValue: (pct: string) => `Nettaustauschbedarf strukturell ~${pct} % niedriger`,
+          kpiGridImpactEyebrow: "Daempfung |Netto| je Slot",
+          kpiGridImpactSubtitle: "Vs. Roh-Nettos (Viertelstunden)",
+          kpiGridImpactValue: (pct: string) =>
+            `Summe der Absolutbeträge ~${pct} % niedriger (nach modelliertem BESS)`,
           observedModeLead:
             "P95 aus diesem Fenster. Simulation zeigt Überschussaufnahme und Netzwirkung.",
           capacityBadgeUnavailable: "Keine berechenbare Simulationskapazitaet",
@@ -789,8 +803,10 @@ export default function GermanyDayEnergyFlow({
           eyebrow: "Energy-Charts Profile",
           title: "Germany Day Profile – Observed Surplus, Deficit & Estimated Fleet SoC",
           chartTitle: "Surplus / deficit",
+          chartSimulatedPanelTitle:
+            "Quarter-hour power, SoC · modeled charge & discharge · window",
           legendNet: "+surplus / −deficit (gen − load)",
-          legendNetSimulated: "Net",
+          legendNetSimulated: "Net (after BESS)",
           legendFleetSoc: "Estimated SoC",
           legendPracticalSoc: "SoC",
           legendPracticalCharge: "Charge",
@@ -803,6 +819,8 @@ export default function GermanyDayEnergyFlow({
           legendEvening: "Evening window",
           toggleNetSimulation: "Apply practical BESS simulation to net line",
           netFootnote: "Net = generation − load per slot.",
+          netFootnoteSimulated:
+            "Net = structural net after modeled BESS in this view (not raw gen − load).",
           socFootnote: "SoC modeled over quarter-hour order, not SCADA telemetry.",
           kpiGross: "Gross surplus (gen − load)",
           kpiAbsorbed: "Theoretically storable (cap + MW)",
@@ -860,8 +878,6 @@ export default function GermanyDayEnergyFlow({
             "Share of expected quarter-hours in the selected window that have published Energy-Charts data (missing slots are not interpolated).",
           coverageBadgeSuffix: "data coverage",
           observedChartTitle: "Observed Surplus, Deficit & Estimated Fleet SoC",
-          storyStepIndicatorsLead: "What this selection shows",
-          keyMetricsEyebrow: "Key indicators",
           recoImpactEyebrow: "From this profile",
           recoImpactTitle: "BESS recommendation",
           simulatedCtaObserved: "Back to Observed mode",
@@ -869,15 +885,16 @@ export default function GermanyDayEnergyFlow({
           longTermTitle: "12-month BESS analysis",
           kpiBaselineSelfConsumptionEyebrow: "Self-consumption rate (baseline)",
           kpiBaselineSelfConsumptionSubtitle: "Gen meets load directly",
-          kpiCapturedSurplusEyebrow: "Surplus captured",
-          kpiCapturedSurplusSubtitle: "Into modeled BESS",
+          kpiCapturedSurplusEyebrow: "Structural surplus absorbed",
+          kpiCapturedSurplusSubtitle: "Greedy simulation, ideal round-trip (no losses)",
           kpiDeficitCoveredEyebrow: "Deficit covered",
           kpiDeficitCoveredSubtitle: "From discharged storage",
           kpiNewSelfConsumptionEyebrow: "Self-consumption (with optimal BESS)",
           kpiNewSelfConsumptionSubtitle: "With optimal BESS",
-          kpiGridImpactEyebrow: "Grid impact proxy",
-          kpiGridImpactSubtitle: "Structural gap",
-          kpiGridImpactValue: (pct: string) => `Reduced structural imbalance ~${pct}%`,
+          kpiGridImpactEyebrow: "Imbalance damping (Σ|slot|)",
+          kpiGridImpactSubtitle: "Vs raw structural net per quarter-hour",
+          kpiGridImpactValue: (pct: string) =>
+            `Summed |structural net| ~${pct}% lower after modeled BESS`,
           observedModeLead:
             "P95 for this window. Simulated mode shows surplus capture and grid impact.",
           capacityBadgeUnavailable: "Simulation capacity not computable yet",
@@ -1050,37 +1067,12 @@ export default function GermanyDayEnergyFlow({
     if (practicalNavigateInitialMwh !== null && Number.isFinite(practicalNavigateInitialMwh)) {
       return Math.min(effectivePracticalCapacityMwh, Math.max(0, practicalNavigateInitialMwh));
     }
-    if (previousDaySlots.length === 0) {
-      return 0;
-    }
-    let startYesterdayMwh = 0;
-    if (dayBeforePreviousSlots.length > 0) {
-      const stitch = simulatePracticalDispatchAtCapacity(
-        dayBeforePreviousSlots,
-        effectivePracticalCapacityMwh,
-        {
-          resetDailyByBerlin: true,
-          initialSocMwh: 0,
-          maxPowerMw: selectedWindowBalancedPowerMw,
-        }
-      );
-      const lastStitch = stitch[stitch.length - 1];
-      if (lastStitch !== undefined) {
-        startYesterdayMwh =
-          (Math.min(100, Math.max(0, lastStitch.socPct)) / 100) * effectivePracticalCapacityMwh;
-      }
-    }
-    const prevSeries = simulatePracticalDispatchAtCapacity(
+    return computeStitchedPracticalInitialSocMwh({
+      dayBeforePreviousSlots,
       previousDaySlots,
-      effectivePracticalCapacityMwh,
-      {
-        resetDailyByBerlin: true,
-        initialSocMwh: startYesterdayMwh,
-        maxPowerMw: selectedWindowBalancedPowerMw,
-      }
-    );
-    const prevEndSocPct = prevSeries[prevSeries.length - 1]?.socPct ?? 0;
-    return (Math.min(100, Math.max(0, prevEndSocPct)) / 100) * effectivePracticalCapacityMwh;
+      capacityMwh: effectivePracticalCapacityMwh,
+      maxPowerMw: selectedWindowBalancedPowerMw,
+    });
   }, [
     selectorMode,
     dayModeResetAtStart,
@@ -1095,10 +1087,22 @@ export default function GermanyDayEnergyFlow({
     if (!flow?.slots.length || effectivePracticalCapacityMwh <= 0) {
       return null;
     }
+    const initialSocMwh = Math.min(
+      effectivePracticalCapacityMwh,
+      Math.max(0, estimatedInitialSocMwh)
+    );
     return computeCoverageAtCapacityMwh(flow.slots, effectivePracticalCapacityMwh, {
-      resetDailyByBerlin: true,
+      resetDailyByBerlin: visualizationResetDailyByBerlin,
+      maxPowerMw: selectedWindowBalancedPowerMw,
+      initialSocMwh,
     });
-  }, [flow, effectivePracticalCapacityMwh]);
+  }, [
+    flow,
+    effectivePracticalCapacityMwh,
+    visualizationResetDailyByBerlin,
+    selectedWindowBalancedPowerMw,
+    estimatedInitialSocMwh,
+  ]);
 
   /** Balanced-tier BESS sizing: share of generation that serves load directly or via time-shifted discharge. */
   const selfConsumptionOptimalPct = useMemo(() => {
@@ -1110,9 +1114,11 @@ export default function GermanyDayEnergyFlow({
     if (!Number.isFinite(cap) || cap <= 0) {
       return null;
     }
+    const initialForCap = Math.min(cap, Math.max(0, estimatedInitialSocMwh));
     const coverage = computeCoverageAtCapacityMwh(flow.slots, cap, {
-      resetDailyByBerlin: true,
+      resetDailyByBerlin: visualizationResetDailyByBerlin,
       maxPowerMw: pw > 0 && Number.isFinite(pw) ? pw : null,
+      initialSocMwh: initialForCap,
     });
     let directLocalMwh = 0;
     let totalGenMwh = 0;
@@ -1125,7 +1131,7 @@ export default function GermanyDayEnergyFlow({
     }
     const numerator = directLocalMwh + coverage.servedDeficitEnergyMwh;
     return Math.min(100, Math.max(0, (numerator / totalGenMwh) * 100));
-  }, [flow, selectedWindowRecommendation]);
+  }, [flow, selectedWindowRecommendation, visualizationResetDailyByBerlin, estimatedInitialSocMwh]);
 
   /** Share of domestic generation paired directly to contemporaneous demand (before BESS reshaping). */
   const baselineSelfConsumptionPct = useMemo(() => {
@@ -1226,6 +1232,250 @@ export default function GermanyDayEnergyFlow({
     const reduction = Math.max(0, 1 - adjustedAbs / baselineAbs);
     return Math.min(100, Math.max(0, reduction * 100));
   }, [chartRows, effectivePracticalCapacityMwh]);
+
+  const selectorCaption = useMemo(() => {
+    if (selectorMode === "day") {
+      return selectedDate;
+    }
+    if (selectorMode === "week") {
+      const start = isoWeekKeyToStartKey(selectedWeek);
+      return `${selectedWeek} (${start} - ${addBerlinCalendarDays(start, 6)})`;
+    }
+    return monthLabelFormatter.format(new Date(`${selectedMonth}-01T00:00:00.000Z`));
+  }, [selectorMode, selectedDate, selectedWeek, selectedMonth]);
+
+  const windowNetStructuralBalanceGwh = useMemo(() => {
+    if (!chartRows.length) {
+      return 0;
+    }
+    let mwh = 0;
+    for (const r of chartRows) {
+      mwh += r.netBalanceMw * QUARTER_HOUR_H;
+    }
+    return mwh / 1000;
+  }, [chartRows]);
+
+  const flowSharePayload = useMemo((): FlowSharePayload | null => {
+    if (!flow?.slots.length || chartRows.length === 0) {
+      return null;
+    }
+
+    const simCapGwh = effectivePracticalCapacityMwh > 0 ? effectivePracticalCapacityMwh / 1_000 : undefined;
+    const chartHeadingShare =
+      showSimulatedNet && simCapGwh !== undefined
+        ? `${energyFormatter.format(simCapGwh)} GWh BESS · ${language === "de" ? "Simulation" : "simulated"}`
+        : showSimulatedNet
+          ? language === "de"
+            ? "Simulation · Kapazität offen"
+            : "Simulation · sizing pending"
+          : t.observedChartTitle;
+
+    const baseFields = {
+      language,
+      dateBerlin: flow.dateBerlin,
+      selectorMode,
+      windowLabel: selectorCaption,
+      dataCoveragePct: flow.pointFractionOfDay * 100,
+      sampleQuarterHours: flow.samplePoints,
+      netBalanceGwhWindow: windowNetStructuralBalanceGwh,
+      chartHeading: chartHeadingShare,
+    };
+
+    if (showSimulatedNet) {
+      const optGw =
+        selectedWindowBalancedPowerMw !== null &&
+        Number.isFinite(selectedWindowBalancedPowerMw) &&
+        selectedWindowBalancedPowerMw > 0
+          ? selectedWindowBalancedPowerMw / 1_000
+          : undefined;
+
+      const simulatedPayload = flowSharePayloadSchema.safeParse({
+        ...baseFields,
+        presentationMode: "simulated" as const,
+        absorbedStructuralSurplusGwh:
+          recommendedCoverage !== null && recommendedCoverage.absorbedSurplusEnergyMwh > 0
+            ? recommendedCoverage.absorbedSurplusEnergyMwh / 1_000
+            : undefined,
+        absorbedSurplusPct: recommendedCoverage?.absorbedSurplusShare,
+        servedDeficitGwh:
+          recommendedCoverage !== null && recommendedCoverage.servedDeficitEnergyMwh > 0
+            ? recommendedCoverage.servedDeficitEnergyMwh / 1_000
+            : undefined,
+        servedDeficitPct: recommendedCoverage?.servedDeficitShare,
+        imbalanceDampingPct:
+          gridImpactReductionPct !== null && Number.isFinite(gridImpactReductionPct)
+            ? gridImpactReductionPct
+            : undefined,
+        selfConsumptionWithBessPct:
+          selfConsumptionOptimalPct !== null && Number.isFinite(selfConsumptionOptimalPct)
+            ? selfConsumptionOptimalPct
+            : undefined,
+        optimalBessEnergyGwh: simCapGwh !== undefined && Number.isFinite(simCapGwh) ? simCapGwh : undefined,
+        optimalBessPowerGw: optGw,
+      });
+      return simulatedPayload.success ? simulatedPayload.data : null;
+    }
+
+    const observedPayload = flowSharePayloadSchema.safeParse({
+      ...baseFields,
+      presentationMode: "observed" as const,
+      grossSurplusGwh:
+        absorption !== null && absorption.grossSurplusEnergyMwh > 0
+          ? absorption.grossSurplusEnergyMwh / 1_000
+          : undefined,
+      missedSurplusGwh:
+        absorption !== null && absorption.missedSurplusEnergyMwh > 0
+          ? absorption.missedSurplusEnergyMwh / 1_000
+          : undefined,
+      missedSurplusPctOfGross:
+        absorption !== null &&
+        absorption.grossSurplusEnergyMwh > 1e-6 &&
+        Number.isFinite(absorption.missedSurplusEnergyMwh)
+          ? absorption.missedSurplusEnergyMwh / absorption.grossSurplusEnergyMwh
+          : undefined,
+      baselineSelfConsumptionPct:
+        baselineSelfConsumptionPct !== null && Number.isFinite(baselineSelfConsumptionPct)
+          ? baselineSelfConsumptionPct
+          : undefined,
+    });
+    return observedPayload.success ? observedPayload.data : null;
+  }, [
+    flow,
+    chartRows,
+    absorption,
+    language,
+    selectorMode,
+    selectorCaption,
+    showSimulatedNet,
+    recommendedCoverage,
+    gridImpactReductionPct,
+    effectivePracticalCapacityMwh,
+    selectedWindowBalancedPowerMw,
+    selfConsumptionOptimalPct,
+    baselineSelfConsumptionPct,
+    windowNetStructuralBalanceGwh,
+    t.observedChartTitle,
+  ]);
+
+  /** Four-up strip rendered above the chart inside the social/poster PNG region. */
+  const posterKpiItems = useMemo((): [FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem] | null => {
+    if (!flow || chartRows.length === 0) {
+      return null;
+    }
+    const nw = windowNetStructuralBalanceGwh;
+    const netValue = `${nw >= 0 ? "+" : "−"}${energyFormatter.format(Math.abs(nw))}`;
+    const netHint =
+      language === "de" ? "GWh · Σ(Gen − Last), Fenster" : "GWh · Σ(gen − load), window";
+
+    if (showSimulatedNet) {
+      const capHint =
+        effectivePracticalCapacityMwh > 0
+          ? language === "de"
+            ? "Modellierte greedy-BESS-Schicht"
+            : "Modeled greedy BESS slice"
+          : undefined;
+      return [
+        {
+          accent: "emerald" as const,
+          eyebrow: t.kpiCapturedSurplusEyebrow,
+          value: recommendedCoverage ? formatEnergyFromMwh(recommendedCoverage.absorbedSurplusEnergyMwh) : "—",
+          hint:
+            recommendedCoverage && recommendedCoverage.totalSurplusEnergyMwh > 1e-9
+              ? `${pctFormatter.format(recommendedCoverage.absorbedSurplusShare * 100)}% · ${language === "de" ? "Brutto-Ueberschuss" : "gross surplus"}`
+              : capHint,
+          subtitle: t.kpiCapturedSurplusSubtitle,
+        },
+        {
+          accent: "sky" as const,
+          eyebrow: t.kpiDeficitCoveredEyebrow,
+          value: recommendedCoverage ? formatEnergyFromMwh(recommendedCoverage.servedDeficitEnergyMwh) : "—",
+          hint:
+            recommendedCoverage && recommendedCoverage.totalDeficitEnergyMwh > 1e-9
+              ? `${pctFormatter.format(recommendedCoverage.servedDeficitShare * 100)}% · ${language === "de" ? "Brutto-Defizit" : "gross deficit"}`
+              : undefined,
+          subtitle: t.kpiDeficitCoveredSubtitle,
+        },
+        {
+          accent: "teal" as const,
+          eyebrow: t.kpiNewSelfConsumptionEyebrow,
+          value:
+            selfConsumptionOptimalPct !== null
+              ? `${integerFormatter.format(Math.round(selfConsumptionOptimalPct))}%`
+              : "—",
+          hint: language === "de" ? "Erzeugung lokal wirksam (Modell)" : "Generation paired locally (model)",
+          subtitle: t.kpiNewSelfConsumptionSubtitle,
+        },
+        {
+          accent: "fuchsia" as const,
+          eyebrow: t.kpiGridImpactEyebrow,
+          value:
+            gridImpactReductionPct !== null ? `${integerFormatter.format(Math.round(gridImpactReductionPct))}%` : "—",
+          hint:
+            gridImpactReductionPct !== null ? t.kpiGridImpactValue(pctFormatter.format(gridImpactReductionPct)) : undefined,
+          subtitle: t.kpiGridImpactSubtitle,
+        },
+      ];
+    }
+
+    const missedOk =
+      fleetEnergyCapacityMwh !== null && absorption !== null && absorption.grossSurplusEnergyMwh > 1e-6;
+    const missedPctStr =
+      missedOk && absorption
+        ? `${pctFormatter.format((absorption.missedSurplusEnergyMwh / absorption.grossSurplusEnergyMwh) * 100)}% · ${language === "de" ? "des Brutto-Ueberschusses" : "of gross surplus"}`
+        : undefined;
+
+    return [
+      {
+        accent: "emerald" as const,
+        eyebrow: t.kpiGrossSurplusEyebrow,
+        value: absorption ? formatEnergyFromMwh(absorption.grossSurplusEnergyMwh) : "—",
+        hint: language === "de" ? "Strukturelles Zeitfenster" : "Structural window",
+        subtitle: t.kpiGrossSurplusSubtitle,
+      },
+      {
+        accent: "amber" as const,
+        eyebrow: t.kpiMissedSurplusEyebrow,
+        value:
+          missedOk && absorption ? formatEnergyFromMwh(absorption.missedSurplusEnergyMwh) : "—",
+        hint:
+          fleetEnergyCapacityMwh !== null && absorption
+            ? missedPctStr ??
+              (language === "de" ? "Ueberschuss aus heutiger Flotte" : "Surplus missed at fleet sizing")
+            : t.kpiFleetRequiredShort,
+        subtitle: t.kpiMissedSurplusSubtitle,
+      },
+      {
+        accent: "sky" as const,
+        eyebrow: t.kpiBaselineSelfConsumptionEyebrow,
+        value:
+          baselineSelfConsumptionPct !== null
+            ? `${integerFormatter.format(Math.round(baselineSelfConsumptionPct))}%`
+            : "—",
+        hint: language === "de" ? "Gen trifft Last direkt" : "Direct gen-to-load contemporaneous pairing",
+        subtitle: t.kpiBaselineSelfConsumptionSubtitle,
+      },
+      {
+        accent: "slate" as const,
+        eyebrow: language === "de" ? "Nettobilanz (Fenster)" : "Net balance (window)",
+        value: netValue,
+        hint: netHint,
+      },
+    ];
+  }, [
+    flow,
+    chartRows.length,
+    windowNetStructuralBalanceGwh,
+    language,
+    showSimulatedNet,
+    recommendedCoverage,
+    selfConsumptionOptimalPct,
+    gridImpactReductionPct,
+    effectivePracticalCapacityMwh,
+    fleetEnergyCapacityMwh,
+    absorption,
+    baselineSelfConsumptionPct,
+    t,
+  ]);
 
   useEffect(() => {
     if (selectorMode !== "day" || chartRows.length === 0) {
@@ -1410,17 +1660,7 @@ export default function GermanyDayEnergyFlow({
       ? `${energyFormatter.format(effectivePracticalCapacityMwh / 1_000)} GWh`
       : null;
 
-  const chartHeading = showSimulatedNet
-    ? simulatedCapacityGwhLabel !== null
-      ? language === "de"
-        ? `${simulatedCapacityGwhLabel} BESS · Simulation`
-        : `${simulatedCapacityGwhLabel} BESS · simulated`
-      : language === "de"
-        ? "Simulation · Kapazität offen"
-        : "Simulation · sizing pending"
-    : t.observedChartTitle;
-
-  const netLineColor = showSimulatedNet ? "rgb(8,143,143)" : "rgb(51,104,247)";
+  const netLineColor = showSimulatedNet ? SIM_CHART_NET_STROKE : "rgb(51,104,247)";
   const coverageSummaryLine = t.coverage(flow.samplePoints, coveragePct, flow.dateBerlin, isMultiDayFlow);
   const simulatedBriefCopy =
     simulatedCapacityGwhLabel !== null
@@ -1450,9 +1690,9 @@ export default function GermanyDayEnergyFlow({
   return (
     <article
       id="germany-day-energy-flow"
-      className="scroll-mt-8 space-y-6 rounded-2xl border border-border/80 bg-card p-5 shadow-[0_1px_0_rgb(255_255_255_/_0.7)_inset,0_12px_36px_rgb(15_23_42_/_0.06)] md:space-y-8 md:p-6 lg:p-8 dark:border-slate-600/35 dark:bg-[linear-gradient(180deg,rgb(13_19_33_/_0.98),rgb(15_23_42_/_0.94))] dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_16px_44px_rgb(0_0_0_/_0.38)]"
+      className="scroll-mt-8 space-y-4 rounded-2xl border border-border/80 bg-card p-5 shadow-[0_1px_0_rgb(255_255_255_/_0.7)_inset,0_12px_36px_rgb(15_23_42_/_0.06)] md:space-y-5 md:p-6 lg:p-8 dark:border-slate-600/35 dark:bg-[linear-gradient(180deg,rgb(13_19_33_/_0.98),rgb(15_23_42_/_0.94))] dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_16px_44px_rgb(0_0_0_/_0.38)]"
     >
-      <header className="flex flex-col gap-4 md:gap-5">
+      <header className="flex flex-col gap-3 md:gap-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
           <div className="min-w-0 space-y-1 lg:max-w-xl">
             <h2 className="text-2xl font-bold leading-tight tracking-tight text-slate-950 md:text-3xl dark:text-white [font-family:var(--font-heading)]">
@@ -1499,13 +1739,13 @@ export default function GermanyDayEnergyFlow({
           </div>
         </div>
 
-        <div className="relative border-t border-border/70 pt-4 dark:border-slate-600/40">
+        <div className="relative border-t border-border/60 pt-3 dark:border-slate-600/35">
           <div
-            className="sticky top-16 z-[1100] -mx-5 flex flex-col gap-3 border-b border-border/60 bg-card/90 px-5 py-3 shadow-[0_12px_40px_-24px_rgba(15,23,42,0.35)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/75 md:-mx-6 md:px-6 lg:-mx-8 lg:top-[68px] lg:px-8 dark:border-slate-600/45 dark:bg-[rgba(11,17,29,0.92)] dark:shadow-[0_16px_48px_-28px_rgba(0,0,0,0.65)] dark:supports-[backdrop-filter]:bg-[rgba(11,17,29,0.82)]"
+            className="sticky top-16 z-[1100] -mx-5 flex flex-col gap-2 border-b border-border/55 bg-card/92 px-4 py-2 shadow-[0_8px_28px_-18px_rgba(15,23,42,0.35)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/78 md:-mx-6 md:px-5 lg:-mx-8 lg:top-[68px] lg:px-6 dark:border-slate-600/40 dark:bg-[rgba(11,17,29,0.93)] dark:shadow-[0_12px_40px_-22px_rgba(0,0,0,0.55)] dark:supports-[backdrop-filter]:bg-[rgba(11,17,29,0.82)]"
           >
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
               <div
-                className="inline-flex min-h-9 w-full max-w-full shrink-0 overflow-x-auto rounded-full border border-slate-200/90 bg-slate-100/95 p-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/55 dark:bg-slate-900/80 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] [&::-webkit-scrollbar]:hidden sm:w-auto"
+                className="inline-flex min-h-8 w-full max-w-full shrink-0 overflow-x-auto rounded-full border border-slate-200/90 bg-slate-100/95 p-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/55 dark:bg-slate-900/80 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] [&::-webkit-scrollbar]:hidden sm:w-auto"
                 role="tablist"
                 aria-label={t.timeframeLabelShort}
               >
@@ -1531,9 +1771,9 @@ export default function GermanyDayEnergyFlow({
                 ))}
               </div>
 
-              <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 lg:w-auto lg:flex-1 lg:justify-end">
-                <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:flex-nowrap">
-                  <div className="inline-flex min-w-0 flex-1 items-center gap-1 rounded-2xl border border-slate-200/90 bg-white/95 p-1 shadow-sm dark:border-slate-600/60 dark:bg-slate-950/95 sm:flex-initial">
+              <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-2 lg:flex-1 lg:justify-end">
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 sm:flex-nowrap">
+                  <div className="inline-flex min-w-0 flex-1 items-center gap-1 rounded-2xl border border-slate-200/90 bg-white/95 p-1 shadow-sm dark:border-slate-600/60 dark:bg-slate-950/95 sm:max-w-[min(100%,22rem)] sm:flex-initial">
                     <button
                       type="button"
                       onClick={() => {
@@ -1636,53 +1876,99 @@ export default function GermanyDayEnergyFlow({
                     </span>
                   </div>
                 </div>
+
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:border-l sm:border-slate-200/65 sm:pl-2.5 dark:sm:border-slate-600/45">
+                  <FlowExportButtons language={language} flow={flow} captureElementId="aether-germany-flow-capture" />
+                  <FlowShareToXButton
+                    language={language}
+                    socialCaptureElementId="aether-germany-poster-capture"
+                    payload={flowSharePayload}
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          {selectorMode === "day" ? (
-            <label className="mt-3 flex max-w-3xl cursor-pointer items-start gap-2 px-0 text-[10px] leading-snug text-slate-400 dark:text-slate-500">
-              <input
-                type="checkbox"
-                checked={dayModeResetAtStart}
-                onChange={(event) => setDayModeResetAtStart(event.target.checked)}
-                className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded border-slate-300 text-slate-500 focus-visible:ring-1 focus-visible:ring-slate-400 dark:border-slate-600 dark:bg-slate-900"
-              />
-              <span>{t.dayResetToggleLabel}</span>
-            </label>
-          ) : null}
+            {selectorMode === "day" ? (
+              <label className="flex max-w-full cursor-pointer items-start gap-2 border-t border-border/45 pt-2 text-[10px] leading-snug text-slate-400 dark:border-slate-600/35 dark:text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={dayModeResetAtStart}
+                  onChange={(event) => setDayModeResetAtStart(event.target.checked)}
+                  className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded border-slate-300 text-slate-500 focus-visible:ring-1 focus-visible:ring-slate-400 dark:border-slate-600 dark:bg-slate-900"
+                />
+                <span>{t.dayResetToggleLabel}</span>
+              </label>
+            ) : null}
+          </div>
         </div>
       </header>
 
       <div
+        id="aether-germany-poster-capture"
+        className="space-y-2.5 rounded-2xl border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white px-3 pb-3 pt-2 shadow-[0_20px_50px_-24px_rgb(15_23_42_/_0.2)] sm:space-y-3 sm:px-4 md:pb-3.5 md:pt-2.5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-slate-200/75 pb-2 dark:border-slate-600/50">
+          <p className="text-[10px] font-semibold uppercase leading-none tracking-[0.2em] text-emerald-600 dark:text-emerald-400/95">
+            {language === "de" ? "Aether · Strukturkraft" : "Aether · structural power"}
+          </p>
+          <p className="text-[11px] font-medium leading-tight tracking-tight text-slate-600 tabular-nums dark:text-slate-400">
+            {selectorMode === "day" && selectorLabel === flow.dateBerlin ? (
+              <>
+                <span>{flow.dateBerlin}</span>
+                {" · "}
+              </>
+            ) : (
+              <>
+                {selectorLabel}
+                {" · "}
+              </>
+            )}
+            <span>{Math.round(flow.pointFractionOfDay * 100)}%</span>{" "}
+            {language === "de" ? "Datenabdeckung" : "data coverage"}
+            {selectorMode === "day" && selectorLabel === flow.dateBerlin ? null : (
+              <>
+                {" · "}
+                <span>{flow.dateBerlin}</span>
+              </>
+            )}
+            {showSimulatedNet
+              ? language === "de"
+                ? " · Simulation"
+                : " · Simulation"
+              : language === "de"
+                ? " · Beobachtung"
+                : " · Observed"}
+          </p>
+        </div>
+
+        {posterKpiItems ? <FlowPosterKpiStrip items={posterKpiItems} /> : null}
+
+      <div
         id="aether-germany-flow-capture"
-        className={`rounded-2xl border p-4 shadow-inner md:p-6 ${
+        className={`rounded-xl border px-3 py-2.5 shadow-inner md:px-4 md:py-3 ${
           showSimulatedNet
             ? "border-border/90 bg-card shadow-[inset_0_0_0_1px_rgb(34_193_115_/_0.05)] dark:border-slate-600/50 dark:bg-slate-950/78 dark:shadow-[inset_0_0_0_1px_rgba(52,211,153,0.08)]"
             : "border-border/80 bg-card/95 dark:border-slate-600/55 dark:bg-slate-950/70"
         }`}
       >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-1 lg:max-w-[min(680px,calc(100%-10rem))]">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-500 dark:text-slate-400">
-              {showSimulatedNet
-                ? language === "de"
-                  ? "Simulations-Overlay"
-                  : "Simulation overlay"
-                : language === "de"
-                  ? "Beobachtung"
-                  : "Observed focus"}
-            </p>
-            <p className="text-lg font-semibold leading-snug text-slate-950 md:text-xl dark:text-white [font-family:var(--font-heading)]">
-              {chartHeading}
-            </p>
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="lg:max-w-[min(680px,calc(100%-10rem))]">
+            {showSimulatedNet ? (
+              <p className="text-[13px] font-semibold leading-snug text-slate-600 dark:text-slate-300 md:text-[0.875rem]">
+                {t.chartSimulatedPanelTitle}
+              </p>
+            ) : (
+              <div className="space-y-0.5">
+                <p className="text-[10px] font-semibold uppercase leading-none tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                  {language === "de" ? "Beobachtung" : "Observed focus"}
+                </p>
+                <p className="text-base font-semibold leading-snug text-slate-950 md:text-lg dark:text-white [font-family:var(--font-heading)]">
+                  {t.observedChartTitle}
+                </p>
+              </div>
+            )}
           </div>
-          <div className="flex flex-col items-end gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2">
-            <FlowExportButtons
-              language={language}
-              flow={flow}
-              captureElementId="aether-germany-flow-capture"
-            />
+          <div className="flex flex-wrap items-center gap-2 sm:gap-x-4 sm:gap-y-2 lg:justify-end">
             <LegendDot color={netLineColor} label={activeNetLegend} />
             <LegendDot
               color={showSimulatedNet ? SIM_CHART_SOC_STROKE : "rgb(129,119,239)"}
@@ -1693,13 +1979,15 @@ export default function GermanyDayEnergyFlow({
               label={showSimulatedNet ? t.legendPracticalCharge : t.legendEstimatedCharge}
             />
             <LegendDot
-              color="rgb(249,115,22)"
+              color={SIM_CHART_DISCHARGE_FILL}
               label={showSimulatedNet ? t.legendPracticalDischarge : t.legendEstimatedDischarge}
             />
             <LegendDot color="rgba(251,191,36,0.95)" label={t.legendEvening} />
           </div>
         </div>
-        <div className="mt-6 h-[min(68vh,600px)] min-h-[260px] w-full min-w-0 sm:min-h-[300px] md:h-[540px]">
+        <div
+          className={`h-[min(68vh,600px)] min-h-[260px] w-full min-w-0 sm:min-h-[300px] md:h-[540px] ${showSimulatedNet ? "mt-3" : "mt-4"}`}
+        >
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartRows} margin={chartMargin}>
               <CartesianGrid
@@ -1792,7 +2080,7 @@ export default function GermanyDayEnergyFlow({
                 dataKey={activeNetDataKey}
                 name={activeNetLegend}
                 stroke={netLineColor}
-                strokeWidth={showSimulatedNet ? 3 : 2.5}
+                strokeWidth={showSimulatedNet ? 1.65 : 2.25}
                 dot={false}
                 isAnimationActive={!chartLayoutCompact}
                 animationDuration={chartLayoutCompact ? 0 : 180}
@@ -1811,7 +2099,7 @@ export default function GermanyDayEnergyFlow({
                     yAxisId="net"
                     dataKey="practicalDischargeMw"
                     name={t.legendPracticalDischarge}
-                    fill="rgb(249,115,22)"
+                    fill={SIM_CHART_DISCHARGE_FILL}
                     radius={[3, 3, 0, 0]}
                     maxBarSize={8}
                   />
@@ -1830,7 +2118,7 @@ export default function GermanyDayEnergyFlow({
                     yAxisId="net"
                     dataKey="fleetDischargeMw"
                     name={t.legendEstimatedDischarge}
-                    fill="rgb(249,115,22)"
+                    fill={SIM_CHART_DISCHARGE_FILL}
                     radius={[3, 3, 0, 0]}
                     maxBarSize={8}
                   />
@@ -1842,7 +2130,7 @@ export default function GermanyDayEnergyFlow({
                 dataKey={activeSocDataKey}
                 name={activeSocLegend}
                 stroke={showSimulatedNet ? SIM_CHART_SOC_STROKE : "rgb(133,117,239)"}
-                strokeWidth={showSimulatedNet ? 2.65 : 1.55}
+                strokeWidth={showSimulatedNet ? 2 : 1.55}
                 strokeLinecap={showSimulatedNet ? "round" : undefined}
                 strokeLinejoin={showSimulatedNet ? "round" : undefined}
                 strokeDasharray={showSimulatedNet ? undefined : "5 4"}
@@ -1854,7 +2142,7 @@ export default function GermanyDayEnergyFlow({
           </ResponsiveContainer>
         </div>
         <p className="mt-4 text-[11px] leading-snug tracking-wide text-slate-400 dark:text-slate-500">
-          {t.netFootnote} {t.socFootnote}
+          {showSimulatedNet ? t.netFootnoteSimulated : t.netFootnote} {t.socFootnote}
           {!showSimulatedNet &&
           fleetEnergyCapacityMwh !== null &&
           fleetEnergyCapacityMwh > 0 ? (
@@ -1862,141 +2150,7 @@ export default function GermanyDayEnergyFlow({
           ) : null}
         </p>
       </div>
-
-      <section className="space-y-4 md:space-y-5" aria-labelledby="germany-energy-key-metrics-heading">
-        <div className="flex flex-col gap-1 md:flex-row md:items-baseline md:justify-between">
-          <h3
-            id="germany-energy-key-metrics-heading"
-            className="text-base font-semibold tracking-tight text-slate-800 md:text-[1.0625rem] dark:text-slate-100 [font-family:var(--font-heading)]"
-          >
-            {t.storyStepIndicatorsLead}
-            <span className="sr-only"> · </span>
-            <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 md:mt-0 md:inline md:before:mx-2 md:before:content-['·']">
-              {t.keyMetricsEyebrow}
-              {" · "}
-              {showSimulatedNet
-                ? language === "de"
-                  ? "Simulation"
-                  : "Simulation"
-                : language === "de"
-                  ? "Beobachtung"
-                  : "Observed"}
-            </span>
-          </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{selectorLabel}</p>
-        </div>
-
-        {!showSimulatedNet ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
-            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-emerald-200/80 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-emerald-600/28 dark:bg-emerald-950/18">
-              <div className="pointer-events-none h-1 w-14 rounded-full bg-emerald-400/80 dark:bg-emerald-300/60" aria-hidden />
-              <div>
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-900 dark:text-emerald-200">{t.kpiGrossSurplusEyebrow}</p>
-                <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-emerald-950 dark:text-emerald-50 [font-family:var(--font-sans)]">
-                  {absorption ? formatEnergyFromMwh(absorption.grossSurplusEnergyMwh) : "—"}
-                </p>
-              </div>
-              <p className="mt-3 text-xs leading-snug text-muted-foreground dark:text-slate-300">{t.kpiGrossSurplusSubtitle}</p>
-            </div>
-
-            <div className="relative flex min-h-[100px] flex-col justify-between overflow-hidden rounded-xl border border-amber-200/85 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-amber-500/42 dark:bg-amber-950/28">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-orange-400" aria-hidden />
-              <div>
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-950 dark:text-amber-100">{t.kpiMissedSurplusEyebrow}</p>
-                <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-amber-950 dark:text-amber-50 [font-family:var(--font-sans)]">
-                  {showMissedKpis && absorption ? formatEnergyFromMwh(absorption.missedSurplusEnergyMwh) : "—"}
-                </p>
-                {showMissedKpis && absorption && absorption.grossSurplusEnergyMwh > 1e-6 ? (
-                  <p className="mt-1.5 text-sm font-bold tabular-nums text-amber-900 dark:text-amber-50">
-                    {t.kpiMissedOfGross(pctFormatter.format((absorption.missedSurplusEnergyMwh / absorption.grossSurplusEnergyMwh) * 100))}
-                  </p>
-                ) : showMissedKpis ? (
-                  <p className="mt-1.5 text-xs font-semibold text-amber-900/80 dark:text-amber-200/85">—</p>
-                ) : (
-                  <p className="mt-1.5 text-[11px] leading-snug text-amber-900/85 dark:text-amber-50/85">{t.kpiFleetRequiredShort}</p>
-                )}
-              </div>
-              <p className="mt-3 text-xs leading-snug text-amber-950/92 dark:text-amber-100/90">{t.kpiMissedSurplusSubtitle}</p>
-            </div>
-
-            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-border/80 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-slate-600/55 dark:bg-slate-950/70">
-              <div className="pointer-events-none h-1 w-14 rounded-full bg-sky-500/70 dark:bg-sky-500/50" aria-hidden />
-              <div>
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t.kpiBaselineSelfConsumptionEyebrow}</p>
-                <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-slate-950 dark:text-white [font-family:var(--font-sans)]">
-                  {baselineSelfConsumptionPct !== null ? `${integerFormatter.format(Math.round(baselineSelfConsumptionPct))}%` : "—"}
-                </p>
-              </div>
-              <p className="mt-3 text-xs leading-snug text-muted-foreground dark:text-slate-300">{t.kpiBaselineSelfConsumptionSubtitle}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
-            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-emerald-200/85 bg-emerald-50/50 px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-emerald-500/38 dark:bg-emerald-950/30">
-              <div className="pointer-events-none h-1 w-14 rounded-full bg-emerald-500/90" aria-hidden />
-              <div>
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-900 dark:text-emerald-100">{t.kpiCapturedSurplusEyebrow}</p>
-                <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-emerald-950 dark:text-emerald-50 [font-family:var(--font-sans)]">
-                  {recommendedCoverage ? formatEnergyFromMwh(recommendedCoverage.absorbedSurplusEnergyMwh) : "—"}
-                </p>
-                {recommendedCoverage && recommendedCoverage.totalSurplusEnergyMwh > 1e-9 ? (
-                  <p className="mt-1 text-sm font-semibold tabular-nums text-emerald-900 dark:text-emerald-100">
-                    {pctFormatter.format(recommendedCoverage.absorbedSurplusShare * 100)}%{" "}
-                    {language === "de" ? "des Brutto-Ueberschusses" : "of gross surplus"}
-                  </p>
-                ) : null}
-              </div>
-              <p className="mt-3 text-xs leading-snug text-emerald-950/92 dark:text-emerald-100/90">{t.kpiCapturedSurplusSubtitle}</p>
-            </div>
-
-            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-sky-200/90 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-sky-700/55 dark:bg-slate-950/70">
-              <div className="pointer-events-none h-1 w-14 rounded-full bg-sky-500/75" aria-hidden />
-              <div>
-                <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-950 dark:text-sky-100">{t.kpiDeficitCoveredEyebrow}</p>
-                <p className="mt-2 text-2xl font-extrabold tabular-nums text-sky-950 dark:text-sky-50 [font-family:var(--font-sans)]">
-                  {recommendedCoverage ? formatEnergyFromMwh(recommendedCoverage.servedDeficitEnergyMwh) : "—"}
-                </p>
-                {recommendedCoverage && recommendedCoverage.totalDeficitEnergyMwh > 1e-9 ? (
-                  <p className="mt-1 text-sm font-semibold tabular-nums text-sky-900 dark:text-sky-50">
-                    {pctFormatter.format(recommendedCoverage.servedDeficitShare * 100)}%{" "}
-                    {language === "de" ? "der Defizitenergie" : "of deficit energy"}
-                  </p>
-                ) : null}
-              </div>
-              <p className="mt-3 text-xs leading-snug text-slate-700 dark:text-slate-300">{t.kpiDeficitCoveredSubtitle}</p>
-            </div>
-
-            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-teal-200/85 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-teal-700/55 dark:bg-slate-950/65">
-              <div className="pointer-events-none h-1 w-14 rounded-full bg-teal-500/80" aria-hidden />
-              <div>
-                <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-950 dark:text-teal-100">{t.kpiNewSelfConsumptionEyebrow}</p>
-                <p className="mt-2 text-2xl font-extrabold tabular-nums text-teal-950 dark:text-teal-50 [font-family:var(--font-sans)]">
-                  {selfConsumptionOptimalPct !== null ? `${integerFormatter.format(Math.round(selfConsumptionOptimalPct))}%` : "—"}
-                </p>
-              </div>
-              <p className="mt-3 text-xs leading-snug text-slate-700 dark:text-slate-300">{t.kpiNewSelfConsumptionSubtitle}</p>
-            </div>
-
-            <div className="flex min-h-[100px] flex-col justify-between rounded-xl border border-border/80 bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md dark:border-slate-600/55 dark:bg-slate-950/70">
-              <div className="pointer-events-none h-1 w-14 rounded-full bg-fuchsia-500/70" aria-hidden />
-              <div>
-                <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:text-slate-300">{t.kpiGridImpactEyebrow}</p>
-                <p className="mt-2 text-2xl font-extrabold tabular-nums text-slate-950 dark:text-white [font-family:var(--font-sans)]">
-                  {gridImpactReductionPct !== null ? `${integerFormatter.format(Math.round(gridImpactReductionPct))}%` : "—"}
-                </p>
-                {gridImpactReductionPct !== null ? (
-                  <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    {t.kpiGridImpactValue(pctFormatter.format(gridImpactReductionPct))}
-                  </p>
-                ) : (
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">—</p>
-                )}
-              </div>
-              <p className="mt-3 text-xs leading-snug text-slate-600 dark:text-slate-300">{t.kpiGridImpactSubtitle}</p>
-            </div>
-          </div>
-        )}
-      </section>
+      </div>
 
       {dailyStoryWrapped}
 

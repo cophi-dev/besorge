@@ -8,9 +8,23 @@ import type { MorningBriefingContext } from "@/lib/morningBriefingContext";
 const baseContext: MorningBriefingContext = {
   dateBerlin: "2026-05-09",
   retrievedAtIso: "2026-05-09T12:00:00.000Z",
+  isMultiDayWindow: false,
+  rangeStartBerlin: "2026-05-09",
+  rangeEndBerlin: "2026-05-09",
   pointFractionOfDay: 0.85,
   samplePoints: 82,
   netStructuralBalanceGwh: -47.1,
+  dayShape: {
+    structuralNetGwhByWindow: {
+      dayCoreGwh: -10.8,
+      eveningRampGwh: -22,
+      overnightBaseGwh: -14.3,
+    },
+    renewableNetStructuralBalanceGwh: -38.9,
+    renewableSlotFractionOfSampled: 0.94,
+    peakSurplusHourBerlin: 13,
+    peakDeficitHourBerlin: 19,
+  },
   fleet: { powerGw: 18.3, capacityGwh: 27.9 },
   simulated: {
     practicalCapacityGwh: 18.4,
@@ -24,10 +38,15 @@ const baseContext: MorningBriefingContext = {
 
 const goodStory = {
   headline: "Evening ramp dragged the system into deficit while midday solar covered the day's middle hours.",
+  insights: [
+    "Evening ramp hours carry the toughest structural imbalance at −22.0 GWh across published quarters.",
+    "Renewables-only structural Σ(r−L) sits near −38.9 GWh with renewables measured in roughly 94% of sampled slots.",
+    "Surplus concentration near Berlin hour 13 contrasts with deepest deficit leaning on hour 19 in the stitched MESZ sample.",
+  ],
   narrative:
-    "Generation trailed load by 47.1 GWh today. Solar carried the 11:00–14:00 window with a comfortable surplus, but the 18:00–21:00 evening ramp pulled the system into a deep residual deficit that the German fleet only partially covered.",
+    "Generation trails load overall; bullets separate the sharper window contrast so this line only reinforces the −47.1 GWh net imbalance.",
   counterfactual:
-    "A right-sized 18.4 GWh / 9.2 GW BESS would have flattened ~31% of the grid imbalance, capturing ~47% of the surplus and serving ~22% of the deficit.",
+    "A right-sized 18.4 GWh / 9.2 GW BESS would have cut summed absolute structural imbalance by ~31%. It would also absorb ~47% of gross surplus energy and meet ~22% of gross deficit energy from storage.",
   dataAsOfNote: "Based on the first 85% of today's quarter-hours.",
 };
 
@@ -56,7 +75,16 @@ describe("dailyStoryLlm.dailyStorySchema", () => {
     void _drop;
     expect(dailyStorySchema.parse(withoutNote)).toMatchObject({
       headline: goodStory.headline,
+      insights: goodStory.insights,
     });
+  });
+
+  it("rejects fewer than three insights", () => {
+    const { insights: _, ...rest } = goodStory;
+    void _;
+    expect(() =>
+      dailyStorySchema.parse({ ...rest, insights: ["only one bullet line here"] })
+    ).toThrow();
   });
 });
 
@@ -94,6 +122,18 @@ describe("dailyStoryLlm.buildUserPayload", () => {
     expect(counterfactualHint).toBeDefined();
     expect(counterfactualHint).toMatch(/practicalCapacityGwh/);
     expect(counterfactualHint).toMatch(/gridImpactReductionPct/);
+    expect(counterfactualHint).toMatch(/gross surplus|GROSS structural surplus/i);
+    expect(payload.instructions.some((i) => i.includes("netStructuralBalanceGwh"))).toBe(true);
+    expect(payload.instructions.some((i) => i.startsWith("insights:"))).toBe(true);
+  });
+
+  it("adds calendar-window guidance when isMultiDayWindow is true", () => {
+    const payload = buildUserPayload(
+      { ...baseContext, isMultiDayWindow: true, rangeStartBerlin: "2026-05-04", rangeEndBerlin: "2026-05-10" },
+      "en"
+    );
+    expect(payload.instructions.some((i) => i.includes("isMultiDayWindow"))).toBe(true);
+    expect(payload.instructions.some((i) => i.includes("rangeStartBerlin"))).toBe(true);
   });
 });
 

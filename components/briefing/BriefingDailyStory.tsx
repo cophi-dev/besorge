@@ -6,11 +6,14 @@ import { z } from "zod";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { createLogger } from "@/lib/debug";
+import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
+import { serializeBriefingStoryWindow } from "@/lib/briefingStoryWindow";
 
 const log = createLogger("daily-story");
 
 const storyShape = z.object({
   headline: z.string(),
+  insights: z.array(z.string()).length(3),
   narrative: z.string(),
   counterfactual: z.string(),
   dataAsOfNote: z.string().optional(),
@@ -36,6 +39,20 @@ const responseShape = z.object({
       absorbedSurplusShare: z.number().nullable(),
       servedDeficitShare: z.number().nullable(),
     }),
+    dayShape: z.object({
+      structuralNetGwhByWindow: z.object({
+        dayCoreGwh: z.number(),
+        eveningRampGwh: z.number(),
+        overnightBaseGwh: z.number(),
+      }),
+      renewableNetStructuralBalanceGwh: z.number().nullable(),
+      renewableSlotFractionOfSampled: z.number(),
+      peakSurplusHourBerlin: z.number().nullable(),
+      peakDeficitHourBerlin: z.number().nullable(),
+    }),
+    isMultiDayWindow: z.boolean(),
+    rangeStartBerlin: z.string(),
+    rangeEndBerlin: z.string(),
   }),
   story: storyShape,
 });
@@ -44,8 +61,8 @@ type StoryResponse = z.infer<typeof responseShape>;
 
 type BriefingDailyStoryProps = {
   language: "en" | "de";
-  /** Berlin calendar date (YYYY-MM-DD) the homepage is currently showing. */
-  dateKey: string;
+  /** Day / week / month window aligned with the Germany flow chart selector. */
+  storyWindow: BriefingStoryWindow;
   /** Bumped to force a refetch (e.g. user pressed "Refresh"). */
   refreshNonce?: number;
 };
@@ -53,11 +70,18 @@ type BriefingDailyStoryProps = {
 const FETCH_TIMEOUT_MS = 18_000;
 
 async function fetchStory(
-  dateKey: string,
+  storyWindow: BriefingStoryWindow,
   language: "en" | "de",
   signal: AbortSignal
 ): Promise<StoryResponse> {
-  const params = new URLSearchParams({ date: dateKey, language });
+  const params = new URLSearchParams({ language });
+  if (storyWindow.type === "day") {
+    params.set("date", storyWindow.date);
+  } else if (storyWindow.type === "week") {
+    params.set("week", storyWindow.weekKey);
+  } else {
+    params.set("month", storyWindow.monthKey);
+  }
   const res = await fetch(`/api/briefing/story?${params.toString()}`, {
     cache: "no-store",
     signal,
@@ -72,27 +96,45 @@ async function fetchStory(
 const labels = {
   en: {
     kicker: "Daily story · Berlin",
+    windowKicker: "Window story · Berlin",
+    insightsLabel: "Today's signals",
+    windowInsightsLabel: "Window signals",
     counterfactualLabel: "What an optimal BESS would have done",
     poweredBy: "Aether analyst (LLM)",
     poweredByFallback: "Aether analyst (deterministic — model offline)",
     loading: "Drafting today's analyst note…",
+    windowLoading: "Drafting the window analyst note…",
     error: "Could not draft today's analyst note.",
+    windowError: "Could not draft the window analyst note.",
     retry: "Retry",
     asOfPrefix: "As of",
+    absorbedSurplusCaption: "Absorbed (gross surplus)",
+    servedDeficitCaption: "Served (gross deficit)",
+    gridImpactCaption: "Imbalance smoothing",
+    kpiFootnote: "Same published quarter-hours as the signals above.",
   },
   de: {
     kicker: "Story des Tages · Berlin",
+    windowKicker: "Fenster-Story · Berlin",
+    insightsLabel: "Heutige Signale",
+    windowInsightsLabel: "Signale im Fenster",
     counterfactualLabel: "Was ein optimaler BESS bewirkt hätte",
     poweredBy: "AETHER-Analyst (LLM)",
     poweredByFallback: "AETHER-Analyst (deterministisch — Modell offline)",
     loading: "Analystennotiz wird erstellt…",
+    windowLoading: "Fenster-Analystennotiz wird erstellt…",
     error: "Heutige Analystennotiz konnte nicht erstellt werden.",
+    windowError: "Fenster-Analystennotiz konnte nicht erstellt werden.",
     retry: "Erneut versuchen",
     asOfPrefix: "Stand",
+    absorbedSurplusCaption: "Aufgenommen (Brutto-\u00dcberschuss)",
+    servedDeficitCaption: "Gedeckt (Brutto-Defizit)",
+    gridImpactCaption: "Netzentlastung (Modell)",
+    kpiFootnote: "Gleiche ver\u00f6ffentlichte Viertelstunden wie die Signale oben.",
   },
 } as const;
 
-export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: BriefingDailyStoryProps) {
+export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: BriefingDailyStoryProps) {
   const [data, setData] = useState<StoryResponse | null>(null);
   /**
    * Initial state is "loading" so the very first paint already renders the
@@ -105,6 +147,8 @@ export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: Brie
   const [retryNonce, setRetryNonce] = useState(0);
   const lastReqId = useRef(0);
   const hasMountedRef = useRef(false);
+  const storyFetchKey = useMemo(() => serializeBriefingStoryWindow(storyWindow), [storyWindow]);
+  const isWindowMode = storyWindow.type !== "day";
 
   useEffect(() => {
     const reqId = ++lastReqId.current;
@@ -118,7 +162,7 @@ export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: Brie
       hasMountedRef.current = true;
     }
 
-    fetchStory(dateKey, language, controller.signal)
+    fetchStory(storyWindow, language, controller.signal)
       .then((result) => {
         if (reqId !== lastReqId.current) {
           return;
@@ -147,9 +191,14 @@ export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: Brie
         cancelAnimationFrame(rafId);
       }
     };
-  }, [dateKey, language, refreshNonce, retryNonce]);
+  }, [storyFetchKey, storyWindow, language, refreshNonce, retryNonce]);
 
   const t = labels[language];
+  const showWindowChrome = isWindowMode || Boolean(data?.context.isMultiDayWindow);
+  const kickerText = showWindowChrome ? t.windowKicker : t.kicker;
+  const insightsLabelText = showWindowChrome ? t.windowInsightsLabel : t.insightsLabel;
+  const loadingText = showWindowChrome ? t.windowLoading : t.loading;
+  const errorText = showWindowChrome ? t.windowError : t.error;
 
   const headerNumbers = useMemo(() => {
     if (!data) return null;
@@ -167,6 +216,14 @@ export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: Brie
           : null,
       capGwh: fmt.format(data.context.simulated.practicalCapacityGwh),
       pwGw: fmt.format(data.context.simulated.balancedPowerMw / 1000),
+      absorbedSharePctText:
+        data.context.simulated.absorbedSurplusShare !== null
+          ? fmt.format(data.context.simulated.absorbedSurplusShare * 100)
+          : null,
+      servedSharePctText:
+        data.context.simulated.servedDeficitShare !== null
+          ? fmt.format(data.context.simulated.servedDeficitShare * 100)
+          : null,
     };
   }, [data, language]);
 
@@ -189,7 +246,7 @@ export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: Brie
             aria-hidden
           />
           <p className="text-[10.5px] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-            {t.kicker}
+            {kickerText}
           </p>
         </div>
         {data ? (
@@ -202,13 +259,18 @@ export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: Brie
       {loadingState === "loading" && !data ? (
         <div className="mt-5 space-y-3">
           <Skeleton className="h-7 w-3/4 max-w-2xl" />
+          <div className="space-y-2 pt-2">
+            <Skeleton className="h-4 w-[88%] max-w-3xl" />
+            <Skeleton className="h-4 w-[82%] max-w-3xl" />
+            <Skeleton className="h-4 w-[90%] max-w-3xl" />
+          </div>
           <Skeleton className="h-4 w-full max-w-3xl" />
           <Skeleton className="h-4 w-5/6 max-w-2xl" />
           <div className="mt-5 rounded-xl border border-dashed border-border/60 p-3.5">
             <Skeleton className="h-3 w-40" />
             <Skeleton className="mt-2 h-4 w-full max-w-xl" />
           </div>
-          <p className="mt-4 text-[11px] text-muted-foreground/70">{t.loading}</p>
+          <p className="mt-4 text-[11px] text-muted-foreground/70">{loadingText}</p>
         </div>
       ) : loadingState === "error" ? (
         <div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-300/40 bg-amber-50/40 p-3.5 dark:border-amber-500/30 dark:bg-amber-950/20">
@@ -217,7 +279,7 @@ export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: Brie
             aria-hidden
           />
           <div className="flex-1 text-sm">
-            <p className="text-amber-900 dark:text-amber-100">{t.error}</p>
+            <p className="text-amber-900 dark:text-amber-100">{errorText}</p>
             <button
               type="button"
               onClick={() => setRetryNonce((n) => n + 1)}
@@ -232,11 +294,30 @@ export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: Brie
           <h2 className="mt-3 text-[19px] leading-snug font-medium tracking-tight text-foreground md:text-[22px] [font-family:var(--font-heading)]">
             {data.story.headline}
           </h2>
-          <p className="mt-3 max-w-3xl text-[13.5px] leading-relaxed text-foreground/80 md:text-sm dark:text-slate-200/90">
+          <div className="mt-4">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+              {insightsLabelText}
+            </p>
+            <ul
+              className="mt-2 max-w-3xl space-y-2 text-[13px] leading-snug text-foreground/90 md:text-[13.5px] dark:text-slate-200/92"
+              aria-label={insightsLabelText}
+            >
+              {data.story.insights.map((insightLine, insightIdx) => (
+                <li key={insightIdx} className="flex gap-2.5">
+                  <span
+                    className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500/85 dark:bg-emerald-400/80"
+                    aria-hidden
+                  />
+                  <span>{insightLine}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <p className="mt-4 max-w-3xl text-[12.75px] leading-relaxed text-muted-foreground/90 md:text-[13px] dark:text-slate-300/80">
             {data.story.narrative}
           </p>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-stretch">
+          <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-stretch">
             <div className="relative rounded-xl border border-emerald-300/40 bg-emerald-50/50 px-4 py-3 dark:border-emerald-400/25 dark:bg-emerald-950/30">
               <div className="flex items-center gap-2">
                 <Zap
@@ -253,25 +334,40 @@ export function BriefingDailyStory({ language, dateKey, refreshNonce = 0 }: Brie
             </div>
 
             {headerNumbers ? (
-              <dl className="grid grid-cols-3 gap-3 rounded-xl border border-border/60 bg-background/40 px-3 py-2.5 text-center sm:gap-4 md:flex md:flex-col md:gap-1.5 md:py-3 md:text-right">
-                <NumberCallout
-                  label={language === "de" ? "Bilanz" : "Balance"}
-                  value={`${headerNumbers.netSign}${headerNumbers.netAbs}`}
-                  unit="GWh"
-                  tone={data.context.netStructuralBalanceGwh >= 0 ? "positive" : "negative"}
-                />
-                <NumberCallout
-                  label={language === "de" ? "Optimal-BESS" : "Optimal BESS"}
-                  value={`${headerNumbers.capGwh}`}
-                  unit="GWh"
-                />
-                <NumberCallout
-                  label={language === "de" ? "Δ Netz" : "Grid Δ"}
-                  value={headerNumbers.gridPctText !== null ? headerNumbers.gridPctText : "—"}
-                  unit={headerNumbers.gridPctText !== null ? "%" : ""}
-                  tone="accent"
-                />
-              </dl>
+              <div className="md:flex md:flex-col md:items-end">
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-xl border border-border/60 bg-background/40 px-3 py-2.5 text-center sm:grid-cols-3 md:flex md:w-[min(100%,13.5rem)] md:flex-none md:flex-col md:gap-2 md:text-right lg:w-[min(100%,15rem)]">
+                  <NumberCallout
+                    label={language === "de" ? "Nettobilanz" : "Net balance"}
+                    value={`${headerNumbers.netSign}${headerNumbers.netAbs}`}
+                    unit="GWh"
+                    tone={data.context.netStructuralBalanceGwh >= 0 ? "positive" : "negative"}
+                  />
+                  <NumberCallout
+                    label={language === "de" ? "Optimal-BESS" : "Optimal BESS"}
+                    value={`${headerNumbers.capGwh} · ${headerNumbers.pwGw}`}
+                    unit="GWh · GW"
+                  />
+                  <NumberCallout
+                    label={t.gridImpactCaption}
+                    value={headerNumbers.gridPctText !== null ? headerNumbers.gridPctText : "—"}
+                    unit={headerNumbers.gridPctText !== null ? "%" : ""}
+                    tone="accent"
+                  />
+                  <NumberCallout
+                    label={t.absorbedSurplusCaption}
+                    value={headerNumbers.absorbedSharePctText !== null ? headerNumbers.absorbedSharePctText : "—"}
+                    unit={headerNumbers.absorbedSharePctText !== null ? "%" : ""}
+                  />
+                  <NumberCallout
+                    label={t.servedDeficitCaption}
+                    value={headerNumbers.servedSharePctText !== null ? headerNumbers.servedSharePctText : "—"}
+                    unit={headerNumbers.servedSharePctText !== null ? "%" : ""}
+                  />
+                </dl>
+                <p className="mt-1.5 max-w-[15rem] text-[9px] leading-snug text-muted-foreground/75 md:text-right">
+                  {t.kpiFootnote}
+                </p>
+              </div>
             ) : null}
           </div>
 

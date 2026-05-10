@@ -29,25 +29,6 @@ describe("inferFleetModeFromChartTail", () => {
     expect(mode).toBe("charging");
   });
 
-  it("uses practical dispatch MW when practical SoC is flat", () => {
-    const mode = inferFleetModeFromChartTail({
-      showSimulatedNet: true,
-      last: {
-        ...baseLast,
-        simulatedPracticalSocPct: 55,
-        practicalChargeMw: 120,
-        practicalDischargeMw: 5,
-      },
-      previous: {
-        ...baseLast,
-        simulatedPracticalSocPct: 55,
-        practicalChargeMw: 0,
-        practicalDischargeMw: 0,
-      },
-    });
-    expect(mode).toBe("charging");
-  });
-
   it("uses fleet dispatch MW when estimated fleet SoC is flat", () => {
     const mode = inferFleetModeFromChartTail({
       showSimulatedNet: false,
@@ -62,6 +43,25 @@ describe("inferFleetModeFromChartTail", () => {
         estimatedFleetSocPct: 51,
         fleetChargeMw: 0,
         fleetDischargeMw: 0,
+      },
+    });
+    expect(mode).toBe("charging");
+  });
+
+  it("uses practical dispatch MW when practical SoC is flat", () => {
+    const mode = inferFleetModeFromChartTail({
+      showSimulatedNet: true,
+      last: {
+        ...baseLast,
+        simulatedPracticalSocPct: 55,
+        practicalChargeMw: 120,
+        practicalDischargeMw: 5,
+      },
+      previous: {
+        ...baseLast,
+        simulatedPracticalSocPct: 55,
+        practicalChargeMw: 0,
+        practicalDischargeMw: 0,
       },
     });
     expect(mode).toBe("charging");

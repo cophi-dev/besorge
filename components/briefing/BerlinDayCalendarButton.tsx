@@ -36,14 +36,14 @@ export function BerlinDayCalendarButton({
         type="button"
         className={cn(
           buttonVariants({ variant: "outline", size: "sm" }),
-          "min-h-9 min-w-[10.5rem] justify-start gap-2 border-border/90 bg-background/80 text-left text-xs font-semibold",
+          "h-9 min-h-9 min-w-0 shrink gap-2 rounded-xl border-border/80 bg-background/90 px-3 text-xs font-semibold tabular-nums shadow-sm backdrop-blur-sm transition-colors hover:bg-background dark:border-white/[0.12] dark:bg-slate-950/90 sm:min-w-[9.5rem] sm:justify-start",
           className
         )}
       >
-        <CalendarDays className="size-3.5 text-emerald-500/90" aria-hidden />
-        {label}
+        <CalendarDays className="size-3.5 shrink-0 text-emerald-500/90" aria-hidden />
+        <span className="min-w-0 truncate">{label}</span>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent className="w-auto p-0" align="end" sideOffset={8}>
         <Calendar
           mode="single"
           selected={selected}

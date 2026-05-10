@@ -19,18 +19,39 @@ const goodPayload = {
       absorbedSurplusShare: 0.47,
       servedDeficitShare: 0.22,
     },
+    dayShape: {
+      structuralNetGwhByWindow: {
+        dayCoreGwh: -10.8,
+        eveningRampGwh: -22,
+        overnightBaseGwh: -14.3,
+      },
+      renewableNetStructuralBalanceGwh: -38.9,
+      renewableSlotFractionOfSampled: 0.94,
+      peakSurplusHourBerlin: 13,
+      peakDeficitHourBerlin: 19,
+    },
+    isMultiDayWindow: false,
+    rangeStartBerlin: "2026-05-09",
+    rangeEndBerlin: "2026-05-09",
   },
   story: {
     headline: "Evening ramp dragged the system into deficit while midday solar covered the day.",
+    insights: [
+      "Evening ramp hours carry the toughest structural imbalance at −22.0 GWh across published quarters.",
+      "Renewable generation minus load, only where renewable MW exists, sits near −38.9 GWh with data in roughly 94% of sampled slots.",
+      "Surplus concentration near Berlin local hour 13 contrasts with deepest deficit leaning on hour 19 in the published sample.",
+    ],
     narrative:
-      "Generation trailed load by 47.1 GWh today. Solar carried lunch with a comfortable surplus, but the 18:00–21:00 ramp pulled the system into a deep deficit.",
+      "Generation trails load alongside the sharper window contrast spelled out above; −47.1 GWh nets the day's structural imbalance.",
     counterfactual:
-      "A right-sized 18.4 GWh / 9.2 GW BESS would have flattened ~31% of the grid imbalance.",
+      "A right-sized 18.4 GWh / 9.2 GW BESS would have cut summed absolute structural imbalance by ~31%. It would also absorb ~47% of gross surplus energy and meet ~22% of gross deficit energy from storage.",
     dataAsOfNote: "Based on the first 85% of today's quarter-hours.",
   },
 };
 
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+const dayWindow = { type: "day" as const, date: "2026-05-09" };
 
 describe("BriefingDailyStory", () => {
   let originalFetch: typeof global.fetch;
@@ -48,7 +69,7 @@ describe("BriefingDailyStory", () => {
     global.fetch = jest.fn().mockReturnValue(new Promise(() => {})) as unknown as typeof fetch;
 
     const { container } = render(
-      <BriefingDailyStory language="en" dateKey="2026-05-09" />
+      <BriefingDailyStory language="en" storyWindow={dayWindow} />
     );
 
     expect(container.querySelector('section[aria-busy="true"]')).not.toBeNull();
@@ -61,15 +82,27 @@ describe("BriefingDailyStory", () => {
       json: async () => goodPayload,
     }) as unknown as typeof fetch;
 
-    render(<BriefingDailyStory language="en" dateKey="2026-05-09" />);
+    const { container } = render(<BriefingDailyStory language="en" storyWindow={dayWindow} />);
 
     await waitFor(() =>
       expect(screen.getByText(goodPayload.story.headline)).toBeInTheDocument()
     );
+    expect(screen.getByRole("list", { name: /today's signals/i })).toBeInTheDocument();
+    expect(screen.getByText(goodPayload.story.insights[0])).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.narrative)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.counterfactual)).toBeInTheDocument();
     expect(screen.getByText(/Aether analyst \(LLM\)/i)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.dataAsOfNote!)).toBeInTheDocument();
+    expect(screen.getByText("Net balance")).toBeInTheDocument();
+    expect(screen.getByText(/18\.4 · 9\.2/)).toBeInTheDocument();
+    expect(screen.getByText("GWh · GW")).toBeInTheDocument();
+    const kpiDl = container.querySelector("dl");
+    expect(kpiDl?.textContent ?? "").toMatch(/absorbed \(gross surplus\)/i);
+    expect(kpiDl?.textContent ?? "").toMatch(/served \(gross deficit\)/i);
+    expect(kpiDl?.textContent ?? "").toMatch(/imbalance smoothing/i);
+    expect(screen.getByText(/same published quarter-hours as the signals above/i)).toBeInTheDocument();
+    expect(container.textContent ?? "").toMatch(/47%/);
+    expect(container.textContent ?? "").toMatch(/22%/);
   });
 
   it("flags the deterministic fallback in the footer", async () => {
@@ -78,7 +111,7 @@ describe("BriefingDailyStory", () => {
       json: async () => ({ ...goodPayload, source: "fallback_numeric" }),
     }) as unknown as typeof fetch;
 
-    render(<BriefingDailyStory language="en" dateKey="2026-05-09" />);
+    render(<BriefingDailyStory language="en" storyWindow={dayWindow} />);
     await waitFor(() =>
       expect(
         screen.getByText(/Aether analyst \(deterministic — model offline\)/i)
@@ -92,7 +125,7 @@ describe("BriefingDailyStory", () => {
       json: async () => ({ ...goodPayload, language: "de" }),
     }) as unknown as typeof fetch;
 
-    render(<BriefingDailyStory language="de" dateKey="2026-05-09" />);
+    render(<BriefingDailyStory language="de" storyWindow={dayWindow} />);
 
     // Wait for a label that only renders post-load (the kicker is always
     // visible, so it's not a reliable load-completion signal).
@@ -111,7 +144,7 @@ describe("BriefingDailyStory", () => {
       .mockResolvedValueOnce({ ok: true, json: async () => goodPayload });
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    render(<BriefingDailyStory language="en" dateKey="2026-05-09" />);
+    render(<BriefingDailyStory language="en" storyWindow={dayWindow} />);
 
     await waitFor(() =>
       expect(
@@ -136,12 +169,12 @@ describe("BriefingDailyStory", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const { rerender } = render(
-      <BriefingDailyStory language="en" dateKey="2026-05-09" refreshNonce={0} />
+      <BriefingDailyStory language="en" storyWindow={dayWindow} refreshNonce={0} />
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     rerender(
-      <BriefingDailyStory language="en" dateKey="2026-05-09" refreshNonce={1} />
+      <BriefingDailyStory language="en" storyWindow={dayWindow} refreshNonce={1} />
     );
     await flushAsync();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
@@ -157,10 +190,28 @@ describe("BriefingDailyStory", () => {
     }) as unknown as typeof fetch;
 
     const { rerender } = render(
-      <BriefingDailyStory language="en" dateKey="2026-05-09" />
+      <BriefingDailyStory language="en" storyWindow={dayWindow} />
     );
-    rerender(<BriefingDailyStory language="en" dateKey="2026-05-08" />);
+    rerender(
+      <BriefingDailyStory language="en" storyWindow={{ type: "day", date: "2026-05-08" }} />
+    );
 
     await waitFor(() => expect(abortSpy).toHaveBeenCalled());
+  });
+
+  it("requests week= for ISO week story windows", async () => {
+    const fetchMock = jest.fn().mockReturnValue(new Promise(() => {}));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <BriefingDailyStory language="en" storyWindow={{ type: "week", weekKey: "2026-W19" }} />
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+      const url = String((fetchMock as jest.Mock).mock.calls[0][0]);
+      expect(url).toContain("week=2026-W19");
+      expect(url).not.toContain("date=");
+    });
   });
 });

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { z } from "zod";
 
@@ -16,6 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { createLogger } from "@/lib/debug";
 import type { HomeBriefingInitialData } from "@/lib/homeBriefingData";
 import type { ChartFleetSocSnapshot } from "@/lib/chartFleetSocSnapshot";
+import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
+import { serializeBriefingStoryWindow } from "@/lib/briefingStoryWindow";
 import { berlinDateKeySchema } from "@/lib/germanyEnergyFlowPeriod";
 import { formatBerlinDateKeyFromUtcDate } from "@/lib/berlinCalendar";
 import { estimateFleetSocAtMoment, computeSlotSurplusFraction } from "@/lib/socEstimator";
@@ -194,28 +196,41 @@ function GermanyFlowStoryBridge({
   storyRefreshNonce: number;
   children: (args: {
     dailyStorySlot: ReactNode;
-    onBriefingStoryDateKeyChange: (dateKey: string) => void;
+    onBriefingStoryWindowChange: (window: BriefingStoryWindow) => void;
   }) => ReactNode;
 }) {
-  const [chartStoryOverrideKey, setChartStoryOverrideKey] = useState<string | null>(null);
-  const storyDateKey = chartStoryOverrideKey ?? urlAnchoredBerlinDateKey;
-  const onBriefingStoryDateKeyChange = useCallback(
-    (dateKey: string) => {
-      setChartStoryOverrideKey((prev) => {
-        const next = dateKey === urlAnchoredBerlinDateKey ? null : dateKey;
-        return prev === next ? prev : next;
+  const defaultStoryWindow = useMemo<BriefingStoryWindow>(
+    () => ({ type: "day", date: urlAnchoredBerlinDateKey }),
+    [urlAnchoredBerlinDateKey]
+  );
+  const defaultSerialized = useMemo(
+    () => serializeBriefingStoryWindow(defaultStoryWindow),
+    [defaultStoryWindow]
+  );
+  const [chartStoryOverride, setChartStoryOverride] = useState<BriefingStoryWindow | null>(null);
+  const storyWindow = chartStoryOverride ?? defaultStoryWindow;
+  const onBriefingStoryWindowChange = useCallback(
+    (nextWindow: BriefingStoryWindow) => {
+      setChartStoryOverride((prev) => {
+        const nextSerialized = serializeBriefingStoryWindow(nextWindow);
+        const nextOverride = nextSerialized === defaultSerialized ? null : nextWindow;
+        const prevSerialized = prev === null ? null : serializeBriefingStoryWindow(prev);
+        if (prevSerialized === nextSerialized) {
+          return prev;
+        }
+        return nextOverride;
       });
     },
-    [urlAnchoredBerlinDateKey]
+    [defaultSerialized]
   );
   const dailyStorySlot = (
     <BriefingDailyStory
       language={language}
-      dateKey={storyDateKey}
+      storyWindow={storyWindow}
       refreshNonce={storyRefreshNonce}
     />
   );
-  return <>{children({ dailyStorySlot, onBriefingStoryDateKeyChange })}</>;
+  return <>{children({ dailyStorySlot, onBriefingStoryWindowChange })}</>;
 }
 
 export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
@@ -427,7 +442,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
           language={language}
           storyRefreshNonce={storyRefreshNonce}
         >
-          {({ dailyStorySlot, onBriefingStoryDateKeyChange }) => (
+          {({ dailyStorySlot, onBriefingStoryWindowChange }) => (
             <GermanyDayEnergyFlow
               fleetCapacityGwh={market?.bess.installedCapacityGwh}
               fleetPowerGw={market?.bess.installedPowerGw}
@@ -437,7 +452,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
               initialBerlinDateKey={initial.berlinDateKey}
               seedDateKey={seedDateKey}
               onBerlinDateChange={handleBerlinDateChange}
-              onBriefingStoryDateKeyChange={onBriefingStoryDateKeyChange}
+              onBriefingStoryWindowChange={onBriefingStoryWindowChange}
               dailyStorySlot={dailyStorySlot}
               initialSimulatedNet={initialSimulatedNet}
               onSimulatedModeChange={handleSimulatedModeChange}

@@ -4,6 +4,7 @@ import {
   computeCoverageAtCapacityMwh,
   computeOptimalSurplusDeficitCapacityMwh,
   computePracticalDailyCycleCapacityMwh,
+  computeStitchedPracticalInitialSocMwh,
   simulateAdjustedNetMwAtCapacity,
   simulatePracticalDispatchAtCapacity,
   simulateSocPctAtCapacityMwh,
@@ -124,6 +125,44 @@ describe("computeCoverageAtCapacityMwh", () => {
     const powerLimited = computeCoverageAtCapacityMwh(slots, 500, { maxPowerMw: 100 }); // 25 MWh/slot
     expect(powerLimited.absorbedSurplusEnergyMwh).toBeCloseTo(25, 6);
     expect(powerLimited.servedDeficitEnergyMwh).toBeCloseTo(25, 6);
+  });
+
+  it("reduces absorbed surplus share when starting partly full", () => {
+    const slots = [{ totalGenerationMw: 1400, loadMw: 1000 }]; // +100 MWh single slot
+    const emptyStart = computeCoverageAtCapacityMwh(slots, 100, {});
+    const halfStart = computeCoverageAtCapacityMwh(slots, 100, { initialSocMwh: 50 });
+    expect(emptyStart.absorbedSurplusShare).toBeCloseTo(1, 6);
+    expect(halfStart.absorbedSurplusEnergyMwh).toBeCloseTo(50, 6);
+    expect(halfStart.absorbedSurplusShare).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe("computeStitchedPracticalInitialSocMwh", () => {
+  it("matches two-day chain into previous-day end energy", () => {
+    const dayBefore = [
+      { timestampIso: "2026-04-01T00:00:00.000Z", totalGenerationMw: 1100, loadMw: 1000 },
+    ];
+    const previous = [
+      { timestampIso: "2026-04-02T00:00:00.000Z", totalGenerationMw: 1100, loadMw: 1000 },
+    ];
+    const fromLib = computeStitchedPracticalInitialSocMwh({
+      dayBeforePreviousSlots: dayBefore,
+      previousDaySlots: previous,
+      capacityMwh: 100,
+      maxPowerMw: null,
+    });
+    const stitch0 = simulatePracticalDispatchAtCapacity(dayBefore, 100, {
+      resetDailyByBerlin: true,
+      maxPowerMw: null,
+    });
+    const end0 = (stitch0[stitch0.length - 1]!.socPct / 100) * 100;
+    const prevWalk = simulatePracticalDispatchAtCapacity(previous, 100, {
+      resetDailyByBerlin: true,
+      initialSocMwh: end0,
+      maxPowerMw: null,
+    });
+    const manual = (prevWalk[prevWalk.length - 1]!.socPct / 100) * 100;
+    expect(fromLib).toBeCloseTo(manual, 6);
   });
 });
 

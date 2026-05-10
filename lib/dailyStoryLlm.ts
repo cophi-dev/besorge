@@ -8,10 +8,9 @@ const log = createLogger("daily-story-llm");
 /**
  * Daily-Story LLM client.
  *
- * Generates a short, premium "story of the day" for the home dashboard hero
- * card: a Bloomberg-style factual headline, a 2–3 sentence narrative, and a
- * one-sentence counterfactual that quantifies what an *optimal* BESS sized
- * for that specific day would have done to the structural imbalance.
+ * Generates a short "story of the day" for the home dashboard hero card: headline,
+ * three scannable bullet insights, a concise narrative, and one counterfactual line
+ * for the optimally-sized BESS model.
  *
  * Rationale for splitting from `morningBriefingLlm.ts`:
  *  - Different prompt + response schema (no tweet length limits, includes
@@ -39,8 +38,10 @@ const llmConfigSchema = z.object({
 export const dailyStorySchema = z.object({
   /** Sentence-case factual headline. ~60–140 chars. */
   headline: z.string().min(8).max(180),
-  /** 2–3 sentence factual narrative explaining the day's structural story. */
-  narrative: z.string().min(40).max(900),
+  /** Exactly three one-line factual takeaways — UI renders as bullets (no numbering in text). */
+  insights: z.array(z.string().min(14).max(160)).length(3),
+  /** Short closing paragraph reinforcing net posture — avoid repeating all bullet numbers. */
+  narrative: z.string().min(32).max(900),
   /**
    * One sentence that quantifies the BESS counterfactual using concrete
    * numbers from `simulated.*`. Must reference at least one of:
@@ -103,16 +104,26 @@ const buildUserPayload = (context: MorningBriefingContext, language: "en" | "de"
   language,
   briefing: context,
   instructions: [
-    "Return strict JSON only matching schema { headline, narrative, counterfactual, dataAsOfNote? }.",
+    'Return strict JSON only matching schema { headline, insights: string[3], narrative, counterfactual, dataAsOfNote? }.',
     "Audience: utility-scale BESS sales engineers and energy analysts. Tone: Bloomberg / Financial Times — calm, factual, no hype, no emojis, no markdown.",
-    "headline: ONE sentence in sentence case, ~60–140 chars. Lead with the day's structural posture (surplus/deficit/balanced) and the most striking driver (e.g. midday solar, evening ramp). Do NOT start with the date.",
-    "narrative: 2–3 sentences (~250–500 chars total). Explain the SHAPE of the day (when surplus/deficit hit, who carried the system at what hours), not just totals. Use ONLY numbers present in `briefing` (or trivially derived). NO speculation about prices, weather, or next-day forecasts.",
-    "counterfactual: ONE sentence that quantifies what an optimally-sized BESS for this day would have changed. Use `simulated.practicalCapacityGwh`, `simulated.balancedPowerMw`, and at least one of `simulated.gridImpactReductionPct`, `simulated.absorbedSurplusShare`, `simulated.servedDeficitShare`. Format example (EN): 'A right-sized 18.4 GWh / 9.2 GW BESS would have flattened ~31% of the grid imbalance, capturing ~47% of the surplus and serving ~22% of the deficit.' If `simulated.practicalCapacityGwh` is 0 or all sim shares are null, say so plainly instead of inventing numbers.",
-    "dataAsOfNote: include ONLY when `pointFractionOfDay` < 0.95. Format: 'Based on the first XX% of today's quarter-hours.' (EN) or 'Stand: erste XX % der heutigen Viertelstunden.' (DE).",
+    ...(context.isMultiDayWindow
+      ? [
+          language === "de"
+            ? "Kalenderfenster: `briefing.isMultiDayWindow` ist wahr — schreibe über den zusammengefügten Zeitraum `rangeStartBerlin` … `rangeEndBerlin` (ISO-Daten), nicht als wäre es nur ein einzelner Tag. `pointFractionOfDay` ist der Fortschritt durch die erwarteten Viertelstunden in diesem Fenster."
+            : "Calendar window: `briefing.isMultiDayWindow` is true — write about the stitched span `rangeStartBerlin` through `rangeEndBerlin` (ISO dates), not as if it were a single calendar day. `pointFractionOfDay` is progress through expected quarter-hours in that window.",
+        ]
+      : []),
+    "headline: ONE sentence in sentence case, ~60–140 chars. Lead with posture (net surplus/deficit) plus one concrete driver from `dayShape` or coverage — not a spreadsheet-style lead like 'Net structural balance for the day is…'. `briefing.netStructuralBalanceGwh` is full-day Σ(gen−load) (not gross surplus energy). Do NOT start with the date.",
+    "insights: EXACTLY 3 SHORT strings (~60–155 chars each), each ONE standalone fact. No numbering prefixes. EACH must cite ONLY fields already in `briefing`. Plain language only: spell out 'renewable generation minus load' (never '(r−L)', 'r−L', or bare Σ notation in user-facing strings). When citing a clock-window sum from `structuralNetGwhByWindow`, explicitly say it is **only inside that hour band**, not the full-day net. When citing `renewableNetStructuralBalanceGwh`, say it sums **only slots where renewable MW exists** and mention `renewableSlotFractionOfSampled` if below 1. For peaks use 'Berlin local hour' (not MESZ). Roles: (a) strongest window vs full-day net, (b) renewables-only line or fleet fallback, (c) peak surplus/deficit hours from `dayShape`.",
+    "narrative: 1–2 sentences (~140–380 chars preferred). Tie headline to full-day NET (`netStructuralBalanceGwh`) and briefly explain how it differs from window-only sums and from the renewables-only line so readers are not surprised by diverging numbers.",
+    "counterfactual: One or two short sentences (same JSON string; max ~400 chars total). First sentence: optimal BESS size (`practicalCapacityGwh`, `balancedPowerMw`) plus grid / imbalance effect (`gridImpactReductionPct` or plain-language equivalent). Optional second sentence: `absorbedSurplusShare` and `servedDeficitShare` as shares of GROSS structural surplus and GROSS deficit energy (per-slot buckets gen>load / gen<load), not of the net balance. If `practicalCapacityGwh` is 0 or all sim shares are null, say so plainly.",
+    context.isMultiDayWindow
+      ? "dataAsOfNote: include ONLY when `pointFractionOfDay` < 0.95. EN: 'Based on the first XX% of expected quarter-hours in the selected window.' DE: 'Stand: erste XX % der erwarteten Viertelstunden im Kalenderfenster.'"
+      : "dataAsOfNote: include ONLY when `pointFractionOfDay` < 0.95. Format: 'Based on the first XX% of today's quarter-hours.' (EN) or 'Stand: erste XX % der heutigen Viertelstunden.' (DE).",
     "All numbers: max 1 decimal. Use the language's native decimal separator (DE = comma, EN = period). Use thousand separators only above 10000.",
     language === "de"
-      ? "Schreibe ALLE Strings auf Deutsch, Sie-Form, sachlich. Keine Anglizismen wo deutsche Begriffe gleich klar sind."
-      : "Write ALL strings in English. Avoid jargon when a plain word works.",
+      ? "Schreibe ALLE Strings auf Deutsch, Sie-Form, sachlich. Keine Anglizismen wo deutsche Begriffe gleich klar sind. Keine Symbolkürzel wie (r−L) oder GRID Δ im Fließtext."
+      : "Write ALL strings in English. Prefer plain words over symbols: no '(r−L)', no 'GRID Δ' in prose (say 'imbalance smoothing' or describe the grid-impact share in words).",
   ],
 });
 

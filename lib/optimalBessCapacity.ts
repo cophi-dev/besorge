@@ -41,6 +41,16 @@ type PowerConstrainedSimulationOptions = {
   maxPowerMw?: number | null;
 };
 
+export type CoverageAtCapacityOptions = {
+  resetDailyByBerlin?: boolean;
+  maxPowerMw?: number | null;
+  /**
+   * Packed level at the start of the first Berlin day in `slots`, before any dispatch in that walk.
+   * When `resetDailyByBerlin` is true, each subsequent calendar day still starts from 0 (same as chart dispatch).
+   */
+  initialSocMwh?: number;
+};
+
 const resolvePowerCapMwhPerSlot = (maxPowerMw?: number | null): number =>
   maxPowerMw !== null && maxPowerMw !== undefined && Number.isFinite(maxPowerMw) && maxPowerMw > 0
     ? maxPowerMw * QUARTER_HOUR_H
@@ -239,7 +249,7 @@ export function computeLogicalBessRecommendation(
 export function computeCoverageAtCapacityMwh(
   slots: OptimalCapacitySlotInput[],
   capacityMwh: number,
-  options?: { resetDailyByBerlin?: boolean; maxPowerMw?: number | null }
+  options?: CoverageAtCapacityOptions
 ): {
   totalSurplusEnergyMwh: number;
   absorbedSurplusEnergyMwh: number;
@@ -250,7 +260,7 @@ export function computeCoverageAtCapacityMwh(
 } {
   const cap = Math.max(0, capacityMwh);
   const powerCapMwhPerSlot = resolvePowerCapMwhPerSlot(options?.maxPowerMw);
-  let socMwh = 0;
+  let socMwh = Math.min(cap, Math.max(0, options?.initialSocMwh ?? 0));
   let activeDay: string | null = null;
   let totalSurplusEnergyMwh = 0;
   let absorbedSurplusEnergyMwh = 0;
@@ -410,5 +420,46 @@ export function simulatePracticalDispatchAtCapacity(
   }
 
   return series;
+}
+
+/**
+ * End-of-series practical SoC (MWh) if `dayBeforePreviousSlots` runs from empty at 00:00,
+ * then `previousDaySlots` continues from that end state — same stitching as the Germany chart (day mode).
+ */
+export function computeStitchedPracticalInitialSocMwh(params: {
+  dayBeforePreviousSlots: OptimalCapacitySlotInput[];
+  previousDaySlots: OptimalCapacitySlotInput[];
+  capacityMwh: number;
+  maxPowerMw: number | null | undefined;
+}): number {
+  const { dayBeforePreviousSlots, previousDaySlots, capacityMwh, maxPowerMw } = params;
+  const cap = Math.max(0, capacityMwh);
+  if (cap <= 0) {
+    return 0;
+  }
+  const pwr = maxPowerMw ?? null;
+  let startYesterdayMwh = 0;
+  if (dayBeforePreviousSlots.length > 0) {
+    const stitch = simulatePracticalDispatchAtCapacity(dayBeforePreviousSlots, cap, {
+      resetDailyByBerlin: true,
+      initialSocMwh: 0,
+      maxPowerMw: pwr,
+    });
+    const lastStitch = stitch[stitch.length - 1];
+    if (lastStitch !== undefined) {
+      startYesterdayMwh =
+        (Math.min(100, Math.max(0, lastStitch.socPct)) / 100) * cap;
+    }
+  }
+  if (previousDaySlots.length === 0) {
+    return 0;
+  }
+  const prevSeries = simulatePracticalDispatchAtCapacity(previousDaySlots, cap, {
+    resetDailyByBerlin: true,
+    initialSocMwh: startYesterdayMwh,
+    maxPowerMw: pwr,
+  });
+  const prevEndSocPct = prevSeries[prevSeries.length - 1]?.socPct ?? 0;
+  return (Math.min(100, Math.max(0, prevEndSocPct)) / 100) * cap;
 }
 
