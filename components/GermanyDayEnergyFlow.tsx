@@ -172,6 +172,34 @@ const monthLabelFormatter = new Intl.DateTimeFormat("de-DE", {
   year: "numeric",
 });
 
+const monthLabelFormatterEn = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Europe/Berlin",
+  month: "long",
+  year: "numeric",
+});
+
+function formatInsightScopeLabel(options: {
+  language: "en" | "de";
+  selectorMode: SelectorMode;
+  selectedDate: string;
+  selectedWeek: string;
+  selectedMonth: string;
+}): string {
+  const { language, selectorMode, selectedDate, selectedWeek, selectedMonth } = options;
+  if (selectorMode === "day") {
+    return selectedDate;
+  }
+  if (selectorMode === "week") {
+    const match = selectedWeek.match(/^\d{4}-W(\d{2})$/);
+    if (match) {
+      return language === "de" ? `KW${Number(match[1])}` : `week ${Number(match[1])}`;
+    }
+    return selectedWeek;
+  }
+  const date = new Date(`${selectedMonth}-01T00:00:00.000Z`);
+  return (language === "de" ? monthLabelFormatter : monthLabelFormatterEn).format(date);
+}
+
 function berlinTodayKey(): string {
   return formatBerlinDateKeyFromUtcDate(new Date());
 }
@@ -370,6 +398,7 @@ type CoverageTotals = Pick<
 function deriveGermanyFlowRuleBasedInsightText(options: {
   language: "en" | "de";
   modeSimulated: boolean;
+  scopeLabel: string;
   conservativeRecommendedMwh: number | null;
   absorption: AbsorptionTotals | null;
   fleetSizingAvailable: boolean;
@@ -380,6 +409,7 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
   const {
     language,
     modeSimulated,
+    scopeLabel,
     conservativeRecommendedMwh,
     absorption,
     fleetSizingAvailable,
@@ -417,22 +447,23 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
   if (conservativeRecommendedMwh !== null && conservativeRecommendedMwh > 0) {
     parts.push(
       language === "de"
-        ? `Konservative P95-Bandbreite fuer dieses Fenster: ${formatEnergyFromMwh(conservativeRecommendedMwh)}.`
-        : `Conservative P95 sizing for this window: ${formatEnergyFromMwh(conservativeRecommendedMwh)}.`
+        ? `Konservative P95-Kapazitaet fuer ${scopeLabel}: ${formatEnergyFromMwh(conservativeRecommendedMwh)}.`
+        : `Conservative P95 capacity for ${scopeLabel}: ${formatEnergyFromMwh(conservativeRecommendedMwh)}.`
     );
   }
   if (absorption !== null) {
-    const curtailedNote =
-      absorption.curtailedEnergyMwh > 1e-6
-        ? language === "de"
-          ? `, darin ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} abgeregelte Energie`
-          : `, including ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} of curtailed energy`
-        : "";
     parts.push(
       language === "de"
-        ? `Ladechance im Fenster: ${formatEnergyFromMwh(absorption.grossChargeOpportunityEnergyMwh)}${curtailedNote}.`
-        : `Charge opportunity in window: ${formatEnergyFromMwh(absorption.grossChargeOpportunityEnergyMwh)}${curtailedNote}.`
+        ? `- Ladechance im Fenster: ${formatEnergyFromMwh(absorption.grossChargeOpportunityEnergyMwh)}.`
+        : `- Charge opportunity in the window: ${formatEnergyFromMwh(absorption.grossChargeOpportunityEnergyMwh)}.`
     );
+    if (curtailmentStatus === "loaded") {
+      parts.push(
+        language === "de"
+          ? `- Darin ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} abgeregelte Energie.`
+          : `- Including ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} of curtailed energy.`
+      );
+    }
     if (
       fleetSizingAvailable &&
       absorption.grossChargeOpportunityEnergyMwh > 1e-6 &&
@@ -449,29 +480,29 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
       );
       parts.push(
         language === "de"
-          ? `Mit der uebergebenen Flotten-Schicht bleiben ${formatEnergyFromMwh(absorption.missedSurplusEnergyMwh)} ungenutzt (~${pct} % der Ladechance).`
-          : `${formatEnergyFromMwh(absorption.missedSurplusEnergyMwh)} remains unabsorbed with the modeled fleet (~${pct}% of charge opportunity).`
+          ? `- Mit der vorhandenen Flotten-Kapazitaet bleiben ${formatEnergyFromMwh(absorption.missedSurplusEnergyMwh)} ungenutzt (~${pct} % der Ladechance).`
+          : `- ${formatEnergyFromMwh(absorption.missedSurplusEnergyMwh)} remains unabsorbed with the current fleet (~${pct}% of charge opportunity).`
       );
     } else if (!fleetSizingAvailable) {
       parts.push(
         language === "de"
-          ? "Installierte GW/GWh-Schicht fehlen — keine verpassten-Ueberschuss-Schaetzung."
-          : "Installed GW/GWh not provided — cannot quantify missed surplus against a fleet envelope."
+          ? "- Installierte GW/GWh-Schicht fehlen — keine verpassten-Ueberschuss-Schaetzung."
+          : "- Installed GW/GWh not provided — cannot quantify missed surplus against a fleet envelope."
       );
     }
     if (curtailmentStatus !== "loaded") {
       parts.push(
         language === "de"
           ? curtailmentStatus === "unavailable_not_configured"
-            ? "Abregelungsdaten sind in dieser Laufzeit nicht konfiguriert."
-            : "Abregelungsdaten sind derzeit upstream nicht verfuegbar."
+            ? "- Abregelungsdaten sind in dieser Laufzeit nicht konfiguriert."
+            : "- Abregelungsdaten sind derzeit upstream nicht verfuegbar."
           : curtailmentStatus === "unavailable_not_configured"
-            ? "Curtailment data is not configured in this runtime."
-            : "Curtailment data is currently unavailable upstream."
+            ? "- Curtailment data is not configured in this runtime."
+            : "- Curtailment data is currently unavailable upstream."
       );
     }
   }
-  return parts.length > 0 ? parts.join(" ") : null;
+  return parts.length > 0 ? parts.join("\n") : null;
 }
 
 export default function GermanyDayEnergyFlow({
@@ -874,8 +905,8 @@ export default function GermanyDayEnergyFlow({
           simulatedCtaObserved: "Zu Beobachtet wechseln",
           longTermEyebrow: "Langfristige Einordnung",
           longTermTitle: "Zwölf Monate · BESS-Analyse",
-          kpiBaselineSelfConsumptionEyebrow: "Eigenverbrauchsquote (jetzt)",
-          kpiBaselineSelfConsumptionSubtitle: "Erzeugung deckt Last direkt",
+          kpiCurtailmentEyebrow: "Abregelung",
+          kpiCurtailmentSubtitle: "Zusatzreihe; Nettolinie bleibt roh",
           kpiCapturedSurplusEyebrow: "Ladechance (aufgenommen)",
           kpiCapturedSurplusSubtitle: "Greedy-Simulation aus Ueberschuss + Abregelung",
           curtailmentStatusConfigured: "Curtailment geladen",
@@ -1011,8 +1042,8 @@ export default function GermanyDayEnergyFlow({
           simulatedCtaObserved: "Back to Observed mode",
           longTermEyebrow: "Long-term view",
           longTermTitle: "12-month BESS analysis",
-          kpiBaselineSelfConsumptionEyebrow: "Self-consumption rate (baseline)",
-          kpiBaselineSelfConsumptionSubtitle: "Gen meets load directly",
+          kpiCurtailmentEyebrow: "Curtailment",
+          kpiCurtailmentSubtitle: "Aux feed; raw net stays unchanged",
           kpiCapturedSurplusEyebrow: "Charge opportunity absorbed",
           kpiCapturedSurplusSubtitle: "Greedy simulation from surplus + curtailment",
           curtailmentStatusConfigured: "Curtailment loaded",
@@ -1599,6 +1630,10 @@ export default function GermanyDayEnergyFlow({
       missedOk && absorption
         ? `${pctFormatter.format((absorption.missedSurplusEnergyMwh / absorption.grossChargeOpportunityEnergyMwh) * 100)}% · ${language === "de" ? "der Ladechance" : "of charge opportunity"}`
         : undefined;
+    const curtailmentPctStr =
+      absorption && absorption.grossChargeOpportunityEnergyMwh > 1e-6
+        ? `${pctFormatter.format((absorption.curtailedEnergyMwh / absorption.grossChargeOpportunityEnergyMwh) * 100)}% · ${language === "de" ? "der Ladechance" : "of charge opportunity"}`
+        : curtailmentStatusLabel;
 
     return [
       {
@@ -1629,13 +1664,15 @@ export default function GermanyDayEnergyFlow({
       },
       {
         accent: "sky" as const,
-        eyebrow: t.kpiBaselineSelfConsumptionEyebrow,
+        eyebrow: t.kpiCurtailmentEyebrow,
         value:
-          baselineSelfConsumptionPct !== null
-            ? `${integerFormatter.format(Math.round(baselineSelfConsumptionPct))}%`
-            : "—",
-        hint: language === "de" ? "Gen trifft Last direkt" : "Direct gen-to-load contemporaneous pairing",
-        subtitle: t.kpiBaselineSelfConsumptionSubtitle,
+          flow.curtailmentStatus === "loaded" && absorption
+            ? formatEnergyFromMwh(absorption.curtailedEnergyMwh)
+            : language === "de"
+              ? "Keine Daten"
+              : "No data",
+        hint: curtailmentPctStr,
+        subtitle: t.kpiCurtailmentSubtitle,
       },
       {
         accent: "slate" as const,
@@ -1656,7 +1693,6 @@ export default function GermanyDayEnergyFlow({
     effectivePracticalCapacityMwh,
     fleetEnergyCapacityMwh,
     absorption,
-    baselineSelfConsumptionPct,
     curtailmentStatusLabel,
     t,
   ]);
@@ -1834,6 +1870,13 @@ export default function GermanyDayEnergyFlow({
             6
           )})`
         : monthLabelFormatter.format(new Date(`${selectedMonth}-01T00:00:00.000Z`));
+  const insightScopeLabel = formatInsightScopeLabel({
+    language,
+    selectorMode,
+    selectedDate,
+    selectedWeek,
+    selectedMonth,
+  });
   const nextDisabled =
     selectorMode === "day"
       ? selectedDate >= todayKey
@@ -1867,6 +1910,7 @@ export default function GermanyDayEnergyFlow({
   const heuristicInsightParagraph = deriveGermanyFlowRuleBasedInsightText({
     language,
     modeSimulated: showSimulatedNet,
+    scopeLabel: insightScopeLabel,
     conservativeRecommendedMwh:
       selectedWindowRecommendation?.conservative?.recommendedEnergyMwh ?? null,
     absorption,
@@ -2530,7 +2574,7 @@ export default function GermanyDayEnergyFlow({
                 {insightPanelTitle}
               </p>
             </div>
-            <p className="mt-2 text-sm leading-relaxed text-slate-800 dark:text-slate-100">
+            <p className="mt-2 text-sm leading-relaxed whitespace-pre-line text-slate-800 dark:text-slate-100">
               {insightPanelBody}
             </p>
           </div>

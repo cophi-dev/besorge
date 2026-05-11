@@ -289,6 +289,17 @@ export function SiteShell({ children }: SiteShellProps) {
                     Fraunhofer ISE
                   </a>
                 </li>
+                <li>
+                  <a
+                    href={language === "de" ? "https://www.netztransparenz.de/de-de/WebAPI" : "https://www.netztransparenz.de/en/WebAPI"}
+                    className="hover:underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Netztransparenz.de
+                  </a>{" "}
+                  {language === "de" ? "(Abregelung / Redispatch)" : "(Curtailment / redispatch)"}
+                </li>
               </ul>
             </div>
             <div>

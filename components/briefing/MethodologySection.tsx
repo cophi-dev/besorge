@@ -25,7 +25,8 @@ export function MethodologySection({ language }: MethodologySectionProps) {
             "Taegliche Story-/Briefing-Zahlen beziehen sich auf den gesamten Berlin-Kalendertag; KPIs unterhalb des Deutschland-Charts verwenden das aktuell gewaehlte Chart-Fenster (Auswahl).",
           kpiVsChart:
             "Anteile im simulierten Modus nutzen dieselbe Greedy-Schicht wie die Chart-Simulation (Balanced-Leistungsgrenze; Start-SoC aus verketteten Vortagen soweit Daten da sind). Die Aufnahmequote bezieht sich auf die gesamte Ladechance, also Überschuss plus Curtailment, wenn diese Zusatzreihe vorhanden ist.",
-          sources: "Primärquelle: Energy-Charts.info (Fraunhofer ISE) — siehe Footer.",
+          sources:
+            "Quellen: Energy-Charts.info (Fraunhofer ISE) fuer die strukturelle Viertelstunden-Spur und Netztransparenz.de fuer Abregelungs-/Redispatch-Zusatzdaten — siehe Footer.",
         }
       : {
           title: "Methodology & assumptions",
@@ -44,7 +45,8 @@ export function MethodologySection({ language }: MethodologySectionProps) {
             "The daily briefing story uses the full Berlin calendar day; KPIs under the Germany chart use the currently selected chart window.",
           kpiVsChart:
             "In simulated mode, the displayed shares use the same greedy walk as the chart (balanced power cap; starting SoC stitched from prior days when those series load). The absorbed share refers to total charge opportunity, i.e. structural surplus plus curtailment when present.",
-          sources: "Primary source: Energy-Charts.info (Fraunhofer ISE) — see footer.",
+          sources:
+            "Sources: Energy-Charts.info (Fraunhofer ISE) for the structural quarter-hour trace and Netztransparenz.de for curtailment / redispatch auxiliary data — see footer.",
         };
 
   return (
