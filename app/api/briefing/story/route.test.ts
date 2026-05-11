@@ -59,6 +59,9 @@ const baseContext: MorningBriefingContext = {
   pointFractionOfDay: 0.85,
   samplePoints: 82,
   netStructuralBalanceGwh: -47.1,
+  curtailedEnergyGwh: 3.4,
+  curtailmentSlotFractionOfSampled: 1,
+  curtailmentStatus: "loaded",
   dayShape: sampleBriefingDayShape,
   fleet: { powerGw: 18.3, capacityGwh: 27.9 },
   simulated: {
@@ -81,7 +84,7 @@ const llmStory = {
   narrative:
     "Net generation trails demand by 47.1 GWh alongside the sharper band signals already listed above.",
   counterfactual:
-    "A right-sized 18.4 GWh / 9.2 GW BESS would have cut summed absolute structural imbalance by ~31%, absorbing ~47% of gross surplus energy and meeting ~22% of gross deficit energy from storage.",
+    "A right-sized 18.4 GWh / 9.2 GW BESS would have cut summed absolute structural imbalance by ~31%, absorbing ~47% of gross charge opportunity and meeting ~22% of gross deficit energy from storage.",
   dataAsOfNote: "Based on the first 85% of today's quarter-hours.",
 };
 
@@ -143,7 +146,7 @@ describe("/api/briefing/story", () => {
     expect(json.story.headline).toMatch(/Published data imply|ver\u00f6ffentlichten Reihen/i);
     expect(json.story.counterfactual).toMatch(/18\.4 GWh/);
     expect(json.story.counterfactual).toMatch(/9\.2 GW/);
-    expect(json.story.counterfactual).toMatch(/gross surplus energy/i);
+    expect(json.story.counterfactual).toMatch(/gross charge opportunity|Ladechance/i);
     expect(json.story.counterfactual).toMatch(/gross deficit energy/i);
     expect(json.story.dataAsOfNote).toMatch(/85%/);
     expect(Array.isArray(json.story.insights)).toBe(true);

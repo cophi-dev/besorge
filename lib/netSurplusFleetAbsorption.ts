@@ -6,14 +6,19 @@ export type NetSurplusSlotInput = {
   totalGenerationMw: number;
   loadMw: number;
   timestampIso?: string;
+  curtailmentMw?: number | null;
 };
 
 export type NetSurplusFleetAbsorptionResult = {
   /** Σ max(0, gen − load) × ¼ h (MWh) over the slot series. */
   grossSurplusEnergyMwh: number;
+  /** Σ curtailed renewable energy that could charge storage, MWh. */
+  curtailedEnergyMwh: number;
+  /** Structural surplus plus curtailed energy, MWh. */
+  grossChargeOpportunityEnergyMwh: number;
   /** Energy that could enter an empty fleet under power + energy caps (MWh). */
   absorbedEnergyMwh: number;
-  /** Gross minus absorbed — surplus energy that hits power or SOC ceiling (MWh). */
+  /** Charge opportunity not absorbed because the fleet hits power and/or SOC ceilings. */
   missedSurplusEnergyMwh: number;
   endSocMwh: number;
   /** inferred SoC (% of nameplate fleet energy) after each quarter-hour (same length as `slots`). */
@@ -41,11 +46,13 @@ export function computeCyclingFleetSurplusAbsorption(
   });
 
   let grossSurplusEnergyMwh = 0;
+  let curtailedEnergyMwh = 0;
   let absorbedEnergyMwh = 0;
 
   for (let i = 0; i < slots.length; i++) {
     const netMw = slots[i].totalGenerationMw - slots[i].loadMw;
     grossSurplusEnergyMwh += Math.max(0, netMw) * QUARTER_HOUR_H;
+    curtailedEnergyMwh += Math.max(0, slots[i].curtailmentMw ?? 0) * QUARTER_HOUR_H;
     absorbedEnergyMwh += (dispatchSeries[i]?.chargeMw ?? 0) * QUARTER_HOUR_H;
   }
 
@@ -59,8 +66,10 @@ export function computeCyclingFleetSurplusAbsorption(
 
   return {
     grossSurplusEnergyMwh,
+    curtailedEnergyMwh,
+    grossChargeOpportunityEnergyMwh: grossSurplusEnergyMwh + curtailedEnergyMwh,
     absorbedEnergyMwh,
-    missedSurplusEnergyMwh: Math.max(0, grossSurplusEnergyMwh - absorbedEnergyMwh),
+    missedSurplusEnergyMwh: Math.max(0, grossSurplusEnergyMwh + curtailedEnergyMwh - absorbedEnergyMwh),
     endSocMwh,
     inferredFleetSocPctSeries,
   };
@@ -96,18 +105,26 @@ export function computeNetSurplusFleetAbsorption(
       ? Math.min(energyCapMwh, Math.max(0, options?.initialSocMwh ?? 0))
       : 0;
   let grossSurplusEnergyMwh = 0;
+  let curtailedEnergyMwh = 0;
   let absorbedEnergyMwh = 0;
   const inferredFleetSocPctSeries: number[] = [];
 
   for (const s of slots) {
     const netMw = s.totalGenerationMw - s.loadMw;
     const slotSurplusMwh = Math.max(0, netMw) * QUARTER_HOUR_H;
+    const slotCurtailedMwh = Math.max(0, s.curtailmentMw ?? 0) * QUARTER_HOUR_H;
+    const slotChargeOpportunityMwh = slotSurplusMwh + slotCurtailedMwh;
     grossSurplusEnergyMwh += slotSurplusMwh;
+    curtailedEnergyMwh += slotCurtailedMwh;
 
     let chargeMwh = 0;
-    if (slotSurplusMwh > 0 && energyCapMwh !== null) {
+    if (slotChargeOpportunityMwh > 0 && energyCapMwh !== null) {
       const headroomMwh = energyCapMwh - socMwh;
-      chargeMwh = Math.min(slotSurplusMwh, powerCapMwhPerSlot, Math.max(0, headroomMwh));
+      chargeMwh = Math.min(
+        slotChargeOpportunityMwh,
+        powerCapMwhPerSlot,
+        Math.max(0, headroomMwh)
+      );
       socMwh += chargeMwh;
     }
     absorbedEnergyMwh += chargeMwh;
@@ -119,8 +136,10 @@ export function computeNetSurplusFleetAbsorption(
 
   return {
     grossSurplusEnergyMwh,
+    curtailedEnergyMwh,
+    grossChargeOpportunityEnergyMwh: grossSurplusEnergyMwh + curtailedEnergyMwh,
     absorbedEnergyMwh,
-    missedSurplusEnergyMwh: grossSurplusEnergyMwh - absorbedEnergyMwh,
+    missedSurplusEnergyMwh: grossSurplusEnergyMwh + curtailedEnergyMwh - absorbedEnergyMwh,
     endSocMwh: socMwh,
     inferredFleetSocPctSeries,
   };

@@ -3,6 +3,10 @@ import { z } from "zod";
 import { getBerlinDateKeyFromUnixSeconds as getBerlinDateKey } from "@/lib/berlinCalendar";
 import { computeEconomics, defaultEconomicsAssumptions } from "@/lib/bessEconomics";
 import { createLogger } from "@/lib/debug";
+import {
+  getDesignatedCurtailmentMwByTimestampForBerlinRange,
+  hasNetztransparenzCurtailmentConfig,
+} from "@/lib/netztransparenzApi";
 import { computeCoverageAtCapacityMwh, computeLogicalBessRecommendation } from "@/lib/optimalBessCapacity";
 import type {
   GermanyEnergyFlowBerlinRange,
@@ -432,6 +436,8 @@ export type GermanyDispatchSlot = {
   totalGenerationMw: number;
   /** Renewable generation in MW for this slot, null when unavailable. */
   renewableGenerationMw: number | null;
+  /** Optional quarter-hour curtailed renewable power from Netztransparenz, MW. */
+  curtailmentMw?: number | null;
 };
 
 export type GermanyDispatchSlotsResponse = {
@@ -445,6 +451,8 @@ export type GermanyDispatchSlotsResponse = {
   source: "energy-charts.total_power";
   /** Quarter-hour slots in chronological order. */
   slots: GermanyDispatchSlot[];
+  /** Whether curtailment data was merged, missing by config, or missing upstream. */
+  curtailmentStatus?: "loaded" | "unavailable_not_configured" | "unavailable_upstream";
   /** Present when the series was built for a named multi-day or day-partial window. */
   period?: GermanyEnergyFlowPeriod;
   rangeStartBerlin?: string;
@@ -1162,9 +1170,25 @@ const buildGermanyDispatchSlotsForIndices = (
       loadMw,
       totalGenerationMw: sumDomesticGenerationMw(totalPower.production_types, index),
       renewableGenerationMw: renewableGenerationMwForSlot,
+      curtailmentMw: null,
     });
   }
   return slots;
+};
+
+const attachCurtailmentToDispatchResponse = (
+  response: GermanyDispatchSlotsResponse,
+  curtailmentByTimestamp: Map<string, number> | null,
+  curtailmentStatus: GermanyDispatchSlotsResponse["curtailmentStatus"]
+): GermanyDispatchSlotsResponse => {
+  return {
+    ...response,
+    curtailmentStatus,
+    slots: response.slots.map((slot) => ({
+      ...slot,
+      curtailmentMw: curtailmentByTimestamp?.get(slot.timestampIso) ?? null,
+    })),
+  };
 };
 
 const extractGermanyDispatchSlotsFromTotalPower = (
@@ -1391,11 +1415,20 @@ export const getGermanyEnergyFlowForBerlinRange = async (
   const fetchStart = totalPowerFetchStartDateForRange(range);
   const fetchEnd = formatCalendarDateBerlin(now);
   const path = getGermanyTotalPowerPathForCalendarRange(fetchStart, fetchEnd);
-  const totalPower = await fetchJson(path, totalPowerResponseSchema, {
-    allowStaleOnFailure: true,
-  });
+  const [totalPower, curtailmentByTimestamp] = await Promise.all([
+    fetchJson(path, totalPowerResponseSchema, {
+      allowStaleOnFailure: true,
+    }),
+    getDesignatedCurtailmentMwByTimestampForBerlinRange(range).catch((error) => {
+      log("curtailment fetch failed for flow range %o", {
+        range: { startKey: range.startKey, endKey: range.endKey, period: range.period },
+        error,
+      });
+      return null;
+    }),
+  ]);
   const expected = expectedQuarterHoursInFlowRange(range, now);
-  return extractGermanyDispatchSlotsForBerlinCalendarRange(totalPower, {
+  const flow = extractGermanyDispatchSlotsForBerlinCalendarRange(totalPower, {
     startKey: range.startKey,
     endKey: range.endKey,
     capSlotsAtNow: range.capSlotsAtNow,
@@ -1403,6 +1436,13 @@ export const getGermanyEnergyFlowForBerlinRange = async (
     expectedQuarterHours: expected,
     period: range.period,
   });
+  const curtailmentStatus =
+    curtailmentByTimestamp !== null
+      ? ("loaded" as const)
+      : hasNetztransparenzCurtailmentConfig()
+        ? ("unavailable_upstream" as const)
+        : ("unavailable_not_configured" as const);
+  return flow ? attachCurtailmentToDispatchResponse(flow, curtailmentByTimestamp, curtailmentStatus) : null;
 };
 
 const TRAILING_BESS_RECOMMENDATION_LOOKBACK_DAYS = 365;
@@ -1414,11 +1454,23 @@ export const getGermanyBessRecommendationTrailingWindow = async (
   const endKey = formatCalendarDateBerlin(now);
   const startDate = new Date(now.getTime() - lookbackDays * 86_400_000);
   const startKey = formatCalendarDateBerlin(startDate);
-  const totalPower = await fetchJson(
-    getGermanyTotalPowerPathForCalendarRange(startKey, endKey),
-    totalPowerResponseSchema,
-    { allowStaleOnFailure: true }
-  );
+  const range = {
+    startKey,
+    endKey,
+    period: `lookback_${lookbackDays}d`,
+  };
+  const [totalPower, curtailmentByTimestamp] = await Promise.all([
+    fetchJson(getGermanyTotalPowerPathForCalendarRange(startKey, endKey), totalPowerResponseSchema, {
+      allowStaleOnFailure: true,
+    }),
+    getDesignatedCurtailmentMwByTimestampForBerlinRange(range).catch((error) => {
+      log("curtailment fetch failed for recommendation window %o", {
+        range: { startKey, endKey, lookbackDays },
+        error,
+      });
+      return null;
+    }),
+  ]);
 
   const loadSeries = findSeriesOrThrow(
     totalPower.production_types,
@@ -1438,9 +1490,17 @@ export const getGermanyBessRecommendationTrailingWindow = async (
         timestampIso: new Date(ts * 1000).toISOString(),
         loadMw,
         totalGenerationMw: sumDomesticGenerationMw(totalPower.production_types, index),
+        curtailmentMw: curtailmentByTimestamp?.get(new Date(ts * 1000).toISOString()) ?? null,
       };
     })
-    .filter((entry): entry is { timestampIso: string; loadMw: number; totalGenerationMw: number } => entry !== null);
+    .filter(
+      (entry): entry is {
+        timestampIso: string;
+        loadMw: number;
+        totalGenerationMw: number;
+        curtailmentMw: number | null;
+      } => entry !== null
+    );
 
   const recommendation = computeLogicalBessRecommendation(slots);
   const balancedTier = recommendation.tiers.find((entry) => entry.label === "balanced") ?? null;
@@ -1503,18 +1563,34 @@ export const getGermanyBessRecommendationTrailingWindow = async (
  */
 export const getGermanyTodaysDispatchSlots =
   async (): Promise<GermanyDispatchSlotsResponse> => {
-    const totalPower = await fetchJson(
-      getGermanyTotalPowerPath(),
-      totalPowerResponseSchema,
-      { allowStaleOnFailure: true }
-    );
+    const now = new Date();
+    const todayKey = formatCalendarDateBerlin(now);
+    const range = {
+      startKey: todayKey,
+      endKey: todayKey,
+      period: "today",
+    };
+    const [totalPower, curtailmentByTimestamp] = await Promise.all([
+      fetchJson(
+        getGermanyTotalPowerPath(),
+        totalPowerResponseSchema,
+        { allowStaleOnFailure: true }
+      ),
+      getDesignatedCurtailmentMwByTimestampForBerlinRange(range).catch(() => null),
+    ]);
     const flow = extractGermanyDispatchSlotsFromTotalPower(totalPower);
     if (!flow) {
       throw new Error(
         "No usable quarter-hour residual-load slots available from Energy-Charts."
       );
     }
-    return flow;
+    const curtailmentStatus =
+      curtailmentByTimestamp !== null
+        ? ("loaded" as const)
+        : hasNetztransparenzCurtailmentConfig()
+          ? ("unavailable_upstream" as const)
+          : ("unavailable_not_configured" as const);
+    return attachCurtailmentToDispatchResponse(flow, curtailmentByTimestamp, curtailmentStatus);
   };
 
 export const getGermanyAssessmentContext = async (): Promise<GermanyAssessmentContext> => {

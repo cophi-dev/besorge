@@ -26,6 +26,17 @@ describe("computeOptimalSurplusDeficitCapacityMwh", () => {
     expect(result.endSocMwh).toBeCloseTo(100, 6);
     expect(result.servedDeficitEnergyMwh).toBeCloseTo(175, 6);
   });
+
+  it("treats curtailment as extra charge opportunity without changing structural deficits", () => {
+    const slots = [
+      { totalGenerationMw: 1000, loadMw: 1000, curtailmentMw: 400 }, // +100 MWh curtailed only
+      { totalGenerationMw: 600, loadMw: 1000 }, // -100 MWh deficit
+    ];
+    const result = computeOptimalSurplusDeficitCapacityMwh(slots);
+    expect(result.optimalCapacityMwh).toBeCloseTo(100, 6);
+    expect(result.servedDeficitEnergyMwh).toBeCloseTo(100, 6);
+    expect(result.endSocMwh).toBeCloseTo(0, 6);
+  });
 });
 
 describe("computePracticalDailyCycleCapacityMwh", () => {
@@ -104,6 +115,8 @@ describe("computeCoverageAtCapacityMwh", () => {
     expect(result.servedDeficitEnergyMwh).toBeCloseTo(100, 6);
     expect(result.absorbedSurplusShare).toBeCloseTo(0.5, 6);
     expect(result.servedDeficitShare).toBeCloseTo(0.5, 6);
+    expect(result.totalCurtailmentEnergyMwh).toBeCloseTo(0, 6);
+    expect(result.totalChargeOpportunityEnergyMwh).toBeCloseTo(200, 6);
   });
 
   it("can reset SoC at Berlin day boundaries", () => {
@@ -134,6 +147,20 @@ describe("computeCoverageAtCapacityMwh", () => {
     expect(emptyStart.absorbedSurplusShare).toBeCloseTo(1, 6);
     expect(halfStart.absorbedSurplusEnergyMwh).toBeCloseTo(50, 6);
     expect(halfStart.absorbedSurplusShare).toBeCloseTo(0.5, 6);
+  });
+
+  it("includes curtailment in absorbed charge-opportunity share", () => {
+    const slots = [
+      { totalGenerationMw: 1000, loadMw: 1000, curtailmentMw: 400 }, // +100 MWh extra charge opportunity
+      { totalGenerationMw: 600, loadMw: 1000 }, // -100 MWh
+    ];
+    const result = computeCoverageAtCapacityMwh(slots, 50, { maxPowerMw: 400 });
+    expect(result.totalSurplusEnergyMwh).toBeCloseTo(0, 6);
+    expect(result.totalCurtailmentEnergyMwh).toBeCloseTo(100, 6);
+    expect(result.totalChargeOpportunityEnergyMwh).toBeCloseTo(100, 6);
+    expect(result.absorbedSurplusEnergyMwh).toBeCloseTo(50, 6);
+    expect(result.absorbedSurplusShare).toBeCloseTo(0.5, 6);
+    expect(result.servedDeficitEnergyMwh).toBeCloseTo(50, 6);
   });
 });
 
@@ -212,6 +239,12 @@ describe("simulateAdjustedNetMwAtCapacity", () => {
     const slots = [{ totalGenerationMw: 1400, loadMw: 1000 }]; // +400 MW
     const adjusted = simulateAdjustedNetMwAtCapacity(slots, 500, { maxPowerMw: 100 });
     expect(adjusted).toEqual([300]);
+  });
+
+  it("does not distort the structural net trace when charging from curtailed energy", () => {
+    const slots = [{ totalGenerationMw: 1000, loadMw: 1000, curtailmentMw: 400 }];
+    const adjusted = simulateAdjustedNetMwAtCapacity(slots, 500, { maxPowerMw: 400 });
+    expect(adjusted).toEqual([0]);
   });
 });
 

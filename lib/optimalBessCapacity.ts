@@ -4,6 +4,11 @@ export type OptimalCapacitySlotInput = {
   timestampIso?: string;
   totalGenerationMw: number;
   loadMw: number;
+  /**
+   * Additional curtailed renewable power that could charge storage in this slot
+   * without changing the published structural net (`generation - load`) trace.
+   */
+  curtailmentMw?: number | null;
 };
 
 export type PracticalDispatchSlot = {
@@ -56,6 +61,16 @@ const resolvePowerCapMwhPerSlot = (maxPowerMw?: number | null): number =>
     ? maxPowerMw * QUARTER_HOUR_H
     : Number.POSITIVE_INFINITY;
 
+const structuralNetMwhForSlot = (slot: OptimalCapacitySlotInput): number =>
+  (slot.totalGenerationMw - slot.loadMw) * QUARTER_HOUR_H;
+
+const curtailedChargeOpportunityMwhForSlot = (slot: OptimalCapacitySlotInput): number => {
+  const curtailedMw = slot.curtailmentMw;
+  return curtailedMw !== null && curtailedMw !== undefined && Number.isFinite(curtailedMw) && curtailedMw > 0
+    ? curtailedMw * QUARTER_HOUR_H
+    : 0;
+};
+
 /**
  * "Optimal" energy capacity for a perfect surplus-following BESS over the given slot series:
  * - Start empty (SoC = 0).
@@ -80,15 +95,14 @@ export function computeOptimalSurplusDeficitCapacityMwh(
   let servedDeficitEnergyMwh = 0;
 
   for (const s of slots) {
-    const netMw = s.totalGenerationMw - s.loadMw;
-    const netMwh = netMw * QUARTER_HOUR_H;
-    if (netMwh >= 0) {
-      socMwh += netMwh;
-    } else {
+    const netMwh = structuralNetMwhForSlot(s);
+    const curtailedMwh = curtailedChargeOpportunityMwhForSlot(s);
+    if (netMwh < 0) {
       const dischargeMwh = Math.min(socMwh, -netMwh);
       servedDeficitEnergyMwh += dischargeMwh;
-      socMwh = Math.max(0, socMwh + netMwh);
+      socMwh = Math.max(0, socMwh - dischargeMwh);
     }
+    socMwh += Math.max(0, netMwh) + curtailedMwh;
     if (socMwh > maxSocMwh) {
       maxSocMwh = socMwh;
     }
@@ -182,8 +196,16 @@ export function computeDailyBessSizingProfiles(
     let requiredDischargePowerMw = 0;
     for (const s of daySlots) {
       const netMw = s.totalGenerationMw - s.loadMw;
-      if (netMw > 0 && netMw > requiredChargePowerMw) {
-        requiredChargePowerMw = netMw;
+      const availableChargeMw =
+        Math.max(0, netMw) +
+        (s.curtailmentMw !== null &&
+        s.curtailmentMw !== undefined &&
+        Number.isFinite(s.curtailmentMw) &&
+        s.curtailmentMw > 0
+          ? s.curtailmentMw
+          : 0);
+      if (availableChargeMw > requiredChargePowerMw) {
+        requiredChargePowerMw = availableChargeMw;
       }
       if (netMw < 0) {
         const deficitMw = -netMw;
@@ -252,6 +274,8 @@ export function computeCoverageAtCapacityMwh(
   options?: CoverageAtCapacityOptions
 ): {
   totalSurplusEnergyMwh: number;
+  totalCurtailmentEnergyMwh: number;
+  totalChargeOpportunityEnergyMwh: number;
   absorbedSurplusEnergyMwh: number;
   totalDeficitEnergyMwh: number;
   servedDeficitEnergyMwh: number;
@@ -263,6 +287,8 @@ export function computeCoverageAtCapacityMwh(
   let socMwh = Math.min(cap, Math.max(0, options?.initialSocMwh ?? 0));
   let activeDay: string | null = null;
   let totalSurplusEnergyMwh = 0;
+  let totalCurtailmentEnergyMwh = 0;
+  let totalChargeOpportunityEnergyMwh = 0;
   let absorbedSurplusEnergyMwh = 0;
   let totalDeficitEnergyMwh = 0;
   let servedDeficitEnergyMwh = 0;
@@ -277,28 +303,38 @@ export function computeCoverageAtCapacityMwh(
         activeDay = day;
       }
     }
-    const netMwh = (s.totalGenerationMw - s.loadMw) * QUARTER_HOUR_H;
-    if (netMwh >= 0) {
-      totalSurplusEnergyMwh += netMwh;
-      const charge = Math.min(cap - socMwh, netMwh, powerCapMwhPerSlot);
-      socMwh += Math.max(0, charge);
-      absorbedSurplusEnergyMwh += Math.max(0, charge);
-    } else {
+    const netMwh = structuralNetMwhForSlot(s);
+    const curtailedMwh = curtailedChargeOpportunityMwhForSlot(s);
+    const structuralSurplusMwh = Math.max(0, netMwh);
+    const totalChargeOpportunityMwh = structuralSurplusMwh + curtailedMwh;
+    totalSurplusEnergyMwh += structuralSurplusMwh;
+    totalCurtailmentEnergyMwh += curtailedMwh;
+    totalChargeOpportunityEnergyMwh += totalChargeOpportunityMwh;
+    if (netMwh < 0) {
       const deficit = -netMwh;
       totalDeficitEnergyMwh += deficit;
       const discharge = Math.min(socMwh, deficit, powerCapMwhPerSlot);
       socMwh -= discharge;
       servedDeficitEnergyMwh += discharge;
     }
+    if (totalChargeOpportunityMwh > 0) {
+      const charge = Math.min(cap - socMwh, totalChargeOpportunityMwh, powerCapMwhPerSlot);
+      socMwh += Math.max(0, charge);
+      absorbedSurplusEnergyMwh += Math.max(0, charge);
+    }
   }
 
   return {
     totalSurplusEnergyMwh,
+    totalCurtailmentEnergyMwh,
+    totalChargeOpportunityEnergyMwh,
     absorbedSurplusEnergyMwh,
     totalDeficitEnergyMwh,
     servedDeficitEnergyMwh,
     absorbedSurplusShare:
-      totalSurplusEnergyMwh > 0 ? absorbedSurplusEnergyMwh / totalSurplusEnergyMwh : 0,
+      totalChargeOpportunityEnergyMwh > 0
+        ? absorbedSurplusEnergyMwh / totalChargeOpportunityEnergyMwh
+        : 0,
     servedDeficitShare:
       totalDeficitEnergyMwh > 0 ? servedDeficitEnergyMwh / totalDeficitEnergyMwh : 0,
   };
@@ -327,13 +363,15 @@ export function simulateSocPctAtCapacityMwh(
         activeDay = day;
       }
     }
-    const netMwh = (s.totalGenerationMw - s.loadMw) * QUARTER_HOUR_H;
-    if (netMwh >= 0) {
-      const chargeMwh = Math.min(netMwh, powerCapMwhPerSlot);
-      socMwh = Math.min(cap, socMwh + chargeMwh);
-    } else {
+    const netMwh = structuralNetMwhForSlot(s);
+    const curtailedMwh = curtailedChargeOpportunityMwhForSlot(s);
+    if (netMwh < 0) {
       const dischargeMwh = Math.min(-netMwh, powerCapMwhPerSlot);
       socMwh = Math.max(0, socMwh - dischargeMwh);
+    }
+    if (Math.max(0, netMwh) + curtailedMwh > 0) {
+      const chargeMwh = Math.min(Math.max(0, netMwh) + curtailedMwh, powerCapMwhPerSlot);
+      socMwh = Math.min(cap, socMwh + chargeMwh);
     }
     series.push((socMwh / cap) * 100);
   }
@@ -362,16 +400,26 @@ export function simulateAdjustedNetMwAtCapacity(
       }
     }
 
-    const netMwh = (s.totalGenerationMw - s.loadMw) * QUARTER_HOUR_H;
-    if (netMwh >= 0) {
-      const charge = Math.min(Math.max(0, cap - socMwh), netMwh, powerCapMwhPerSlot);
-      socMwh += charge;
-      adjusted.push((netMwh - charge) / QUARTER_HOUR_H);
-    } else {
+    const netMwh = structuralNetMwhForSlot(s);
+    const curtailedMwh = curtailedChargeOpportunityMwhForSlot(s);
+    if (netMwh < 0) {
       const deficit = -netMwh;
       const discharge = Math.min(socMwh, deficit, powerCapMwhPerSlot);
       socMwh -= discharge;
       adjusted.push((-deficit + discharge) / QUARTER_HOUR_H);
+      if (curtailedMwh > 0) {
+        const curtailedCharge = Math.min(Math.max(0, cap - socMwh), curtailedMwh, powerCapMwhPerSlot);
+        socMwh += curtailedCharge;
+      }
+    } else {
+      const structuralCharge = Math.min(Math.max(0, cap - socMwh), netMwh, powerCapMwhPerSlot);
+      socMwh += structuralCharge;
+      const remainingHeadroom = Math.max(0, cap - socMwh);
+      const remainingPower = Math.max(0, powerCapMwhPerSlot - structuralCharge);
+      if (curtailedMwh > 0 && remainingHeadroom > 0 && remainingPower > 0) {
+        socMwh += Math.min(remainingHeadroom, curtailedMwh, remainingPower);
+      }
+      adjusted.push((netMwh - structuralCharge) / QUARTER_HOUR_H);
     }
   }
   return adjusted;
@@ -399,17 +447,20 @@ export function simulatePracticalDispatchAtCapacity(
       }
     }
 
-    const netMwh = (s.totalGenerationMw - s.loadMw) * QUARTER_HOUR_H;
+    const netMwh = structuralNetMwhForSlot(s);
+    const curtailedMwh = curtailedChargeOpportunityMwhForSlot(s);
     let chargeMwh = 0;
     let dischargeMwh = 0;
 
-    if (netMwh >= 0) {
-      chargeMwh = Math.min(Math.max(0, cap - socMwh), netMwh, powerCapMwhPerSlot);
-      socMwh += chargeMwh;
-    } else {
+    if (netMwh < 0) {
       const deficitMwh = -netMwh;
       dischargeMwh = Math.min(socMwh, deficitMwh, powerCapMwhPerSlot);
       socMwh -= dischargeMwh;
+    }
+    const totalChargeOpportunityMwh = Math.max(0, netMwh) + curtailedMwh;
+    if (totalChargeOpportunityMwh > 0) {
+      chargeMwh = Math.min(Math.max(0, cap - socMwh), totalChargeOpportunityMwh, powerCapMwhPerSlot);
+      socMwh += chargeMwh;
     }
 
     series.push({

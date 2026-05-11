@@ -26,6 +26,12 @@ const responseShape = z.object({
   retrievedAtIso: z.string(),
   context: z.object({
     netStructuralBalanceGwh: z.number(),
+    curtailedEnergyGwh: z.number().nullable().optional().default(null),
+    curtailmentSlotFractionOfSampled: z.number().optional().default(0),
+    curtailmentStatus: z
+      .enum(["loaded", "unavailable_not_configured", "unavailable_upstream"])
+      .optional()
+      .default("unavailable_upstream"),
     pointFractionOfDay: z.number(),
     samplePoints: z.number(),
     fleet: z.object({
@@ -99,6 +105,8 @@ const labels = {
     windowKicker: "Window story · Berlin",
     insightsLabel: "Today's signals",
     windowInsightsLabel: "Window signals",
+    snapshotLabel: "Data snapshot",
+    howToReadLabel: "How to read this window",
     analysisLabel: "Aether analysis",
     counterfactualLabel: "What an optimal BESS would have done",
     poweredBy: "Aether analyst (LLM)",
@@ -109,7 +117,7 @@ const labels = {
     windowError: "Could not draft the window analyst note.",
     retry: "Retry",
     asOfPrefix: "As of",
-    absorbedSurplusCaption: "Absorbed (gross surplus)",
+    absorbedSurplusCaption: "Absorbed (charge opportunity)",
     servedDeficitCaption: "Served (gross deficit)",
     gridImpactCaption: "Imbalance smoothing",
     kpiFootnote: "Same published quarter-hours as the signals above.",
@@ -118,7 +126,7 @@ const labels = {
     kpiHintGrid:
       "Share by which the modeled BESS reduces the sum of absolute per-slot structural net vs the unstored trace, for this window.",
     kpiHintAbsorbed:
-      "Modeled share of gross structural surplus energy (slots where generation exceeds load) stored in this window.",
+      "Modeled share of gross charge opportunity stored in this window: structural surplus plus curtailed renewable energy when curtailment data is available.",
     kpiHintServed:
       "Modeled share of gross structural deficit energy (slots where load exceeds generation) met from modeled storage discharge.",
     netBalanceLabel: "Net balance",
@@ -127,7 +135,11 @@ const labels = {
     peakHoursLabel: "Peak hours",
     peakHoursSubtitle: "surplus / deficit",
     fleetLabel: "Fleet context",
+    curtailedLabel: "Curtailment",
+    curtailedUnavailable: "Not configured",
+    curtailedUpstream: "Upstream unavailable",
     coverageLabel: "Coverage",
+    curtailedSubtitle: (pct: string) => `${pct} with curtailment MW`,
     renewableCoverageSubtitle: (pct: string) => `${pct} with renewable MW`,
     fleetSubtitle: (power: string, capacity: string) => `${power} GW / ${capacity} GWh`,
     modelCapacityLabel: "Modeled BESS",
@@ -138,6 +150,8 @@ const labels = {
     windowKicker: "Fenster-Story · Berlin",
     insightsLabel: "Heutige Signale",
     windowInsightsLabel: "Signale im Fenster",
+    snapshotLabel: "Datensnapshot",
+    howToReadLabel: "So liest du das Fenster",
     analysisLabel: "Aether-Analyse",
     counterfactualLabel: "Was ein optimaler BESS bewirkt hätte",
     poweredBy: "AETHER-Analyst (LLM)",
@@ -148,7 +162,7 @@ const labels = {
     windowError: "Fenster-Analystennotiz konnte nicht erstellt werden.",
     retry: "Erneut versuchen",
     asOfPrefix: "Stand",
-    absorbedSurplusCaption: "Aufgenommen (Brutto-\u00dcberschuss)",
+    absorbedSurplusCaption: "Aufgenommen (Ladechance)",
     servedDeficitCaption: "Gedeckt (Brutto-Defizit)",
     gridImpactCaption: "Netzentlastung (Modell)",
     kpiFootnote: "Gleiche ver\u00f6ffentlichte Viertelstunden wie die Signale oben.",
@@ -157,7 +171,7 @@ const labels = {
     kpiHintGrid:
       "Anteil, um den das modellierte BESS die Summe der Absolutbetr\u00e4ge der Viertelstunden-Nettos gegen\u00fcber der Rohspur im Fenster senkt.",
     kpiHintAbsorbed:
-      "Modellierter Anteil der Brutto-\u00dcberschussenergie (Slots Erzeugung > Last), der in diesem Fenster eingelagert werden k\u00f6nnte.",
+      "Modellierter Anteil der Ladechance in diesem Fenster: struktureller \u00dcberschuss plus abgeregelte erneuerbare Energie, sofern Curtailment-Daten vorliegen.",
     kpiHintServed:
       "Modellierter Anteil der Brutto-Defizitenergie (Slots Last > Erzeugung), der aus dem modellierten Speicher gedeckt werden k\u00f6nnte.",
     netBalanceLabel: "Nettobilanz",
@@ -166,7 +180,11 @@ const labels = {
     peakHoursLabel: "Spitzenstunden",
     peakHoursSubtitle: "\u00dcberschuss / Defizit",
     fleetLabel: "Flottenkontext",
+    curtailedLabel: "Abgeregelt",
+    curtailedUnavailable: "Nicht konfiguriert",
+    curtailedUpstream: "Upstream fehlt",
     coverageLabel: "Abdeckung",
+    curtailedSubtitle: (pct: string) => `${pct} mit Curtailment-MW`,
     renewableCoverageSubtitle: (pct: string) => `${pct} mit EE-MW`,
     fleetSubtitle: (power: string, capacity: string) => `${power} GW / ${capacity} GWh`,
     modelCapacityLabel: "Modell-BESS",
@@ -283,7 +301,13 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
       netBalance: fmtSignedGwh(data.context.netStructuralBalanceGwh),
       dayCore: fmtSignedGwh(data.context.dayShape.structuralNetGwhByWindow.dayCoreGwh),
       renewableNet: fmtSignedGwh(data.context.dayShape.renewableNetStructuralBalanceGwh),
+      hasRenewableNet: data.context.dayShape.renewableNetStructuralBalanceGwh !== null,
       renewableCoverage: fmt.format(data.context.dayShape.renewableSlotFractionOfSampled * 100),
+      curtailedEnergy:
+        data.context.curtailedEnergyGwh !== null
+          ? `${fmt.format(data.context.curtailedEnergyGwh)} GWh`
+          : "—",
+      curtailedCoverage: fmt.format(data.context.curtailmentSlotFractionOfSampled * 100),
       peakHours: `${fmtHour(data.context.dayShape.peakSurplusHourBerlin, "+")} / ${fmtHour(
         data.context.dayShape.peakDeficitHourBerlin,
         "−"
@@ -361,77 +385,105 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
           <h2 className="mt-3 text-[19px] leading-snug font-medium tracking-tight text-foreground md:text-[22px] [font-family:var(--font-heading)]">
             {data.story.headline}
           </h2>
+          <p className="mt-2 max-w-3xl text-[13px] leading-relaxed text-muted-foreground/95 md:text-[13.5px] dark:text-slate-300/90">
+            {data.story.narrative}
+          </p>
           {data.context.isMultiDayWindow ? (
-            <p className="mt-2 max-w-3xl text-[12px] leading-relaxed text-muted-foreground/95 md:text-[12.75px] dark:text-slate-400/95">
-              {language === "de" ? (
-                <>
-                  Die Nettobilanz ist die Summe (Erzeugung \u2212 Last) \u00fcber alle ver\u00f6ffentlichten Viertelstunden von{" "}
-                  <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> bis{" "}
-                  <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. Die drei
-                  Signale darunter zeigen, wo sich Spannung ballt\u2014sie sind keine drei Anteile, die sich zum Netto
-                  \u201ezur\u00fcckrechnen\u201c lassen.
-                </>
-              ) : (
-                <>
-                  Net balance is generation minus load summed over every published quarter-hour from{" "}
-                  <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> through{" "}
-                  <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. The three
-                  signals below show where stress concentrates—they are not three slices that should add back up to that
-                  headline net.
-                </>
-              )}
-            </p>
+            <div className="mt-3 rounded-xl border border-border/60 bg-background/55 px-4 py-3 dark:border-slate-600/45 dark:bg-slate-950/35">
+              <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+                {t.howToReadLabel}
+              </p>
+              <p className="mt-1.5 max-w-3xl text-[12px] leading-relaxed text-muted-foreground/95 md:text-[12.75px] dark:text-slate-400/95">
+                {language === "de" ? (
+                  <>
+                    Die Nettobilanz ist die Summe (Erzeugung \u2212 Last) \u00fcber alle ver\u00f6ffentlichten Viertelstunden von{" "}
+                    <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> bis{" "}
+                    <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. Die drei
+                    Signale darunter markieren die Belastungsschwerpunkte im Fenster, nicht drei Anteile eines zweiten
+                    Gesamt-Nettos.
+                  </>
+                ) : (
+                  <>
+                    Net balance is generation minus load summed over every published quarter-hour from{" "}
+                    <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> through{" "}
+                    <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. The three
+                    signals below mark where stress clusters inside that window, not three slices of a second total.
+                  </>
+                )}
+              </p>
+            </div>
           ) : null}
           {storyMetrics ? (
             <>
-              <div className="mt-4">
-                <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-                  {insightsLabelText}
-                </p>
+              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                 <div
-                  className="mt-2 grid grid-cols-2 gap-2.5 md:grid-cols-4"
+                  className="rounded-xl border border-border/65 bg-background/45 px-4 py-3 dark:border-slate-600/45 dark:bg-slate-950/35"
                   role="group"
                   aria-label={insightsLabelText}
                 >
-                  <StoryMetricTile
-                    label={t.netBalanceLabel}
-                    value={storyMetrics.netBalance}
-                    tone={data.context.netStructuralBalanceGwh >= 0 ? "positive" : "negative"}
-                  />
-                  <StoryMetricTile label={t.dayCoreLabel} value={storyMetrics.dayCore} tone="accent" />
-                  <StoryMetricTile
-                    label={t.renewableNetLabel}
-                    value={storyMetrics.renewableNet}
-                    subtitle={t.renewableCoverageSubtitle(storyMetrics.renewableCoverage)}
-                  />
-                  <StoryMetricTile
-                    label={t.peakHoursLabel}
-                    value={storyMetrics.peakHours}
-                    subtitle={t.peakHoursSubtitle}
-                  />
+                  <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+                    {insightsLabelText}
+                  </p>
+                  <ol className="mt-3 space-y-2.5">
+                    {data.story.insights.map((insight, index) => (
+                      <li key={`${index}-${insight}`} className="flex items-start gap-3">
+                        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/12 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-200">
+                          {index + 1}
+                        </span>
+                        <p className="min-w-0 text-[12.75px] leading-relaxed text-foreground/90 dark:text-slate-200/90">
+                          {insight}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <StoryMetaPill
-                    label={t.fleetLabel}
-                    value={t.fleetSubtitle(storyMetrics.fleetPower, storyMetrics.fleetCapacity)}
-                  />
-                  <StoryMetaPill label={t.coverageLabel} value={storyMetrics.coverage} />
-                </div>
-              </div>
 
-              <div className="mt-4 rounded-xl border border-border/65 bg-background/45 px-4 py-3 dark:border-slate-600/45 dark:bg-slate-950/35">
-                <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-                  {t.analysisLabel}
-                </p>
-                <p className="mt-1.5 max-w-3xl text-[12.75px] leading-relaxed text-muted-foreground/90 md:text-[13px] dark:text-slate-300/80">
-                  {data.story.narrative}
-                </p>
+                <div className="rounded-xl border border-border/65 bg-background/45 px-4 py-3 dark:border-slate-600/45 dark:bg-slate-950/35">
+                  <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+                    {t.snapshotLabel}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <StoryMetaPill label={t.netBalanceLabel} value={storyMetrics.netBalance} />
+                    <StoryMetaPill label={t.dayCoreLabel} value={storyMetrics.dayCore} />
+                    {storyMetrics.hasRenewableNet ? (
+                      <StoryMetaPill
+                        label={t.renewableNetLabel}
+                        value={`${storyMetrics.renewableNet} · ${t.renewableCoverageSubtitle(
+                          storyMetrics.renewableCoverage
+                        )}`}
+                      />
+                    ) : null}
+                    <StoryMetaPill label={t.peakHoursLabel} value={storyMetrics.peakHours} />
+                    <StoryMetaPill
+                      label={t.fleetLabel}
+                      value={t.fleetSubtitle(storyMetrics.fleetPower, storyMetrics.fleetCapacity)}
+                    />
+                    {data.context.curtailedEnergyGwh !== null ? (
+                      <StoryMetaPill
+                        label={t.curtailedLabel}
+                        value={`${storyMetrics.curtailedEnergy} · ${t.curtailedSubtitle(
+                          storyMetrics.curtailedCoverage
+                        )}`}
+                      />
+                    ) : data.context.curtailmentStatus !== "loaded" ? (
+                      <StoryMetaPill
+                        label={t.curtailedLabel}
+                        value={
+                          data.context.curtailmentStatus === "unavailable_not_configured"
+                            ? t.curtailedUnavailable
+                            : t.curtailedUpstream
+                        }
+                      />
+                    ) : null}
+                    <StoryMetaPill label={t.coverageLabel} value={storyMetrics.coverage} />
+                  </div>
+                </div>
               </div>
             </>
           ) : null}
 
           {headerNumbers ? (
-            <div className="mt-5">
+            <div className="mt-5 rounded-xl border border-emerald-200/65 bg-gradient-to-br from-emerald-50/80 via-background to-background px-4 py-4 dark:border-emerald-500/25 dark:from-emerald-500/10 dark:via-slate-950/40 dark:to-slate-950/35">
               <div className="flex items-center gap-2">
                 <Zap
                   className="size-3.5 text-emerald-700 dark:text-emerald-300"
@@ -441,13 +493,13 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
                   {t.counterfactualLabel}
                 </p>
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2.5 md:grid-cols-4">
-                <StoryMetricTile
+              <div className="mt-3 flex flex-wrap gap-2">
+                <StoryMetaPill
                   label={t.modelCapacityLabel}
-                  value={`${headerNumbers.capGwh} GWh`}
-                  subtitle={t.modelCapacitySubtitle(headerNumbers.pwGw)}
-                  tone="accent"
+                  value={`${headerNumbers.capGwh} GWh · ${t.modelCapacitySubtitle(headerNumbers.pwGw)}`}
                 />
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-3">
                 <StoryMetricTile
                   label={t.gridImpactCaption}
                   value={headerNumbers.gridPctText !== null ? `${headerNumbers.gridPctText}%` : "—"}

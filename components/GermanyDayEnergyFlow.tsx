@@ -68,12 +68,13 @@ const QUARTER_HOUR_H = 0.25;
 
 /**
  * Simulated chart palette: net (structural MW) vs BESS charge bars must not share the same hue.
- * Net = bright teal line (thin); charge = indigo bars; discharge = orange; SoC = green.
+ * Net = bright teal line (thin); charge = indigo bars; discharge = orange; curtailment = pink; SoC = green.
  */
 const SIM_CHART_NET_STROKE = "#2DD4BF"; // teal-400 — reads as “net / balance” line
 const SIM_CHART_SOC_STROKE = "#22C173";
 const SIM_CHART_CHARGE_FILL = "#6366F1"; // indigo-500 — clearly separate from net + SoC
 const SIM_CHART_DISCHARGE_FILL = "#F97316"; // orange-500
+const OBSERVED_CURTAILMENT_FILL = "#EC4899"; // pink-500 — auxiliary charge opportunity, not net
 
 const timeFormatterSingleDay = new Intl.DateTimeFormat("de-DE", {
   timeZone: "Europe/Berlin",
@@ -109,6 +110,7 @@ const germanyDispatchSlotSchema = z.object({
   loadMw: z.number(),
   totalGenerationMw: z.number(),
   renewableGenerationMw: z.number().nullable(),
+  curtailmentMw: z.number().nullable().optional().default(null),
 });
 
 const germanyEnergyFlowApiSchema = z.object({
@@ -117,6 +119,10 @@ const germanyEnergyFlowApiSchema = z.object({
   pointFractionOfDay: z.number(),
   source: z.literal("energy-charts.total_power"),
   slots: z.array(germanyDispatchSlotSchema),
+  curtailmentStatus: z
+    .enum(["loaded", "unavailable_not_configured", "unavailable_upstream"])
+    .optional()
+    .default("unavailable_upstream"),
   period: germanyEnergyFlowPeriodSchema.optional(),
   rangeStartBerlin: z.string().optional(),
   rangeEndBerlin: z.string().optional(),
@@ -214,6 +220,7 @@ type ChartRow = GermanyDispatchSlotsResponse["slots"][number] & {
   /** Domestic generation − load (positive = surplus MW, negative = deficit). */
   netBalanceMw: number;
   netAfterPracticalBessMw: number;
+  curtailmentDisplayMw: number;
   inferredFleetSocPct: number;
   estimatedFleetSocPct: number;
   simulatedPracticalSocPct: number;
@@ -342,12 +349,19 @@ function parseCapacityGwhInput(value: string): number | null {
 
 type AbsorptionTotals = {
   grossSurplusEnergyMwh: number;
+  curtailedEnergyMwh: number;
+  grossChargeOpportunityEnergyMwh: number;
   missedSurplusEnergyMwh: number;
 };
 
 type CoverageTotals = Pick<
   ReturnType<typeof computeCoverageAtCapacityMwh>,
-  "absorbedSurplusShare" | "servedDeficitShare" | "totalSurplusEnergyMwh" | "totalDeficitEnergyMwh"
+  | "absorbedSurplusShare"
+  | "servedDeficitShare"
+  | "totalSurplusEnergyMwh"
+  | "totalCurtailmentEnergyMwh"
+  | "totalChargeOpportunityEnergyMwh"
+  | "totalDeficitEnergyMwh"
 >;
 
 /**
@@ -361,6 +375,7 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
   fleetSizingAvailable: boolean;
   recommendedCoverageSim: CoverageTotals | null;
   gridImpactReductionPct: number | null;
+  curtailmentStatus: "loaded" | "unavailable_not_configured" | "unavailable_upstream";
 }): string | null {
   const {
     language,
@@ -370,6 +385,7 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
     fleetSizingAvailable,
     recommendedCoverageSim,
     gridImpactReductionPct,
+    curtailmentStatus,
   } = options;
   const parts: string[] = [];
 
@@ -384,15 +400,15 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
     }
     if (
       recommendedCoverageSim !== null &&
-      recommendedCoverageSim.totalSurplusEnergyMwh > 1e-9 &&
+      recommendedCoverageSim.totalChargeOpportunityEnergyMwh > 1e-9 &&
       recommendedCoverageSim.totalDeficitEnergyMwh > 1e-9
     ) {
       const as = pctFormatter.format(recommendedCoverageSim.absorbedSurplusShare * 100);
       const sd = pctFormatter.format(recommendedCoverageSim.servedDeficitShare * 100);
       parts.push(
         language === "de"
-          ? `Bei dieser modellierten Schicht sind ~${as} % der Brutto-Ueberschussenergie eingelagert und ~${sd} % der Brutto-Defizitenergie ausgeliefert (Idealbilanz ohne Verluste).`
-          : `At this modeled size ~${as}% of gross surplus energy is stored and ~${sd}% of gross deficit energy is met from storage (lossless heuristic).`
+          ? `Bei dieser modellierten Schicht sind ~${as} % der Ladechance (struktureller Ueberschuss plus ggf. Abregelung) eingelagert und ~${sd} % der Brutto-Defizitenergie ausgeliefert (Idealbilanz ohne Verluste).`
+          : `At this modeled size ~${as}% of gross charge opportunity (structural surplus plus curtailment when present) is stored and ~${sd}% of gross deficit energy is met from storage (lossless heuristic).`
       );
     }
     return parts.length > 0 ? parts.join(" ") : null;
@@ -406,32 +422,52 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
     );
   }
   if (absorption !== null) {
+    const curtailedNote =
+      absorption.curtailedEnergyMwh > 1e-6
+        ? language === "de"
+          ? `, darin ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} abgeregelte Energie`
+          : `, including ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} of curtailed energy`
+        : "";
     parts.push(
       language === "de"
-        ? `Brutto-Ueberschuss im Fenster: ${formatEnergyFromMwh(absorption.grossSurplusEnergyMwh)}.`
-        : `Gross surplus in window: ${formatEnergyFromMwh(absorption.grossSurplusEnergyMwh)}.`
+        ? `Ladechance im Fenster: ${formatEnergyFromMwh(absorption.grossChargeOpportunityEnergyMwh)}${curtailedNote}.`
+        : `Charge opportunity in window: ${formatEnergyFromMwh(absorption.grossChargeOpportunityEnergyMwh)}${curtailedNote}.`
     );
     if (
       fleetSizingAvailable &&
-      absorption.grossSurplusEnergyMwh > 1e-6 &&
+      absorption.grossChargeOpportunityEnergyMwh > 1e-6 &&
       Number.isFinite(absorption.missedSurplusEnergyMwh)
     ) {
       const pct = pctFormatter.format(
         Math.min(
           100,
-          Math.max(0, (absorption.missedSurplusEnergyMwh / absorption.grossSurplusEnergyMwh) * 100)
+          Math.max(
+            0,
+            (absorption.missedSurplusEnergyMwh / absorption.grossChargeOpportunityEnergyMwh) * 100
+          )
         )
       );
       parts.push(
         language === "de"
-          ? `Mit der uebergebenen Flotten-Schicht bleiben ${formatEnergyFromMwh(absorption.missedSurplusEnergyMwh)} nicht aufnehmbar (~${pct} % des Brutto-Ueberschusses).`
-          : `${formatEnergyFromMwh(absorption.missedSurplusEnergyMwh)} cannot be stored with the modeled fleet (~${pct}% of gross surplus).`
+          ? `Mit der uebergebenen Flotten-Schicht bleiben ${formatEnergyFromMwh(absorption.missedSurplusEnergyMwh)} ungenutzt (~${pct} % der Ladechance).`
+          : `${formatEnergyFromMwh(absorption.missedSurplusEnergyMwh)} remains unabsorbed with the modeled fleet (~${pct}% of charge opportunity).`
       );
     } else if (!fleetSizingAvailable) {
       parts.push(
         language === "de"
           ? "Installierte GW/GWh-Schicht fehlen — keine verpassten-Ueberschuss-Schaetzung."
           : "Installed GW/GWh not provided — cannot quantify missed surplus against a fleet envelope."
+      );
+    }
+    if (curtailmentStatus !== "loaded") {
+      parts.push(
+        language === "de"
+          ? curtailmentStatus === "unavailable_not_configured"
+            ? "Abregelungsdaten sind in dieser Laufzeit nicht konfiguriert."
+            : "Abregelungsdaten sind derzeit upstream nicht verfuegbar."
+          : curtailmentStatus === "unavailable_not_configured"
+            ? "Curtailment data is not configured in this runtime."
+            : "Curtailment data is currently unavailable upstream."
       );
     }
   }
@@ -760,8 +796,11 @@ export default function GermanyDayEnergyFlow({
           legendPracticalDischarge: "Entladen",
           legendEstimatedCharge: "Geschaetzte Ladung",
           legendEstimatedDischarge: "Geschaetzte Entladung",
+          legendCurtailment: "Abregelung (MW)",
           observedChargeDischargeFootnote:
             "Laden und Entladen folgen demselben geschaetzten Flottenmodell wie der SoC (keine Echtzeitmesswerte).",
+          curtailmentFootnote:
+            "Abregelung erscheint als separate Zusatzreihe fuer Ladechance und veraendert die beobachtete Netto-Linie nicht.",
           legendSimulatedPrefix: "Simuliert:",
           legendEvening: "Abendfenster",
           toggleNetSimulation: "Praktische BESS-Simulation auf Netto anwenden",
@@ -771,7 +810,7 @@ export default function GermanyDayEnergyFlow({
           socFootnote: "SoC: Modell ueber Reihenvolge der Viertelstunden, nicht Messwert.",
           kpiGross: "Brutto-Ueberschuss (Erz. − Last)",
           kpiAbsorbed: "Theoretisch speicherbar (Kap. + MW)",
-          kpiMissed: "Verpasste Ueberschuss-Energie",
+          kpiMissed: "Verpasste Ladechance",
           kpiPracticalCap: "Praktische Tageszyklus-Kapazitaet (P95)",
           kpiRecommendedBalanced: "Empfehlung (12M, Balanced)",
           kpiRecommendedSelected: "Empfehlung (Auswahl, Balanced)",
@@ -809,11 +848,11 @@ export default function GermanyDayEnergyFlow({
           keyMetricsTitle: "Key Metrics",
           kpiRecommendedP95Eyebrow: "Empfohlene Kapazitaet (P95)",
           kpiRecommendedP95Subtitle: "Pragmatischer taeglicher Speicherbedarf (95. Perzentil)",
-          kpiGrossSurplusEyebrow: "Brutto-Ueberschuss",
+          kpiGrossSurplusEyebrow: "Ladechance",
           kpiGrossSurplusSubtitle: "Zeitraum",
-          kpiMissedSurplusEyebrow: "Verpasster Ueberschuss",
-          kpiMissedSurplusSubtitle: "Nicht aufnehmbar mit heutiger Flotte",
-          kpiMissedOfGross: (pct: string) => `${pct}% des Brutto-Ueberschusses`,
+          kpiMissedSurplusEyebrow: "Verpasste Ladechance",
+          kpiMissedSurplusSubtitle: "Nicht aufnehmbar aus Ueberschuss + Abregelung",
+          kpiMissedOfGross: (pct: string) => `${pct}% der Ladechance`,
           kpiSelfConsumptionEyebrow: "Eigenverbrauchsquote (optimales BESS)",
           kpiSelfConsumptionSubtitle: "Der erzeugten Energie vor Ort verwendet",
           kpiFleetRequiredShort: "Flotten-Leistung und -Kapazitaet aus dem Snapshot fuer dieses KPI noetig.",
@@ -828,15 +867,20 @@ export default function GermanyDayEnergyFlow({
           coverageBadgeSuffix: "Datenabdeckung",
           observedChartTitle:
             "Beobachteter Ueberschuss, Defizit & geschaetzter Flotten-SoC",
-          recoImpactEyebrow: "Aus diesem Profil",
-          recoImpactTitle: "BESS-Empfehlung",
+          recoImpactEyebrow: "Unter der Kurve",
+          recoImpactTitle: "Simulation & BESS-Empfehlung",
+          recoImpactLead:
+            "Dieser Block fasst die simulierte Fenstersicht zusammen: empfohlene Größe, Modellwirkung und optionales Kapazitäts-Override.",
           simulatedCtaObserved: "Zu Beobachtet wechseln",
           longTermEyebrow: "Langfristige Einordnung",
           longTermTitle: "Zwölf Monate · BESS-Analyse",
           kpiBaselineSelfConsumptionEyebrow: "Eigenverbrauchsquote (jetzt)",
           kpiBaselineSelfConsumptionSubtitle: "Erzeugung deckt Last direkt",
-          kpiCapturedSurplusEyebrow: "Struktureller Ueberschuss (aufgenommen)",
-          kpiCapturedSurplusSubtitle: "Greedy-Simulation, idealer Rundweg (ohne Verluste)",
+          kpiCapturedSurplusEyebrow: "Ladechance (aufgenommen)",
+          kpiCapturedSurplusSubtitle: "Greedy-Simulation aus Ueberschuss + Abregelung",
+          curtailmentStatusConfigured: "Curtailment geladen",
+          curtailmentStatusMissingConfig: "Curtailment nicht konfiguriert",
+          curtailmentStatusUpstream: "Curtailment-Upstream fehlt",
           kpiDeficitCoveredEyebrow: "Gedecktes Defizit",
           kpiDeficitCoveredSubtitle: "Aus Speicher gefüllt",
           kpiNewSelfConsumptionEyebrow: "Neue Eigenverbrauchsquote",
@@ -852,7 +896,7 @@ export default function GermanyDayEnergyFlow({
           simulatedCapacityModeAuto: "Automatik · Fenster-P95",
           simulatedCapacityModeCustom: "Manuell gesetzt",
           simulatedCapacityPowerBadge: (power: string) => `Leistungslimit: ${power}`,
-          simulatedCapacityControlEyebrow: "Simulationssteuerung",
+          simulatedCapacityControlEyebrow: "Kapazität überschreiben",
           simulatedCapacityControlTitle: "Simulierte BESS-Kapazitaet anpassen",
           simulatedCapacityControlHintAuto: (capacity: string) =>
             `Aktuell nutzt die Kurve automatisch ${capacity} (praktische Fenster-P95). Trage einen Wert ein, um die Simulation zu ueberschreiben.`,
@@ -871,7 +915,8 @@ export default function GermanyDayEnergyFlow({
           simulatedCapacitySourceAuto: "Automatik",
           simulatedCapacitySourceCustom: "Manuell",
           aiInsightTitle: "KI-Einblick",
-          insightRuleBasedTitle: "Automatische Kurzfassung",
+          insightRuleBasedTitle: "Kurzfazit",
+          bottomControlsHint: "Zwischen Beobachtet und Simulation oben im Diagramm wechseln.",
           aiInsightPlaceholder:
             "Keine Zahlenbasis fuer diese Kurzfassung. Nach Anbindung eines LLM kann zusätzlicher Text uber die Prop simulationAiInsight kommen.",
           observedCtaSimulated: "Zu Simulation wechseln",
@@ -891,8 +936,11 @@ export default function GermanyDayEnergyFlow({
           legendPracticalDischarge: "Discharge",
           legendEstimatedCharge: "Estimated charge",
           legendEstimatedDischarge: "Estimated discharge",
+          legendCurtailment: "Curtailment (MW)",
           observedChargeDischargeFootnote:
             "Charge/discharge bars use the same estimated fleet model as SoC (not real-time telemetry).",
+          curtailmentFootnote:
+            "Curtailment is shown as a separate extra charge-opportunity overlay and does not change the observed net line.",
           legendSimulatedPrefix: "Simulated:",
           legendEvening: "Evening window",
           toggleNetSimulation: "Apply practical BESS simulation to net line",
@@ -900,9 +948,9 @@ export default function GermanyDayEnergyFlow({
           netFootnoteSimulated:
             "Net = structural net after modeled BESS in this view (not raw gen − load).",
           socFootnote: "SoC modeled over quarter-hour order, not SCADA telemetry.",
-          kpiGross: "Gross surplus (gen − load)",
+          kpiGross: "Charge opportunity",
           kpiAbsorbed: "Theoretically storable (cap + MW)",
-          kpiMissed: "Missed surplus energy",
+          kpiMissed: "Missed charge opportunity",
           kpiPracticalCap: "Practical daily-cycle capacity (P95)",
           kpiRecommendedBalanced: "Recommendation (12M, balanced)",
           kpiRecommendedSelected: "Recommendation (selection, balanced)",
@@ -938,11 +986,11 @@ export default function GermanyDayEnergyFlow({
           keyMetricsTitle: "Key Metrics",
           kpiRecommendedP95Eyebrow: "Recommended capacity (P95)",
           kpiRecommendedP95Subtitle: "Practical daily storage need (95th percentile)",
-          kpiGrossSurplusEyebrow: "Gross surplus",
+          kpiGrossSurplusEyebrow: "Charge opportunity",
           kpiGrossSurplusSubtitle: "This window",
-          kpiMissedSurplusEyebrow: "Missed surplus",
-          kpiMissedSurplusSubtitle: "Not storable at today’s fleet limits",
-          kpiMissedOfGross: (pct: string) => `${pct}% of gross surplus`,
+          kpiMissedSurplusEyebrow: "Missed charge opportunity",
+          kpiMissedSurplusSubtitle: "Not storable from surplus + curtailment",
+          kpiMissedOfGross: (pct: string) => `${pct}% of charge opportunity`,
           kpiSelfConsumptionEyebrow: "Self-consumption rate (optimal BESS)",
           kpiSelfConsumptionSubtitle: "Of generated energy used locally",
           kpiFleetRequiredShort: "Fleet power and capacity from the snapshot are required for this KPI.",
@@ -956,15 +1004,20 @@ export default function GermanyDayEnergyFlow({
             "Share of expected quarter-hours in the selected window that have published Energy-Charts data (missing slots are not interpolated).",
           coverageBadgeSuffix: "data coverage",
           observedChartTitle: "Observed Surplus, Deficit & Estimated Fleet SoC",
-          recoImpactEyebrow: "From this profile",
-          recoImpactTitle: "BESS recommendation",
+          recoImpactEyebrow: "Below the chart",
+          recoImpactTitle: "Simulation & BESS recommendation",
+          recoImpactLead:
+            "This block summarizes the simulated window view: recommended size, modeled impact, and an optional capacity override.",
           simulatedCtaObserved: "Back to Observed mode",
           longTermEyebrow: "Long-term view",
           longTermTitle: "12-month BESS analysis",
           kpiBaselineSelfConsumptionEyebrow: "Self-consumption rate (baseline)",
           kpiBaselineSelfConsumptionSubtitle: "Gen meets load directly",
-          kpiCapturedSurplusEyebrow: "Structural surplus absorbed",
-          kpiCapturedSurplusSubtitle: "Greedy simulation, ideal round-trip (no losses)",
+          kpiCapturedSurplusEyebrow: "Charge opportunity absorbed",
+          kpiCapturedSurplusSubtitle: "Greedy simulation from surplus + curtailment",
+          curtailmentStatusConfigured: "Curtailment loaded",
+          curtailmentStatusMissingConfig: "Curtailment not configured",
+          curtailmentStatusUpstream: "Curtailment upstream unavailable",
           kpiDeficitCoveredEyebrow: "Deficit covered",
           kpiDeficitCoveredSubtitle: "From discharged storage",
           kpiNewSelfConsumptionEyebrow: "Self-consumption (with modeled BESS)",
@@ -980,7 +1033,7 @@ export default function GermanyDayEnergyFlow({
           simulatedCapacityModeAuto: "Auto · window P95",
           simulatedCapacityModeCustom: "Manual override",
           simulatedCapacityPowerBadge: (power: string) => `Power cap: ${power}`,
-          simulatedCapacityControlEyebrow: "Simulation control",
+          simulatedCapacityControlEyebrow: "Capacity override",
           simulatedCapacityControlTitle: "Adjust simulated BESS capacity",
           simulatedCapacityControlHintAuto: (capacity: string) =>
             `The chart currently auto-uses ${capacity} (practical window P95). Enter a value to override the simulation.`,
@@ -999,7 +1052,8 @@ export default function GermanyDayEnergyFlow({
           simulatedCapacitySourceAuto: "Auto",
           simulatedCapacitySourceCustom: "Manual",
           aiInsightTitle: "AI insight",
-          insightRuleBasedTitle: "Rule-based insight",
+          insightRuleBasedTitle: "Takeaway",
+          bottomControlsHint: "Use the mode toggle above the chart to switch between observed and simulated.",
           aiInsightPlaceholder:
             "Not enough KPI context to summarise. Pass narrative text via the simulationAiInsight prop once an LLM route exists.",
           observedCtaSimulated: "Switch to Simulated mode to see impact at this size.",
@@ -1292,6 +1346,10 @@ export default function GermanyDayEnergyFlow({
         timeLabel: labeler.format(new Date(s.timestampIso)),
         netBalanceMw,
         netAfterPracticalBessMw: adjustedNetSeries[i] ?? netBalanceMw,
+        curtailmentDisplayMw:
+          s.curtailmentMw !== null && s.curtailmentMw !== undefined && Number.isFinite(s.curtailmentMw)
+            ? Math.max(0, s.curtailmentMw)
+            : 0,
         inferredFleetSocPct: absorption.inferredFleetSocPctSeries[i] ?? 0,
         estimatedFleetSocPct: estimatedFleetSocSeries[i] ?? 0,
         simulatedPracticalSocPct: practicalSocSeries[i] ?? 0,
@@ -1428,8 +1486,8 @@ export default function GermanyDayEnergyFlow({
       ...baseFields,
       presentationMode: "observed" as const,
       grossSurplusGwh:
-        absorption !== null && absorption.grossSurplusEnergyMwh > 0
-          ? absorption.grossSurplusEnergyMwh / 1_000
+        absorption !== null && absorption.grossChargeOpportunityEnergyMwh > 0
+          ? absorption.grossChargeOpportunityEnergyMwh / 1_000
           : undefined,
       missedSurplusGwh:
         absorption !== null && absorption.missedSurplusEnergyMwh > 0
@@ -1437,9 +1495,9 @@ export default function GermanyDayEnergyFlow({
           : undefined,
       missedSurplusPctOfGross:
         absorption !== null &&
-        absorption.grossSurplusEnergyMwh > 1e-6 &&
+        absorption.grossChargeOpportunityEnergyMwh > 1e-6 &&
         Number.isFinite(absorption.missedSurplusEnergyMwh)
-          ? absorption.missedSurplusEnergyMwh / absorption.grossSurplusEnergyMwh
+          ? absorption.missedSurplusEnergyMwh / absorption.grossChargeOpportunityEnergyMwh
           : undefined,
       baselineSelfConsumptionPct:
         baselineSelfConsumptionPct !== null && Number.isFinite(baselineSelfConsumptionPct)
@@ -1466,6 +1524,13 @@ export default function GermanyDayEnergyFlow({
     hasCustomSimulatedCapacity,
   ]);
 
+  const curtailmentStatusLabel =
+    flow?.curtailmentStatus === "loaded"
+      ? t.curtailmentStatusConfigured
+      : flow?.curtailmentStatus === "unavailable_not_configured"
+        ? t.curtailmentStatusMissingConfig
+        : t.curtailmentStatusUpstream;
+
   /** Four-up strip rendered above the chart inside the social/poster PNG region. */
   const posterKpiItems = useMemo((): [FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem] | null => {
     if (!flow || chartRows.length === 0) {
@@ -1489,8 +1554,8 @@ export default function GermanyDayEnergyFlow({
           eyebrow: t.kpiCapturedSurplusEyebrow,
           value: recommendedCoverage ? formatEnergyFromMwh(recommendedCoverage.absorbedSurplusEnergyMwh) : "—",
           hint:
-            recommendedCoverage && recommendedCoverage.totalSurplusEnergyMwh > 1e-9
-              ? `${pctFormatter.format(recommendedCoverage.absorbedSurplusShare * 100)}% · ${language === "de" ? "Brutto-Ueberschuss" : "gross surplus"}`
+            recommendedCoverage && recommendedCoverage.totalChargeOpportunityEnergyMwh > 1e-9
+              ? `${pctFormatter.format(recommendedCoverage.absorbedSurplusShare * 100)}% · ${language === "de" ? "Ladechance" : "charge opportunity"}`
               : capHint,
           subtitle: t.kpiCapturedSurplusSubtitle,
         },
@@ -1527,18 +1592,27 @@ export default function GermanyDayEnergyFlow({
     }
 
     const missedOk =
-      fleetEnergyCapacityMwh !== null && absorption !== null && absorption.grossSurplusEnergyMwh > 1e-6;
+      fleetEnergyCapacityMwh !== null &&
+      absorption !== null &&
+      absorption.grossChargeOpportunityEnergyMwh > 1e-6;
     const missedPctStr =
       missedOk && absorption
-        ? `${pctFormatter.format((absorption.missedSurplusEnergyMwh / absorption.grossSurplusEnergyMwh) * 100)}% · ${language === "de" ? "des Brutto-Ueberschusses" : "of gross surplus"}`
+        ? `${pctFormatter.format((absorption.missedSurplusEnergyMwh / absorption.grossChargeOpportunityEnergyMwh) * 100)}% · ${language === "de" ? "der Ladechance" : "of charge opportunity"}`
         : undefined;
 
     return [
       {
         accent: "emerald" as const,
         eyebrow: t.kpiGrossSurplusEyebrow,
-        value: absorption ? formatEnergyFromMwh(absorption.grossSurplusEnergyMwh) : "—",
-        hint: language === "de" ? "Strukturelles Zeitfenster" : "Structural window",
+        value: absorption ? formatEnergyFromMwh(absorption.grossChargeOpportunityEnergyMwh) : "—",
+        hint:
+          absorption && absorption.curtailedEnergyMwh > 1e-6
+            ? language === "de"
+              ? `${formatEnergyFromMwh(absorption.grossSurplusEnergyMwh)} strukturell + ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} abgeregelt`
+              : `${formatEnergyFromMwh(absorption.grossSurplusEnergyMwh)} structural + ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} curtailed`
+            : language === "de"
+              ? `Struktureller Ueberschuss · ${curtailmentStatusLabel}`
+              : `Structural surplus only · ${curtailmentStatusLabel}`,
         subtitle: t.kpiGrossSurplusSubtitle,
       },
       {
@@ -1549,7 +1623,7 @@ export default function GermanyDayEnergyFlow({
         hint:
           fleetEnergyCapacityMwh !== null && absorption
             ? missedPctStr ??
-              (language === "de" ? "Ueberschuss aus heutiger Flotte" : "Surplus missed at fleet sizing")
+              (language === "de" ? "Ladechance an heutiger Flotte vorbei" : "Charge opportunity missed at fleet sizing")
             : t.kpiFleetRequiredShort,
         subtitle: t.kpiMissedSurplusSubtitle,
       },
@@ -1583,6 +1657,7 @@ export default function GermanyDayEnergyFlow({
     fleetEnergyCapacityMwh,
     absorption,
     baselineSelfConsumptionPct,
+    curtailmentStatusLabel,
     t,
   ]);
 
@@ -1654,6 +1729,8 @@ export default function GermanyDayEnergyFlow({
   const activeNetDataKey = showSimulatedNet ? "netAfterPracticalBessMw" : "netBalanceMw";
   const activeSocLegend = showSimulatedNet ? t.legendPracticalSoc : t.legendFleetSoc;
   const activeSocDataKey = showSimulatedNet ? "simulatedPracticalSocPct" : "estimatedFleetSocPct";
+  const showObservedCurtailmentSeries =
+    !showSimulatedNet && chartRows.some((row) => row.curtailmentDisplayMw > 1e-6);
   const activeSocCapacityMwh = showSimulatedNet
     ? (effectivePracticalCapacityMwh > 0 ? effectivePracticalCapacityMwh : null)
     : fleetEnergyCapacityMwh;
@@ -1796,6 +1873,7 @@ export default function GermanyDayEnergyFlow({
     fleetSizingAvailable: showMissedKpis,
     recommendedCoverageSim: recommendedCoverage,
     gridImpactReductionPct,
+    curtailmentStatus: flow?.curtailmentStatus ?? "unavailable_upstream",
   });
   const insightPanelTitle =
     resolvedLlmInsightText.length > 0 ? t.aiInsightTitle : t.insightRuleBasedTitle;
@@ -1804,7 +1882,7 @@ export default function GermanyDayEnergyFlow({
   const powerCapLabel =
     selectedWindowBalancedPowerMw !== null ? formatPowerFromMw(selectedWindowBalancedPowerMw) : "—";
   const absorbedPctLabel =
-    recommendedCoverage !== null && recommendedCoverage.totalSurplusEnergyMwh > 1e-9
+    recommendedCoverage !== null && recommendedCoverage.totalChargeOpportunityEnergyMwh > 1e-9
       ? `${pctFormatter.format(recommendedCoverage.absorbedSurplusShare * 100)}%`
       : "—";
   const servedPctLabel =
@@ -2132,6 +2210,9 @@ export default function GermanyDayEnergyFlow({
               color={SIM_CHART_DISCHARGE_FILL}
               label={showSimulatedNet ? t.legendPracticalDischarge : t.legendEstimatedDischarge}
             />
+            {showObservedCurtailmentSeries ? (
+              <LegendDot color={OBSERVED_CURTAILMENT_FILL} label={t.legendCurtailment} />
+            ) : null}
             <LegendDot color="rgba(251,191,36,0.95)" label={t.legendEvening} />
           </div>
         </div>
@@ -2221,6 +2302,9 @@ export default function GermanyDayEnergyFlow({
                     }
                     return [`${pctFormatter.format(n)}%`, label];
                   }
+                  if (label === t.legendCurtailment) {
+                    return [formatPowerFromMw(Math.max(0, n)), label];
+                  }
                   return [formatSignedMw(n), label];
                 }}
               />
@@ -2254,26 +2338,41 @@ export default function GermanyDayEnergyFlow({
                     maxBarSize={8}
                   />
                 </>
-              ) : fleetEnergyCapacityMwh !== null && fleetEnergyCapacityMwh > 0 ? (
+              ) : (
                 <>
-                  <Bar
-                    yAxisId="net"
-                    dataKey="fleetChargeSignedMw"
-                    name={t.legendEstimatedCharge}
-                    fill={SIM_CHART_CHARGE_FILL}
-                    radius={[3, 3, 0, 0]}
-                    maxBarSize={8}
-                  />
-                  <Bar
-                    yAxisId="net"
-                    dataKey="fleetDischargeMw"
-                    name={t.legendEstimatedDischarge}
-                    fill={SIM_CHART_DISCHARGE_FILL}
-                    radius={[3, 3, 0, 0]}
-                    maxBarSize={8}
-                  />
+                  {showObservedCurtailmentSeries ? (
+                    <Bar
+                      yAxisId="net"
+                      dataKey="curtailmentDisplayMw"
+                      name={t.legendCurtailment}
+                      fill={OBSERVED_CURTAILMENT_FILL}
+                      fillOpacity={0.55}
+                      radius={[3, 3, 0, 0]}
+                      maxBarSize={5}
+                    />
+                  ) : null}
+                  {fleetEnergyCapacityMwh !== null && fleetEnergyCapacityMwh > 0 ? (
+                    <>
+                      <Bar
+                        yAxisId="net"
+                        dataKey="fleetChargeSignedMw"
+                        name={t.legendEstimatedCharge}
+                        fill={SIM_CHART_CHARGE_FILL}
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={8}
+                      />
+                      <Bar
+                        yAxisId="net"
+                        dataKey="fleetDischargeMw"
+                        name={t.legendEstimatedDischarge}
+                        fill={SIM_CHART_DISCHARGE_FILL}
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={8}
+                      />
+                    </>
+                  ) : null}
                 </>
-              ) : null}
+              )}
               <Line
                 yAxisId="soc"
                 type="monotone"
@@ -2298,6 +2397,7 @@ export default function GermanyDayEnergyFlow({
           fleetEnergyCapacityMwh > 0 ? (
             <> {t.observedChargeDischargeFootnote}</>
           ) : null}
+          {!showSimulatedNet && showObservedCurtailmentSeries ? <> {t.curtailmentFootnote}</> : null}
         </p>
       </div>
       </div>
@@ -2318,6 +2418,9 @@ export default function GermanyDayEnergyFlow({
           >
             {t.recoImpactTitle}
           </h3>
+          <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            {t.recoImpactLead}
+          </p>
         </header>
 
         <div className="grid grid-cols-2 gap-2.5 border-b border-border/70 pb-4 md:grid-cols-3 xl:grid-cols-5 dark:border-slate-600/40">
@@ -2433,26 +2536,10 @@ export default function GermanyDayEnergyFlow({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-border/70 pt-4 dark:border-slate-600/40 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-          <div className="flex flex-wrap gap-3">
-            {!showSimulatedNet ? (
-              <button
-                type="button"
-                onClick={() => commitSimulatedMode(true)}
-                className="rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-600 px-6 py-3 text-center text-sm font-semibold text-white shadow-[0_4px_14px_rgba(16,185,129,0.35)] transition hover:from-emerald-600 hover:to-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/80 focus-visible:ring-offset-2 dark:shadow-[0_4px_18px_rgba(6,95,70,0.45)] dark:focus-visible:ring-offset-slate-950"
-              >
-                {t.observedCtaSimulated}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => commitSimulatedMode(false)}
-                className="rounded-xl border border-slate-300/90 bg-white px-6 py-3 text-center text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 dark:border-slate-600/75 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900 dark:focus-visible:ring-offset-slate-950"
-              >
-                {t.simulatedCtaObserved}
-              </button>
-            )}
-          </div>
+        <div className="flex flex-col gap-2 border-t border-border/70 pt-4 dark:border-slate-600/40 sm:flex-row sm:items-start sm:justify-between">
+          <p className="max-w-md text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+            {t.bottomControlsHint}
+          </p>
           <p className="max-w-xl text-[11px] leading-snug text-slate-400 dark:text-slate-500 sm:text-right">
             {coverageSummaryLine}
             <span aria-hidden> · </span>
@@ -2517,7 +2604,7 @@ export default function GermanyDayEnergyFlow({
                 <p className="mt-2 text-sm font-semibold leading-snug text-slate-800 dark:text-slate-100">
                   {recommendation.impactAtBalancedTier
                     ? `${pctFormatter.format(recommendation.impactAtBalancedTier.absorbedSurplusShare * 100)}% ${
-                        language === "de" ? "Überschuss ·" : "surplus ·"
+                        language === "de" ? "Ladechance ·" : "charge opportunity ·"
                       } ${pctFormatter.format(recommendation.impactAtBalancedTier.servedDeficitShare * 100)}% ${
                         language === "de" ? "Defizit" : "deficit"
                       }`

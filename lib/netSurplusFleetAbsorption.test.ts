@@ -48,6 +48,16 @@ describe("computeNetSurplusFleetAbsorption", () => {
     expect(r.missedSurplusEnergyMwh).toBeCloseTo(2_500, 5);
     expect(r.inferredFleetSocPctSeries).toEqual([0]);
   });
+
+  it("adds curtailed energy to charge opportunity and missed energy", () => {
+    const slots = [{ totalGenerationMw: 0, loadMw: 0, curtailmentMw: 100 }];
+    const r = computeNetSurplusFleetAbsorption(slots, 10, 1_000);
+    expect(r.grossSurplusEnergyMwh).toBeCloseTo(0, 5);
+    expect(r.curtailedEnergyMwh).toBeCloseTo(25, 5);
+    expect(r.grossChargeOpportunityEnergyMwh).toBeCloseTo(25, 5);
+    expect(r.absorbedEnergyMwh).toBeCloseTo(10, 5);
+    expect(r.missedSurplusEnergyMwh).toBeCloseTo(15, 5);
+  });
 });
 
 describe("computeCyclingFleetSurplusAbsorption", () => {

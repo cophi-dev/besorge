@@ -14,6 +14,9 @@ const baseContext: MorningBriefingContext = {
   pointFractionOfDay: 0.85,
   samplePoints: 82,
   netStructuralBalanceGwh: -47.1,
+  curtailedEnergyGwh: 3.4,
+  curtailmentSlotFractionOfSampled: 1,
+  curtailmentStatus: "loaded",
   dayShape: {
     structuralNetGwhByWindow: {
       dayCoreGwh: -10.8,
@@ -46,7 +49,7 @@ const goodStory = {
   narrative:
     "Generation trails load overall; bullets separate the sharper window contrast so this line only reinforces the −47.1 GWh net imbalance.",
   counterfactual:
-    "A right-sized 18.4 GWh / 9.2 GW BESS would have cut summed absolute structural imbalance by ~31%. It would also absorb ~47% of gross surplus energy and meet ~22% of gross deficit energy from storage.",
+    "A right-sized 18.4 GWh / 9.2 GW BESS would have cut summed absolute structural imbalance by ~31%. It would also absorb ~47% of gross charge opportunity and meet ~22% of gross deficit energy from storage.",
   dataAsOfNote: "Based on the first 85% of today's quarter-hours.",
 };
 
@@ -122,7 +125,7 @@ describe("dailyStoryLlm.buildUserPayload", () => {
     expect(counterfactualHint).toBeDefined();
     expect(counterfactualHint).toMatch(/practicalCapacityGwh/);
     expect(counterfactualHint).toMatch(/gridImpactReductionPct/);
-    expect(counterfactualHint).toMatch(/gross surplus|GROSS structural surplus/i);
+    expect(counterfactualHint).toMatch(/gross charge opportunity|curtailedEnergyGwh/i);
     expect(payload.instructions.some((i) => i.includes("netStructuralBalanceGwh"))).toBe(true);
     expect(payload.instructions.some((i) => i.startsWith("insights:"))).toBe(true);
   });
@@ -134,6 +137,10 @@ describe("dailyStoryLlm.buildUserPayload", () => {
     );
     expect(payload.instructions.some((i) => i.includes("isMultiDayWindow"))).toBe(true);
     expect(payload.instructions.some((i) => i.includes("rangeStartBerlin"))).toBe(true);
+    expect(payload.instructions.some((i) => i.startsWith("insights:"))).toBe(false);
+    expect(payload.instructions.some((i) => i.includes("insights (calendar window)"))).toBe(true);
+    const counterfactualHint = payload.instructions.find((i) => i.startsWith("counterfactual:"));
+    expect(counterfactualHint).toMatch(/daily BESS|window-sized/i);
   });
 });
 

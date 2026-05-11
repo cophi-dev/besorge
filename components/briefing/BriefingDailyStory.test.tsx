@@ -9,6 +9,9 @@ const goodPayload = {
   retrievedAtIso: "2026-05-09T18:00:00.000Z",
   context: {
     netStructuralBalanceGwh: -47.1,
+    curtailedEnergyGwh: 3.4,
+    curtailmentSlotFractionOfSampled: 1,
+    curtailmentStatus: "loaded",
     pointFractionOfDay: 0.85,
     samplePoints: 82,
     fleet: { powerGw: 18.3, capacityGwh: 27.9 },
@@ -44,7 +47,7 @@ const goodPayload = {
     narrative:
       "Generation trails load alongside the sharper window contrast spelled out above; −47.1 GWh nets the day's structural imbalance.",
     counterfactual:
-      "A right-sized 18.4 GWh / 9.2 GW BESS would have cut summed absolute structural imbalance by ~31%. It would also absorb ~47% of gross surplus energy and meet ~22% of gross deficit energy from storage.",
+      "A right-sized 18.4 GWh / 9.2 GW BESS would have cut summed absolute structural imbalance by ~31%. It would also absorb ~47% of gross charge opportunity and meet ~22% of gross deficit energy from storage.",
     dataAsOfNote: "Based on the first 85% of today's quarter-hours.",
   },
 };
@@ -92,17 +95,20 @@ describe("BriefingDailyStory", () => {
     expect(screen.getByText(/Renewables minus load/i)).toBeInTheDocument();
     expect(screen.getByText(/Peak hours/i)).toBeInTheDocument();
     expect(screen.getByText(/Fleet context/i)).toBeInTheDocument();
+    expect(screen.getByText(goodPayload.story.insights[0])).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.narrative)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.counterfactual)).toBeInTheDocument();
     expect(screen.getByText(/Aether analyst \(LLM\)/i)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.dataAsOfNote!)).toBeInTheDocument();
-    expect(screen.getByText("Net balance")).toBeInTheDocument();
-    expect(screen.getByText("Aether analysis")).toBeInTheDocument();
-    expect(screen.getByText("Modeled BESS")).toBeInTheDocument();
+    expect(screen.getByText(/Net balance/i)).toBeInTheDocument();
+    expect(screen.getByText(/Data snapshot/i)).toBeInTheDocument();
+    expect(screen.getByText(/Modeled BESS/i)).toBeInTheDocument();
     expect(screen.getByText(/9\.2 GW balanced/)).toBeInTheDocument();
-    expect(container.textContent ?? "").toMatch(/absorbed \(gross surplus\)/i);
+    expect(container.textContent ?? "").toMatch(/absorbed \(charge opportunity\)/i);
     expect(container.textContent ?? "").toMatch(/served \(gross deficit\)/i);
     expect(container.textContent ?? "").toMatch(/imbalance smoothing/i);
+    expect(container.textContent ?? "").toMatch(/curtailment/i);
+    expect(container.textContent ?? "").toMatch(/3\.4 GWh/i);
     expect(screen.getByText(/same published quarter-hours as the signals above/i)).toBeInTheDocument();
     expect(container.textContent ?? "").toMatch(/47%/);
     expect(container.textContent ?? "").toMatch(/22%/);
@@ -216,5 +222,31 @@ describe("BriefingDailyStory", () => {
       expect(url).toContain("week=2026-W19");
       expect(url).not.toContain("date=");
     });
+  });
+
+  it("shows the window reading note for multi-day stories", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...goodPayload,
+        dateBerlin: "2026-05-04–2026-05-10",
+        context: {
+          ...goodPayload.context,
+          isMultiDayWindow: true,
+          rangeStartBerlin: "2026-05-04",
+          rangeEndBerlin: "2026-05-10",
+        },
+      }),
+    }) as unknown as typeof fetch;
+
+    const { container } = render(
+      <BriefingDailyStory language="en" storyWindow={{ type: "week", weekKey: "2026-W19" }} />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/How to read this window/i)).toBeInTheDocument()
+    );
+    expect(container.textContent ?? "").toContain("2026-05-04");
+    expect(container.textContent ?? "").toContain("2026-05-10");
   });
 });

@@ -15,16 +15,16 @@ export function MethodologySection({ language }: MethodologySectionProps) {
             "Transparente Heuristik auf Basis veröffentlichter Energy-Charts-Viertelstunden (Gen−Last) — keine SCADA-, keine Beschaffungsempfehlung.",
           p95: "P95-Kapazität: 95. Perzentil des modellierten täglichen Speicherbedarfs im gewählten Fenster; konservativ/aggressiv aus Perzentilen der Tagesbedarfe im Trailing-Fenster.",
           greedy:
-            "Greedy-Simulation: Viertelstunden in Reihenfolge; Überschuss lädt den Speicher bis Kapazität/Leistungsgrenze, Defizit entlädt priorisiert (zeitverschobene Deckung).",
+            "Greedy-Simulation: Viertelstunden in Reihenfolge; struktureller Überschuss lädt den Speicher bis Kapazität/Leistungsgrenze, Defizit entlädt priorisiert. Falls Curtailment-Daten vorliegen, zählt abgeregelte Energie zusätzlich als Ladechance, ohne die veröffentlichte Netto-Spur umzuschreiben.",
           losses: "Verluste (RTE) können in dieser Ansicht idealisiert aus sein — siehe Einzel-Karten/Disclaimer.",
           netVsGross:
-            "Netto vs. Brutto: Die strukturelle Tages-Nettobilanz ist die Summe vorzeichen-behafteter Viertelstunden (Generation − Last). Brutto-Ueberschuss- bzw. -Defizitenergie sind die Summen nur ueber Zeitscheiben mit positivem bzw. negativem strukturellen Netto.",
+            "Netto vs. Brutto: Die strukturelle Tages-Nettobilanz ist die Summe vorzeichen-behafteter Viertelstunden (Generation − Last). Ladechance = struktureller Ueberschuss plus abgeregelte Energie (falls verfuegbar); Brutto-Defizitenergie bleibt die Summe ueber Zeitscheiben mit negativem strukturellen Netto.",
           gridL1:
             "Daempfungsquote (Σ|slot|): Prozentualer Rueckgang der Summe der Absolutbeträge struktureller Viertelstunden-Nettos nach der modellierten Greedy-BESS-Schicht gegenueber Rohdaten gleicher Reihenfolge.",
           storyVsWindow:
             "Taegliche Story-/Briefing-Zahlen beziehen sich auf den gesamten Berlin-Kalendertag; KPIs unterhalb des Deutschland-Charts verwenden das aktuell gewaehlte Chart-Fenster (Auswahl).",
           kpiVsChart:
-            "Brutto-Anteile im simulierten Modus nutzen dieselbe Greedy-Schicht wie die Chart-Simulation (Balanced-Leistungsgrenze; Start-SoC aus verketteten Vortagen soweit Daten da sind).",
+            "Anteile im simulierten Modus nutzen dieselbe Greedy-Schicht wie die Chart-Simulation (Balanced-Leistungsgrenze; Start-SoC aus verketteten Vortagen soweit Daten da sind). Die Aufnahmequote bezieht sich auf die gesamte Ladechance, also Überschuss plus Curtailment, wenn diese Zusatzreihe vorhanden ist.",
           sources: "Primärquelle: Energy-Charts.info (Fraunhofer ISE) — siehe Footer.",
         }
       : {
@@ -34,16 +34,16 @@ export function MethodologySection({ language }: MethodologySectionProps) {
           p95:
             "P95 capacity: 95th percentile of modeled daily storage need in the selected window; conservative/aggressive tiers derive from per-day percentiles across the trailing window.",
           greedy:
-            "Greedy walk: quarter-hours processed in order; surplus charges up to power/energy limits, deficit discharges to meet residual need (time-shifted coverage).",
+            "Greedy walk: quarter-hours processed in order; structural surplus charges up to power/energy limits, deficit discharges to meet residual need. When curtailment data is available, curtailed energy adds extra charge opportunity without rewriting the published net trace.",
           losses: "Round-trip losses may be idealised in this view — see granular cards/disclaimer.",
           netVsGross:
-            "Net vs gross: the day’s net structural balance is the signed sum of quarter-hour (generation − load). Gross structural surplus energy and gross structural deficit energy are the sums over slots with positive and negative structural net respectively.",
+            "Net vs gross: the day’s net structural balance is the signed sum of quarter-hour (generation − load). Charge opportunity equals structural surplus plus curtailed energy when that auxiliary feed is available; gross deficit energy remains the sum over slots with negative structural net.",
           gridL1:
             "Imbalance damping (Σ|slot|): percentage drop in the sum of absolute quarter-hour structural net magnitudes after the modeled greedy BESS walk versus the raw series in the same order.",
           storyVsWindow:
             "The daily briefing story uses the full Berlin calendar day; KPIs under the Germany chart use the currently selected chart window.",
           kpiVsChart:
-            "In simulated mode, gross surplus/deficit shares use the same greedy walk as the chart (balanced power cap; starting SoC stitched from prior days when those series load).",
+            "In simulated mode, the displayed shares use the same greedy walk as the chart (balanced power cap; starting SoC stitched from prior days when those series load). The absorbed share refers to total charge opportunity, i.e. structural surplus plus curtailment when present.",
           sources: "Primary source: Energy-Charts.info (Fraunhofer ISE) — see footer.",
         };
 

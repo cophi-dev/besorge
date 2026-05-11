@@ -7,8 +7,6 @@ import {
 } from "@/lib/energyChartsApi";
 import {
   resolveGermanyEnergyFlowBerlinRangeForDate,
-  resolveGermanyEnergyFlowBerlinRangeForMonth,
-  resolveGermanyEnergyFlowBerlinRangeForWeek,
   type GermanyEnergyFlowBerlinRange,
 } from "@/lib/germanyEnergyFlowPeriod";
 import {
@@ -18,6 +16,9 @@ import {
   computeStitchedPracticalInitialSocMwh,
   simulateAdjustedNetMwAtCapacity,
 } from "@/lib/optimalBessCapacity";
+import { createLogger } from "@/lib/debug";
+
+const log = createLogger("morning-briefing-context");
 
 const QUARTER_HOUR_H = 0.25;
 
@@ -57,6 +58,11 @@ export type MorningBriefingContext = {
   samplePoints: number;
   /** Sum of (gen − load) over slots, GWh. */
   netStructuralBalanceGwh: number;
+  /** Sum of quarter-hour curtailed renewable energy that could have charged storage, GWh. */
+  curtailedEnergyGwh: number | null;
+  /** Fraction of sampled slots where curtailment MW was available (including zeros). */
+  curtailmentSlotFractionOfSampled: number;
+  curtailmentStatus: "loaded" | "unavailable_not_configured" | "unavailable_upstream";
   /** Intra-day structure from the same quarter-hour samples (Berlin-hour bands). */
   dayShape: BriefingDayShape;
   /** Installed fleet from market snapshot. */
@@ -74,6 +80,49 @@ export type MorningBriefingContext = {
   rangeStartBerlin: string;
   rangeEndBerlin: string;
 };
+
+/**
+ * Coerce non-finite numerics so Zod `z.number()` on the story API never rejects
+ * `NaN`/`±Infinity` after heavy multi-day simulations.
+ */
+export function sanitizeMorningBriefingContext(ctx: MorningBriefingContext): MorningBriefingContext {
+  const finite = (n: number, fallback = 0): number => (Number.isFinite(n) ? n : fallback);
+  const finite01 = (n: number): number => Math.min(1, Math.max(0, finite(n, 0)));
+  const finiteOrNull = (n: number | null): number | null => (n === null ? null : Number.isFinite(n) ? n : null);
+  const win = ctx.dayShape.structuralNetGwhByWindow;
+
+  return {
+    ...ctx,
+    pointFractionOfDay: finite01(ctx.pointFractionOfDay),
+    samplePoints: Math.max(0, Math.floor(finite(ctx.samplePoints, 0))),
+    netStructuralBalanceGwh: finite(ctx.netStructuralBalanceGwh, 0),
+    curtailedEnergyGwh: finiteOrNull(ctx.curtailedEnergyGwh),
+    curtailmentSlotFractionOfSampled: finite01(ctx.curtailmentSlotFractionOfSampled),
+    curtailmentStatus: ctx.curtailmentStatus,
+    dayShape: {
+      structuralNetGwhByWindow: {
+        dayCoreGwh: finite(win.dayCoreGwh, 0),
+        eveningRampGwh: finite(win.eveningRampGwh, 0),
+        overnightBaseGwh: finite(win.overnightBaseGwh, 0),
+      },
+      renewableNetStructuralBalanceGwh: finiteOrNull(ctx.dayShape.renewableNetStructuralBalanceGwh),
+      renewableSlotFractionOfSampled: finite01(ctx.dayShape.renewableSlotFractionOfSampled),
+      peakSurplusHourBerlin: ctx.dayShape.peakSurplusHourBerlin,
+      peakDeficitHourBerlin: ctx.dayShape.peakDeficitHourBerlin,
+    },
+    fleet: {
+      powerGw: finite(ctx.fleet.powerGw, 0),
+      capacityGwh: finite(ctx.fleet.capacityGwh, 0),
+    },
+    simulated: {
+      practicalCapacityGwh: finite(ctx.simulated.practicalCapacityGwh, 0),
+      balancedPowerMw: finite(ctx.simulated.balancedPowerMw, 0),
+      gridImpactReductionPct: finiteOrNull(ctx.simulated.gridImpactReductionPct),
+      absorbedSurplusShare: finiteOrNull(ctx.simulated.absorbedSurplusShare),
+      servedDeficitShare: finiteOrNull(ctx.simulated.servedDeficitShare),
+    },
+  };
+}
 
 function structuralNetWindowForHour(hourBerlin: number): keyof BriefingDayShapeWindowsGwh {
   if (hourBerlin >= BRIEF_DAY_CORE_HOUR_START && hourBerlin <= BRIEF_DAY_CORE_HOUR_END) {
@@ -158,6 +207,24 @@ function sumStructuralNetGwh(slots: GermanyDispatchSlotsResponse["slots"]): numb
   return mwh / 1000;
 }
 
+function sumCurtailedEnergyGwh(slots: GermanyDispatchSlotsResponse["slots"]): {
+  curtailedEnergyGwh: number | null;
+  curtailmentSlotFractionOfSampled: number;
+} {
+  let curtailedMwh = 0;
+  let slotsWithCurtailment = 0;
+  for (const s of slots) {
+    if (typeof s.curtailmentMw === "number" && Number.isFinite(s.curtailmentMw)) {
+      curtailedMwh += Math.max(0, s.curtailmentMw) * QUARTER_HOUR_H;
+      slotsWithCurtailment += 1;
+    }
+  }
+  return {
+    curtailedEnergyGwh: slotsWithCurtailment > 0 ? curtailedMwh / 1000 : null,
+    curtailmentSlotFractionOfSampled: slots.length > 0 ? slotsWithCurtailment / slots.length : 0,
+  };
+}
+
 function gridImpactReductionPct(
   slots: GermanyDispatchSlotsResponse["slots"],
   capacityMwh: number,
@@ -195,93 +262,108 @@ export async function buildMorningBriefingContextForBerlinRange(
   range: GermanyEnergyFlowBerlinRange,
   now: Date = new Date()
 ): Promise<MorningBriefingContext | null> {
-  const startKey = range.startKey;
-  const prevKey = addBerlinCalendarDays(startKey, -1);
-  const beforePrevKey = addBerlinCalendarDays(startKey, -2);
+  try {
+    const startKey = range.startKey;
+    const prevKey = addBerlinCalendarDays(startKey, -1);
+    const beforePrevKey = addBerlinCalendarDays(startKey, -2);
 
-  const [flow, prevFlow, beforePrevFlow, market] = await Promise.all([
-    getGermanyEnergyFlowForBerlinRange(range, now),
-    getGermanyEnergyFlowForBerlinRange(resolveGermanyEnergyFlowBerlinRangeForDate(prevKey, now), now),
-    getGermanyEnergyFlowForBerlinRange(resolveGermanyEnergyFlowBerlinRangeForDate(beforePrevKey, now), now),
-    getGermanyMarketSnapshot(),
-  ]);
+    const [flow, prevFlow, beforePrevFlow, market] = await Promise.all([
+      getGermanyEnergyFlowForBerlinRange(range, now),
+      getGermanyEnergyFlowForBerlinRange(resolveGermanyEnergyFlowBerlinRangeForDate(prevKey, now), now),
+      getGermanyEnergyFlowForBerlinRange(resolveGermanyEnergyFlowBerlinRangeForDate(beforePrevKey, now), now),
+      getGermanyMarketSnapshot(),
+    ]);
 
-  if (flow === null || flow.slots.length === 0) {
+    if (flow === null || flow.slots.length === 0) {
+      return null;
+    }
+
+    const rangeStart = flow.rangeStartBerlin ?? range.startKey;
+    const rangeEnd = flow.rangeEndBerlin ?? range.endKey;
+    const isMultiDayWindow = rangeStart !== rangeEnd;
+
+    const netStructuralBalanceGwh = sumStructuralNetGwh(flow.slots);
+    const { curtailedEnergyGwh, curtailmentSlotFractionOfSampled } = sumCurtailedEnergyGwh(flow.slots);
+    const dayShape = computeBriefingDayShape(flow.slots);
+    const practical = computePracticalDailyCycleCapacityMwh(flow.slots);
+    const rec = computeLogicalBessRecommendation(flow.slots);
+    const balanced = rec.tiers.find((t) => t.label === "balanced");
+    const capMwh = practical?.practicalCapacityMwh ?? 0;
+    const pw = balanced?.recommendedPowerMw ?? null;
+    const maxPower = pw !== null && pw > 0 && Number.isFinite(pw) ? pw : null;
+    const initialSocMwh =
+      capMwh > 0
+        ? Math.min(
+            capMwh,
+            Math.max(
+              0,
+              computeStitchedPracticalInitialSocMwh({
+                dayBeforePreviousSlots: beforePrevFlow?.slots ?? [],
+                previousDaySlots: prevFlow?.slots ?? [],
+                capacityMwh: capMwh,
+                maxPowerMw: maxPower,
+              })
+            )
+          )
+        : 0;
+
+    const coverage =
+      capMwh > 0
+        ? computeCoverageAtCapacityMwh(flow.slots, capMwh, {
+            resetDailyByBerlin: true,
+            maxPowerMw: maxPower,
+            initialSocMwh,
+          })
+        : null;
+
+    const gridPct = gridImpactReductionPct(flow.slots, capMwh, maxPower, initialSocMwh);
+
+    const rawNote = [
+      `window=${flow.dateBerlin}`,
+      `coverage=${(flow.pointFractionOfDay * 100).toFixed(1)}%`,
+      `net=${netStructuralBalanceGwh.toFixed(2)} GWh`,
+      curtailedEnergyGwh !== null ? `curtailed=${curtailedEnergyGwh.toFixed(2)} GWh` : null,
+      `p95_practical≈${(capMwh / 1000).toFixed(2)} GWh`,
+      gridPct !== null ? `grid_impact~${gridPct.toFixed(0)}%` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    return sanitizeMorningBriefingContext({
+      dateBerlin: flow.dateBerlin,
+      retrievedAtIso: market.retrievedAtIso,
+      pointFractionOfDay: flow.pointFractionOfDay,
+      samplePoints: flow.samplePoints,
+      netStructuralBalanceGwh,
+      curtailedEnergyGwh,
+      curtailmentSlotFractionOfSampled,
+      curtailmentStatus: flow.curtailmentStatus ?? "unavailable_upstream",
+      dayShape,
+      fleet: {
+        powerGw: market.bess.installedPowerGw,
+        capacityGwh: market.bess.installedCapacityGwh,
+      },
+      simulated: {
+        practicalCapacityGwh: capMwh / 1000,
+        balancedPowerMw: pw ?? 0,
+        gridImpactReductionPct: gridPct,
+        absorbedSurplusShare: coverage?.absorbedSurplusShare ?? null,
+        servedDeficitShare: coverage?.servedDeficitShare ?? null,
+      },
+      rawNote,
+      isMultiDayWindow,
+      rangeStartBerlin: rangeStart,
+      rangeEndBerlin: rangeEnd,
+    });
+  } catch (error) {
+    log("buildMorningBriefingContextForBerlinRange failed %o", {
+      startKey: range.startKey,
+      endKey: range.endKey,
+      period: range.period,
+      error,
+    });
     return null;
   }
-
-  const rangeStart = flow.rangeStartBerlin ?? range.startKey;
-  const rangeEnd = flow.rangeEndBerlin ?? range.endKey;
-  const isMultiDayWindow = rangeStart !== rangeEnd;
-
-  const netStructuralBalanceGwh = sumStructuralNetGwh(flow.slots);
-  const dayShape = computeBriefingDayShape(flow.slots);
-  const practical = computePracticalDailyCycleCapacityMwh(flow.slots);
-  const rec = computeLogicalBessRecommendation(flow.slots);
-  const balanced = rec.tiers.find((t) => t.label === "balanced");
-  const capMwh = practical?.practicalCapacityMwh ?? 0;
-  const pw = balanced?.recommendedPowerMw ?? null;
-  const maxPower = pw !== null && pw > 0 && Number.isFinite(pw) ? pw : null;
-  const initialSocMwh =
-    capMwh > 0
-      ? Math.min(
-          capMwh,
-          Math.max(
-            0,
-            computeStitchedPracticalInitialSocMwh({
-              dayBeforePreviousSlots: beforePrevFlow?.slots ?? [],
-              previousDaySlots: prevFlow?.slots ?? [],
-              capacityMwh: capMwh,
-              maxPowerMw: maxPower,
-            })
-          )
-        )
-      : 0;
-
-  const coverage =
-    capMwh > 0
-      ? computeCoverageAtCapacityMwh(flow.slots, capMwh, {
-          resetDailyByBerlin: true,
-          maxPowerMw: maxPower,
-          initialSocMwh,
-        })
-      : null;
-
-  const gridPct = gridImpactReductionPct(flow.slots, capMwh, maxPower, initialSocMwh);
-
-  const rawNote = [
-    `window=${flow.dateBerlin}`,
-    `coverage=${(flow.pointFractionOfDay * 100).toFixed(1)}%`,
-    `net=${netStructuralBalanceGwh.toFixed(2)} GWh`,
-    `p95_practical≈${(capMwh / 1000).toFixed(2)} GWh`,
-    gridPct !== null ? `grid_impact~${gridPct.toFixed(0)}%` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  return {
-    dateBerlin: flow.dateBerlin,
-    retrievedAtIso: market.retrievedAtIso,
-    pointFractionOfDay: flow.pointFractionOfDay,
-    samplePoints: flow.samplePoints,
-    netStructuralBalanceGwh,
-    dayShape,
-    fleet: {
-      powerGw: market.bess.installedPowerGw,
-      capacityGwh: market.bess.installedCapacityGwh,
-    },
-    simulated: {
-      practicalCapacityGwh: capMwh / 1000,
-      balancedPowerMw: pw ?? 0,
-      gridImpactReductionPct: gridPct,
-      absorbedSurplusShare: coverage?.absorbedSurplusShare ?? null,
-      servedDeficitShare: coverage?.servedDeficitShare ?? null,
-    },
-    rawNote,
-    isMultiDayWindow,
-    rangeStartBerlin: rangeStart,
-    rangeEndBerlin: rangeEnd,
-  };
 }
 
 /**

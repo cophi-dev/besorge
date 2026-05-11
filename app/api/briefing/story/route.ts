@@ -88,6 +88,15 @@ type StructuralWindowKey = keyof MorningBriefingContext["dayShape"]["structuralN
 const INSIGHT_MAX = 160;
 const INSIGHT_MIN = 14;
 const HEADLINE_MAX = 180;
+/** `dailyStorySchema.counterfactual` hard cap — keep deterministic copy under this. */
+const COUNTERFACTUAL_MAX = 400;
+
+function clampCounterfactualCopy(s: string): string {
+  if (s.length <= COUNTERFACTUAL_MAX) {
+    return s;
+  }
+  return `${s.slice(0, COUNTERFACTUAL_MAX - 3).trimEnd()}...`;
+}
 
 function clampInsight(s: string): string {
   if (s.length <= INSIGHT_MAX) {
@@ -273,6 +282,16 @@ function buildDeterministicInsights(
     ];
   };
 
+  if (ctx.isMultiDayWindow) {
+    const anchor = clampInsight(
+      language === "de"
+        ? `Fenster-Netto ${netSigned} GWh = Summe (Erzeugung \u2212 Last) \u00fcber ver\u00f6ffentlichte Viertelstunden ${ctx.rangeStartBerlin} bis ${ctx.rangeEndBerlin}. Die drei Punkte teilen die Lage auf \u2014 sie addieren sich nicht zu einem zweiten Gesamt-Netto.`
+        : `Window net ${netSigned} GWh sums generation minus load across published quarter-hours from ${ctx.rangeStartBerlin} through ${ctx.rangeEndBerlin}. The three bullets decompose where stress sits \u2014 they are not three slices of a second total.`
+    );
+    const third = ps !== null || pd !== null ? insightC : insightB;
+    return ensureMin([anchor, insightA, third]);
+  }
+
   return ensureMin([insightA, insightB, insightC]);
 }
 
@@ -290,15 +309,21 @@ function buildNumericFallback(
   const sign = net >= 0 ? "+" : "−";
   const absNet = Math.abs(net);
   const headline = buildFallbackHeadline(ctx, language);
+  const curtailedClause =
+    ctx.curtailedEnergyGwh !== null && ctx.curtailedEnergyGwh > 0
+      ? language === "de"
+        ? ` Zusätzliche abgeregelte Energie von ${fmt(ctx.curtailedEnergyGwh, "de")} GWh steht als getrennte Ladechance neben der veröffentlichten Netto-Spur.`
+        : ` Separate curtailed renewable charge opportunity adds ${fmt(ctx.curtailedEnergyGwh, "en")} GWh beyond the published net trace.`
+      : "";
 
   const narrative =
     language === "de"
       ? ctx.isMultiDayWindow
-        ? `Fenster-Netto ${sign}${fmt(absNet, "de")} GWh summiert Erzeugung minus Last \u00fcber alle ver\u00f6ffentlichten Viertelstunden im Kalenderfenster (${(ctx.pointFractionOfDay * 100).toFixed(0)} % Abdeckung). Uhr-Band-Zeilen nutzen dieselbe Serie nur innerhalb der Tageszeiten; die EE-Zeile nur Slots mit EE-MW. Flotte ${fmt(ctx.fleet.powerGw, "de")} GW / ${fmt(ctx.fleet.capacityGwh, "de")} GWh.`
-        : `Tages-Netto ${sign}${fmt(absNet, "de")} GWh ist die Summe Erzeugung minus Last \u00fcber alle ver\u00f6ffentlichten Viertelstunden (${(ctx.pointFractionOfDay * 100).toFixed(0)} % Abdeckung). Fensterzeilen summieren dieselbe Serie nur in Uhr-B\u00e4ndern; die EE-Zeile nutzt nur Slots mit EE-MW. Flotte ${fmt(ctx.fleet.powerGw, "de")} GW / ${fmt(ctx.fleet.capacityGwh, "de")} GWh.`
+        ? `Fenster-Netto ${sign}${fmt(absNet, "de")} GWh summiert Erzeugung minus Last \u00fcber alle ver\u00f6ffentlichten Viertelstunden im Kalenderfenster (${(ctx.pointFractionOfDay * 100).toFixed(0)} % Abdeckung). Uhr-Band-Zeilen nutzen dieselbe Serie nur innerhalb der Tageszeiten; die EE-Zeile nur Slots mit EE-MW.${curtailedClause} Flotte ${fmt(ctx.fleet.powerGw, "de")} GW / ${fmt(ctx.fleet.capacityGwh, "de")} GWh.`
+        : `Tages-Netto ${sign}${fmt(absNet, "de")} GWh ist die Summe Erzeugung minus Last \u00fcber alle ver\u00f6ffentlichten Viertelstunden (${(ctx.pointFractionOfDay * 100).toFixed(0)} % Abdeckung). Fensterzeilen summieren dieselbe Serie nur in Uhr-B\u00e4ndern; die EE-Zeile nutzt nur Slots mit EE-MW.${curtailedClause} Flotte ${fmt(ctx.fleet.powerGw, "de")} GW / ${fmt(ctx.fleet.capacityGwh, "de")} GWh.`
       : ctx.isMultiDayWindow
-        ? `Window net ${sign}${fmt(absNet, "en")} GWh sums generation minus load across every published quarter-hour in the selected calendar span (${(ctx.pointFractionOfDay * 100).toFixed(0)}% coverage). Clock-band lines use the same series inside hour bands only; the renewables line only counts slots with renewable MW. Fleet ${fmt(ctx.fleet.powerGw, "en")} GW / ${fmt(ctx.fleet.capacityGwh, "en")} GWh.`
-        : `Full-day net ${sign}${fmt(absNet, "en")} GWh sums generation minus load across every published quarter-hour (${(ctx.pointFractionOfDay * 100).toFixed(0)}% coverage). Window lines use the same series inside clock bands only; the renewables line only counts slots with renewable MW. Fleet ${fmt(ctx.fleet.powerGw, "en")} GW / ${fmt(ctx.fleet.capacityGwh, "en")} GWh.`;
+        ? `Window net ${sign}${fmt(absNet, "en")} GWh sums generation minus load across every published quarter-hour in the selected calendar span (${(ctx.pointFractionOfDay * 100).toFixed(0)}% coverage). Clock-band lines use the same series inside hour bands only; the renewables line only counts slots with renewable MW.${curtailedClause} Fleet ${fmt(ctx.fleet.powerGw, "en")} GW / ${fmt(ctx.fleet.capacityGwh, "en")} GWh.`
+        : `Full-day net ${sign}${fmt(absNet, "en")} GWh sums generation minus load across every published quarter-hour (${(ctx.pointFractionOfDay * 100).toFixed(0)}% coverage). Window lines use the same series inside clock bands only; the renewables line only counts slots with renewable MW.${curtailedClause} Fleet ${fmt(ctx.fleet.powerGw, "en")} GW / ${fmt(ctx.fleet.capacityGwh, "en")} GWh.`;
 
   const cap = ctx.simulated.practicalCapacityGwh;
   const pw = ctx.simulated.balancedPowerMw / 1000;
@@ -310,32 +335,42 @@ function buildNumericFallback(
   if (cap <= 0) {
     counterfactual =
       language === "de"
-        ? "Heute ergab sich keine sinnvoll dimensionierbare Tages-Speicherkapazität \u2014 zu wenig nutzbare Surplus/Deficit-Asymmetrie."
-        : "No meaningfully sized daily storage emerges today \u2014 too little usable surplus/deficit asymmetry.";
+        ? ctx.isMultiDayWindow
+          ? "F\u00fcr dieses Kalenderfenster ergibt sich keine sinnvoll dimensionierbare Speichergr\u00f6\u00dfe \u2014 zu wenig nutzbare Surplus/Defizit-Asymmetrie."
+          : "Heute ergab sich keine sinnvoll dimensionierbare Tages-Speicherkapazit\u00e4t \u2014 zu wenig nutzbare Surplus/Deficit-Asymmetrie."
+        : ctx.isMultiDayWindow
+          ? "No meaningfully sized storage for this window \u2014 too little usable surplus/deficit asymmetry."
+          : "No meaningfully sized daily storage emerges today \u2014 too little usable surplus/deficit asymmetry.";
   } else if (language === "de") {
-    const size = `Ein optimal dimensionierter Tages-BESS (${fmt(cap, "de")} GWh / ${fmt(pw, "de")} GW)`;
+    const size = ctx.isMultiDayWindow
+      ? `Ein f\u00fcrs Kalenderfenster gedimensionierter BESS (${fmt(cap, "de")} GWh / ${fmt(pw, "de")} GW)`
+      : `Ein optimal dimensionierter Tages-BESS (${fmt(cap, "de")} GWh / ${fmt(pw, "de")} GW)`;
     const sent1 =
       grid !== null
         ? `${size} h\u00e4tte rund ${fmt(grid, "de")} % der Summe der Absolutbetr\u00e4ge der Viertelstunden-Nettos gegl\u00e4ttet.`
         : `${size} h\u00e4tte die strukturellen Ungleichgewichte sp\u00fcrbar gegl\u00e4ttet.`;
     let sent2 = "";
     if (absorbed !== null && served !== null) {
-      sent2 = ` Im Modell k\u00f6nnten zudem rund ${fmt(absorbed * 100, "de")} % der Brutto-\u00dcberschussenergie aufgenommen und rund ${fmt(served * 100, "de")} % der Brutto-Defizitenergie aus dem Speicher gedeckt werden.`;
+      sent2 = ` Im Modell k\u00f6nnten zudem rund ${fmt(absorbed * 100, "de")} % der Ladechance (Brutto-\u00dcberschuss plus ggf. abgeregelte Energie) aufgenommen und rund ${fmt(served * 100, "de")} % der Brutto-Defizitenergie aus dem Speicher gedeckt werden.`;
     } else if (absorbed !== null) {
-      sent2 = ` Im Modell k\u00f6nnte zudem rund ${fmt(absorbed * 100, "de")} % der Brutto-\u00dcberschussenergie aufgenommen werden.`;
+      sent2 = ` Im Modell k\u00f6nnte zudem rund ${fmt(absorbed * 100, "de")} % der Ladechance (Brutto-\u00dcberschuss plus ggf. abgeregelte Energie) aufgenommen werden.`;
     } else if (served !== null) {
       sent2 = ` Im Modell k\u00f6nnte zudem rund ${fmt(served * 100, "de")} % der Brutto-Defizitenergie aus dem Speicher gedeckt werden.`;
     }
     counterfactual = `${sent1}${sent2}`;
   } else {
-    const size = `A right-sized daily BESS (${fmt(cap, "en")} GWh / ${fmt(pw, "en")} GW)`;
+    const size = ctx.isMultiDayWindow
+      ? `A right-sized BESS for this window (${fmt(cap, "en")} GWh / ${fmt(pw, "en")} GW)`
+      : `A right-sized daily BESS (${fmt(cap, "en")} GWh / ${fmt(pw, "en")} GW)`;
     const sent1 =
       grid !== null
         ? `${size} would have cut summed absolute structural imbalance by ~${fmt(grid, "en")}%.`
         : `${size} would have noticeably smoothed structural imbalances.`;
     const tail: string[] = [];
     if (absorbed !== null) {
-      tail.push(`absorb ~${fmt(absorbed * 100, "en")}% of gross surplus energy`);
+      tail.push(
+        `absorb ~${fmt(absorbed * 100, "en")}% of gross charge opportunity (structural surplus plus curtailed energy when present)`
+      );
     }
     if (served !== null) {
       tail.push(`meet ~${fmt(served * 100, "en")}% of gross deficit energy from storage`);
@@ -364,7 +399,7 @@ function buildNumericFallback(
     headline,
     insights: [...insightLines],
     narrative,
-    counterfactual,
+    counterfactual: clampCounterfactualCopy(counterfactual),
     dataAsOfNote: partial,
   };
 }
@@ -376,6 +411,9 @@ const responseSchema = z.object({
   retrievedAtIso: z.string(),
   context: z.object({
     netStructuralBalanceGwh: z.number(),
+    curtailedEnergyGwh: z.number().nullable(),
+    curtailmentSlotFractionOfSampled: z.number(),
+    curtailmentStatus: z.enum(["loaded", "unavailable_not_configured", "unavailable_upstream"]),
     pointFractionOfDay: z.number(),
     samplePoints: z.number(),
     fleet: z.object({
@@ -409,7 +447,7 @@ const responseSchema = z.object({
 
 export type BriefingStoryResponse = z.infer<typeof responseSchema>;
 
-const buildContextCached = unstable_cache(loadBriefingContext, ["briefing-story-context-v4"], {
+const buildContextCached = unstable_cache(loadBriefingContext, ["briefing-story-context-v6"], {
   revalidate: 300,
 });
 
@@ -432,6 +470,9 @@ async function generateStoryUncached(
     retrievedAtIso: context.retrievedAtIso,
     context: {
       netStructuralBalanceGwh: context.netStructuralBalanceGwh,
+      curtailedEnergyGwh: context.curtailedEnergyGwh,
+      curtailmentSlotFractionOfSampled: context.curtailmentSlotFractionOfSampled,
+      curtailmentStatus: context.curtailmentStatus,
       pointFractionOfDay: context.pointFractionOfDay,
       samplePoints: context.samplePoints,
       fleet: context.fleet,
@@ -445,10 +486,17 @@ async function generateStoryUncached(
 
   try {
     const story = await generateDailyStory(context, language);
-    return responseSchema.parse({
+    const llmParsed = responseSchema.safeParse({
       ...baseResponse,
       source: "llm",
       story,
+    });
+    if (llmParsed.success) {
+      return llmParsed.data;
+    }
+    log("LLM story rejected by response schema, using numeric fallback %o", {
+      storyKey: serializedWindow,
+      issues: llmParsed.error.flatten(),
     });
   } catch (error) {
     log("LLM failed, returning numeric fallback %o", {
@@ -456,19 +504,28 @@ async function generateStoryUncached(
       language,
       error: error instanceof Error ? error.message : String(error),
     });
-    const story = buildNumericFallback(context, language);
-    return responseSchema.parse({
-      ...baseResponse,
-      source: "fallback_numeric",
-      story,
-    });
   }
+
+  const story = buildNumericFallback(context, language);
+  const fbParsed = responseSchema.safeParse({
+    ...baseResponse,
+    source: "fallback_numeric",
+    story,
+  });
+  if (fbParsed.success) {
+    return fbParsed.data;
+  }
+  log("numeric fallback rejected by response schema %o", {
+    storyKey: serializedWindow,
+    issues: fbParsed.error.flatten(),
+  });
+  throw new Error("daily story schema unavailable after fallback");
 }
 
 const generateStoryCached = unstable_cache(
   async (serializedWindow: string, language: "en" | "de") =>
     generateStoryUncached(serializedWindow, language),
-  ["briefing-story-llm-v4"],
+  ["briefing-story-llm-v6"],
   { revalidate: 900 }
 );
 
