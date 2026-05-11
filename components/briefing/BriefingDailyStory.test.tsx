@@ -87,19 +87,22 @@ describe("BriefingDailyStory", () => {
     await waitFor(() =>
       expect(screen.getByText(goodPayload.story.headline)).toBeInTheDocument()
     );
-    expect(screen.getByRole("list", { name: /today's signals/i })).toBeInTheDocument();
-    expect(screen.getByText(goodPayload.story.insights[0])).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /today's signals/i })).toBeInTheDocument();
+    expect(screen.getByText(/Day core \(10–16\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Renewables minus load/i)).toBeInTheDocument();
+    expect(screen.getByText(/Peak hours/i)).toBeInTheDocument();
+    expect(screen.getByText(/Fleet context/i)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.narrative)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.counterfactual)).toBeInTheDocument();
     expect(screen.getByText(/Aether analyst \(LLM\)/i)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.dataAsOfNote!)).toBeInTheDocument();
     expect(screen.getByText("Net balance")).toBeInTheDocument();
-    expect(screen.getByText(/18\.4 · 9\.2/)).toBeInTheDocument();
-    expect(screen.getByText("GWh · GW")).toBeInTheDocument();
-    const kpiDl = container.querySelector("dl");
-    expect(kpiDl?.textContent ?? "").toMatch(/absorbed \(gross surplus\)/i);
-    expect(kpiDl?.textContent ?? "").toMatch(/served \(gross deficit\)/i);
-    expect(kpiDl?.textContent ?? "").toMatch(/imbalance smoothing/i);
+    expect(screen.getByText("Aether analysis")).toBeInTheDocument();
+    expect(screen.getByText("Modeled BESS")).toBeInTheDocument();
+    expect(screen.getByText(/9\.2 GW balanced/)).toBeInTheDocument();
+    expect(container.textContent ?? "").toMatch(/absorbed \(gross surplus\)/i);
+    expect(container.textContent ?? "").toMatch(/served \(gross deficit\)/i);
+    expect(container.textContent ?? "").toMatch(/imbalance smoothing/i);
     expect(screen.getByText(/same published quarter-hours as the signals above/i)).toBeInTheDocument();
     expect(container.textContent ?? "").toMatch(/47%/);
     expect(container.textContent ?? "").toMatch(/22%/);

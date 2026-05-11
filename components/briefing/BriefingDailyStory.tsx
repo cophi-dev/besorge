@@ -99,6 +99,7 @@ const labels = {
     windowKicker: "Window story · Berlin",
     insightsLabel: "Today's signals",
     windowInsightsLabel: "Window signals",
+    analysisLabel: "Aether analysis",
     counterfactualLabel: "What an optimal BESS would have done",
     poweredBy: "Aether analyst (LLM)",
     poweredByFallback: "Aether analyst (deterministic — model offline)",
@@ -112,12 +113,32 @@ const labels = {
     servedDeficitCaption: "Served (gross deficit)",
     gridImpactCaption: "Imbalance smoothing",
     kpiFootnote: "Same published quarter-hours as the signals above.",
+    windowKpiFootnote:
+      "Net = sum of generation minus load over the whole window. Clock-band and renewables lines slice the same series differently—they are not three parts of a second total.",
+    kpiHintGrid:
+      "Share by which the modeled BESS reduces the sum of absolute per-slot structural net vs the unstored trace, for this window.",
+    kpiHintAbsorbed:
+      "Modeled share of gross structural surplus energy (slots where generation exceeds load) stored in this window.",
+    kpiHintServed:
+      "Modeled share of gross structural deficit energy (slots where load exceeds generation) met from modeled storage discharge.",
+    netBalanceLabel: "Net balance",
+    dayCoreLabel: "Day core (10–16)",
+    renewableNetLabel: "Renewables minus load",
+    peakHoursLabel: "Peak hours",
+    peakHoursSubtitle: "surplus / deficit",
+    fleetLabel: "Fleet context",
+    coverageLabel: "Coverage",
+    renewableCoverageSubtitle: (pct: string) => `${pct} with renewable MW`,
+    fleetSubtitle: (power: string, capacity: string) => `${power} GW / ${capacity} GWh`,
+    modelCapacityLabel: "Modeled BESS",
+    modelCapacitySubtitle: (power: string) => `${power} GW balanced`,
   },
   de: {
     kicker: "Story des Tages · Berlin",
     windowKicker: "Fenster-Story · Berlin",
     insightsLabel: "Heutige Signale",
     windowInsightsLabel: "Signale im Fenster",
+    analysisLabel: "Aether-Analyse",
     counterfactualLabel: "Was ein optimaler BESS bewirkt hätte",
     poweredBy: "AETHER-Analyst (LLM)",
     poweredByFallback: "AETHER-Analyst (deterministisch — Modell offline)",
@@ -131,6 +152,25 @@ const labels = {
     servedDeficitCaption: "Gedeckt (Brutto-Defizit)",
     gridImpactCaption: "Netzentlastung (Modell)",
     kpiFootnote: "Gleiche ver\u00f6ffentlichte Viertelstunden wie die Signale oben.",
+    windowKpiFootnote:
+      "Netto = Summe (Erzeugung \u2212 Last) \u00fcber das ganze Fenster. Uhr-Band- und EE-Zeilen schneiden dieselbe Serie anders—keine drei Anteile eines zweiten Gesamt-Nettos.",
+    kpiHintGrid:
+      "Anteil, um den das modellierte BESS die Summe der Absolutbetr\u00e4ge der Viertelstunden-Nettos gegen\u00fcber der Rohspur im Fenster senkt.",
+    kpiHintAbsorbed:
+      "Modellierter Anteil der Brutto-\u00dcberschussenergie (Slots Erzeugung > Last), der in diesem Fenster eingelagert werden k\u00f6nnte.",
+    kpiHintServed:
+      "Modellierter Anteil der Brutto-Defizitenergie (Slots Last > Erzeugung), der aus dem modellierten Speicher gedeckt werden k\u00f6nnte.",
+    netBalanceLabel: "Nettobilanz",
+    dayCoreLabel: "Tageskern (10–16)",
+    renewableNetLabel: "EE minus Last",
+    peakHoursLabel: "Spitzenstunden",
+    peakHoursSubtitle: "\u00dcberschuss / Defizit",
+    fleetLabel: "Flottenkontext",
+    coverageLabel: "Abdeckung",
+    renewableCoverageSubtitle: (pct: string) => `${pct} mit EE-MW`,
+    fleetSubtitle: (power: string, capacity: string) => `${power} GW / ${capacity} GWh`,
+    modelCapacityLabel: "Modell-BESS",
+    modelCapacitySubtitle: (power: string) => `${power} GW balanced`,
   },
 } as const;
 
@@ -227,6 +267,33 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
     };
   }, [data, language]);
 
+  const storyMetrics = useMemo(() => {
+    if (!data) {
+      return null;
+    }
+    const fmt = new Intl.NumberFormat(language === "de" ? "de-DE" : "en-GB", {
+      maximumFractionDigits: 1,
+    });
+    const fmtSignedGwh = (value: number | null) =>
+      value === null ? "—" : `${value >= 0 ? "+" : "−"}${fmt.format(Math.abs(value))} GWh`;
+    const fmtHour = (value: number | null, sign: "+" | "−") =>
+      value === null ? "—" : `${sign}${String(value).padStart(2, "0")}h`;
+
+    return {
+      netBalance: fmtSignedGwh(data.context.netStructuralBalanceGwh),
+      dayCore: fmtSignedGwh(data.context.dayShape.structuralNetGwhByWindow.dayCoreGwh),
+      renewableNet: fmtSignedGwh(data.context.dayShape.renewableNetStructuralBalanceGwh),
+      renewableCoverage: fmt.format(data.context.dayShape.renewableSlotFractionOfSampled * 100),
+      peakHours: `${fmtHour(data.context.dayShape.peakSurplusHourBerlin, "+")} / ${fmtHour(
+        data.context.dayShape.peakDeficitHourBerlin,
+        "−"
+      )}`,
+      coverage: `${fmt.format(data.context.pointFractionOfDay * 100)}%`,
+      fleetPower: fmt.format(data.context.fleet.powerGw),
+      fleetCapacity: fmt.format(data.context.fleet.capacityGwh),
+    };
+  }, [data, language]);
+
   return (
     <section
       data-state={loadingState}
@@ -294,31 +361,77 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
           <h2 className="mt-3 text-[19px] leading-snug font-medium tracking-tight text-foreground md:text-[22px] [font-family:var(--font-heading)]">
             {data.story.headline}
           </h2>
-          <div className="mt-4">
-            <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-              {insightsLabelText}
+          {data.context.isMultiDayWindow ? (
+            <p className="mt-2 max-w-3xl text-[12px] leading-relaxed text-muted-foreground/95 md:text-[12.75px] dark:text-slate-400/95">
+              {language === "de" ? (
+                <>
+                  Die Nettobilanz ist die Summe (Erzeugung \u2212 Last) \u00fcber alle ver\u00f6ffentlichten Viertelstunden von{" "}
+                  <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> bis{" "}
+                  <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. Die drei
+                  Signale darunter zeigen, wo sich Spannung ballt\u2014sie sind keine drei Anteile, die sich zum Netto
+                  \u201ezur\u00fcckrechnen\u201c lassen.
+                </>
+              ) : (
+                <>
+                  Net balance is generation minus load summed over every published quarter-hour from{" "}
+                  <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> through{" "}
+                  <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. The three
+                  signals below show where stress concentrates—they are not three slices that should add back up to that
+                  headline net.
+                </>
+              )}
             </p>
-            <ul
-              className="mt-2 max-w-3xl space-y-2 text-[13px] leading-snug text-foreground/90 md:text-[13.5px] dark:text-slate-200/92"
-              aria-label={insightsLabelText}
-            >
-              {data.story.insights.map((insightLine, insightIdx) => (
-                <li key={insightIdx} className="flex gap-2.5">
-                  <span
-                    className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500/85 dark:bg-emerald-400/80"
-                    aria-hidden
+          ) : null}
+          {storyMetrics ? (
+            <>
+              <div className="mt-4">
+                <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+                  {insightsLabelText}
+                </p>
+                <div
+                  className="mt-2 grid grid-cols-2 gap-2.5 md:grid-cols-4"
+                  role="group"
+                  aria-label={insightsLabelText}
+                >
+                  <StoryMetricTile
+                    label={t.netBalanceLabel}
+                    value={storyMetrics.netBalance}
+                    tone={data.context.netStructuralBalanceGwh >= 0 ? "positive" : "negative"}
                   />
-                  <span>{insightLine}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <p className="mt-4 max-w-3xl text-[12.75px] leading-relaxed text-muted-foreground/90 md:text-[13px] dark:text-slate-300/80">
-            {data.story.narrative}
-          </p>
+                  <StoryMetricTile label={t.dayCoreLabel} value={storyMetrics.dayCore} tone="accent" />
+                  <StoryMetricTile
+                    label={t.renewableNetLabel}
+                    value={storyMetrics.renewableNet}
+                    subtitle={t.renewableCoverageSubtitle(storyMetrics.renewableCoverage)}
+                  />
+                  <StoryMetricTile
+                    label={t.peakHoursLabel}
+                    value={storyMetrics.peakHours}
+                    subtitle={t.peakHoursSubtitle}
+                  />
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <StoryMetaPill
+                    label={t.fleetLabel}
+                    value={t.fleetSubtitle(storyMetrics.fleetPower, storyMetrics.fleetCapacity)}
+                  />
+                  <StoryMetaPill label={t.coverageLabel} value={storyMetrics.coverage} />
+                </div>
+              </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-stretch">
-            <div className="relative rounded-xl border border-emerald-300/40 bg-emerald-50/50 px-4 py-3 dark:border-emerald-400/25 dark:bg-emerald-950/30">
+              <div className="mt-4 rounded-xl border border-border/65 bg-background/45 px-4 py-3 dark:border-slate-600/45 dark:bg-slate-950/35">
+                <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+                  {t.analysisLabel}
+                </p>
+                <p className="mt-1.5 max-w-3xl text-[12.75px] leading-relaxed text-muted-foreground/90 md:text-[13px] dark:text-slate-300/80">
+                  {data.story.narrative}
+                </p>
+              </div>
+            </>
+          ) : null}
+
+          {headerNumbers ? (
+            <div className="mt-5">
               <div className="flex items-center gap-2">
                 <Zap
                   className="size-3.5 text-emerald-700 dark:text-emerald-300"
@@ -328,48 +441,38 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
                   {t.counterfactualLabel}
                 </p>
               </div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-emerald-950/90 md:text-[13.5px] dark:text-emerald-50/95">
+              <div className="mt-2 grid grid-cols-2 gap-2.5 md:grid-cols-4">
+                <StoryMetricTile
+                  label={t.modelCapacityLabel}
+                  value={`${headerNumbers.capGwh} GWh`}
+                  subtitle={t.modelCapacitySubtitle(headerNumbers.pwGw)}
+                  tone="accent"
+                />
+                <StoryMetricTile
+                  label={t.gridImpactCaption}
+                  value={headerNumbers.gridPctText !== null ? `${headerNumbers.gridPctText}%` : "—"}
+                  subtitle={data.context.isMultiDayWindow ? t.kpiHintGrid : undefined}
+                  tone="accent"
+                />
+                <StoryMetricTile
+                  label={t.absorbedSurplusCaption}
+                  value={headerNumbers.absorbedSharePctText !== null ? `${headerNumbers.absorbedSharePctText}%` : "—"}
+                  subtitle={data.context.isMultiDayWindow ? t.kpiHintAbsorbed : undefined}
+                />
+                <StoryMetricTile
+                  label={t.servedDeficitCaption}
+                  value={headerNumbers.servedSharePctText !== null ? `${headerNumbers.servedSharePctText}%` : "—"}
+                  subtitle={data.context.isMultiDayWindow ? t.kpiHintServed : undefined}
+                />
+              </div>
+              <p className="mt-3 max-w-3xl text-[12.75px] leading-relaxed text-emerald-950/90 md:text-[13px] dark:text-emerald-50/90">
                 {data.story.counterfactual}
               </p>
+              <p className="mt-2 text-[10px] leading-snug text-muted-foreground/75">
+                {data.context.isMultiDayWindow ? t.windowKpiFootnote : t.kpiFootnote}
+              </p>
             </div>
-
-            {headerNumbers ? (
-              <div className="md:flex md:flex-col md:items-end">
-                <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-xl border border-border/60 bg-background/40 px-3 py-2.5 text-center sm:grid-cols-3 md:flex md:w-[min(100%,13.5rem)] md:flex-none md:flex-col md:gap-2 md:text-right lg:w-[min(100%,15rem)]">
-                  <NumberCallout
-                    label={language === "de" ? "Nettobilanz" : "Net balance"}
-                    value={`${headerNumbers.netSign}${headerNumbers.netAbs}`}
-                    unit="GWh"
-                    tone={data.context.netStructuralBalanceGwh >= 0 ? "positive" : "negative"}
-                  />
-                  <NumberCallout
-                    label={language === "de" ? "Optimal-BESS" : "Optimal BESS"}
-                    value={`${headerNumbers.capGwh} · ${headerNumbers.pwGw}`}
-                    unit="GWh · GW"
-                  />
-                  <NumberCallout
-                    label={t.gridImpactCaption}
-                    value={headerNumbers.gridPctText !== null ? headerNumbers.gridPctText : "—"}
-                    unit={headerNumbers.gridPctText !== null ? "%" : ""}
-                    tone="accent"
-                  />
-                  <NumberCallout
-                    label={t.absorbedSurplusCaption}
-                    value={headerNumbers.absorbedSharePctText !== null ? headerNumbers.absorbedSharePctText : "—"}
-                    unit={headerNumbers.absorbedSharePctText !== null ? "%" : ""}
-                  />
-                  <NumberCallout
-                    label={t.servedDeficitCaption}
-                    value={headerNumbers.servedSharePctText !== null ? headerNumbers.servedSharePctText : "—"}
-                    unit={headerNumbers.servedSharePctText !== null ? "%" : ""}
-                  />
-                </dl>
-                <p className="mt-1.5 max-w-[15rem] text-[9px] leading-snug text-muted-foreground/75 md:text-right">
-                  {t.kpiFootnote}
-                </p>
-              </div>
-            ) : null}
-          </div>
+          ) : null}
 
           <footer className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[10.5px] text-muted-foreground/80">
             <span>
@@ -387,33 +490,49 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
   );
 }
 
-type NumberCalloutProps = {
+type StoryMetricTileProps = {
   label: string;
   value: string;
-  unit: string;
+  subtitle?: string;
   tone?: "positive" | "negative" | "accent" | "neutral";
 };
 
-function NumberCallout({ label, value, unit, tone = "neutral" }: NumberCalloutProps) {
+function StoryMetricTile({ label, value, subtitle, tone = "neutral" }: StoryMetricTileProps) {
   const toneClass =
     tone === "positive"
       ? "text-emerald-700 dark:text-emerald-300"
       : tone === "negative"
         ? "text-rose-600 dark:text-rose-300"
         : tone === "accent"
-          ? "text-foreground"
+          ? "text-slate-950 dark:text-white"
           : "text-foreground";
   return (
-    <div className="leading-tight">
-      <p className="text-[9.5px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+    <div className="rounded-xl border border-border/65 bg-background/45 px-3.5 py-3 shadow-sm dark:border-slate-600/45 dark:bg-slate-950/35">
+      <p className="text-[9px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
         {label}
       </p>
-      <p className={`mt-0.5 text-base font-semibold tabular-nums md:text-[15px] ${toneClass}`}>
+      <p className={`mt-1 text-[1.05rem] font-extrabold leading-tight tabular-nums md:text-[1.15rem] ${toneClass}`}>
         {value}
-        <span className="ml-0.5 text-[10px] font-medium tracking-tight text-muted-foreground/80">
-          {unit}
-        </span>
       </p>
+      {subtitle ? (
+        <p className="mt-1 text-[10px] leading-snug text-muted-foreground/85 dark:text-slate-400/95">
+          {subtitle}
+        </p>
+      ) : null}
     </div>
+  );
+}
+
+type StoryMetaPillProps = {
+  label: string;
+  value: string;
+};
+
+function StoryMetaPill({ label, value }: StoryMetaPillProps) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border/65 bg-background/55 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-300">
+      <span className="font-semibold text-foreground/85 dark:text-slate-100">{label}:</span>
+      <span className="tabular-nums">{value}</span>
+    </span>
   );
 }

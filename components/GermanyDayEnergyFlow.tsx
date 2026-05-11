@@ -264,6 +264,47 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
+type SectionKpiTone = "emerald" | "sky" | "violet" | "amber" | "slate";
+
+function SectionKpiTile({
+  eyebrow,
+  value,
+  subtitle,
+  tone = "slate",
+}: {
+  eyebrow: string;
+  value: string;
+  subtitle?: string;
+  tone?: SectionKpiTone;
+}) {
+  const toneClass =
+    tone === "emerald"
+      ? "border-emerald-200/85 bg-emerald-50/60 text-emerald-950 dark:border-emerald-500/28 dark:bg-emerald-950/25 dark:text-emerald-50"
+      : tone === "sky"
+        ? "border-sky-200/85 bg-sky-50/65 text-sky-950 dark:border-sky-500/25 dark:bg-sky-950/20 dark:text-sky-50"
+        : tone === "violet"
+          ? "border-violet-200/85 bg-violet-50/65 text-violet-950 dark:border-violet-500/25 dark:bg-violet-950/22 dark:text-violet-50"
+          : tone === "amber"
+            ? "border-amber-200/85 bg-amber-50/65 text-amber-950 dark:border-amber-500/25 dark:bg-amber-950/22 dark:text-amber-50"
+            : "border-border/70 bg-background/50 text-slate-950 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-white";
+
+  return (
+    <div className={`rounded-xl border px-3.5 py-3 shadow-sm ${toneClass}`}>
+      <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
+        {eyebrow}
+      </p>
+      <p className="mt-1 text-[1.05rem] font-extrabold leading-tight tabular-nums md:text-[1.15rem]">
+        {value}
+      </p>
+      {subtitle ? (
+        <p className="mt-1 text-[10px] leading-snug text-slate-600/92 dark:text-slate-400/95">
+          {subtitle}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function formatSignedMw(n: number): string {
   const sign = n > 0 ? "+" : "";
   return `${sign}${integerFormatter.format(n)} MW`;
@@ -285,6 +326,18 @@ function formatPowerFromMw(mw: number): string {
     return `${energyFormatter.format(mw / 1000)} GW`;
   }
   return `${powerFormatter.format(mw)} MW`;
+}
+
+function parseCapacityGwhInput(value: string): number | null {
+  const normalized = value.trim().replace(/,/g, ".");
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed * 1_000;
 }
 
 type AbsorptionTotals = {
@@ -407,6 +460,7 @@ export default function GermanyDayEnergyFlow({
   const [selectedMonth, setSelectedMonth] = useState(resolvedSeedKey.slice(0, 7));
   const [dayModeResetAtStart, setDayModeResetAtStart] = useState(false);
   const [showSimulatedNet, setShowSimulatedNet] = useState(initialSimulatedNet);
+  const [customSimulatedCapacityGwhInput, setCustomSimulatedCapacityGwhInput] = useState("");
   const commitSimulatedMode = useCallback(
     (next: boolean) => {
       setShowSimulatedNet(next);
@@ -444,6 +498,8 @@ export default function GermanyDayEnergyFlow({
   const [flowLoadError, setFlowLoadError] = useState(false);
   const [recommendationLoadError, setRecommendationLoadError] = useState(false);
   const dataCoverageTooltipId = useId();
+  const simulatedCapacityInputId = useId();
+  const simulatedCapacityHintId = useId();
   const [chartLayoutCompact, setChartLayoutCompact] = useState(false);
 
   useEffect(() => {
@@ -764,7 +820,7 @@ export default function GermanyDayEnergyFlow({
           profileTitle: "Deutschland-Tagesprofil",
           profileSubtitle: "Energy-Charts · strukturelle Bilanz · Europa/Berlin",
           modeObserved: "Beobachtet",
-          modeSimulated: "Simuliert (optimales BESS)",
+          modeSimulated: "Simuliertes BESS",
           timeframeLabelShort: "Zeitraum",
           dataCoverageInfoAria: "Was bedeutet die Datenabdeckung?",
           dataCoverageTooltip:
@@ -784,7 +840,7 @@ export default function GermanyDayEnergyFlow({
           kpiDeficitCoveredEyebrow: "Gedecktes Defizit",
           kpiDeficitCoveredSubtitle: "Aus Speicher gefüllt",
           kpiNewSelfConsumptionEyebrow: "Neue Eigenverbrauchsquote",
-          kpiNewSelfConsumptionSubtitle: "Mit optimalem BESS",
+          kpiNewSelfConsumptionSubtitle: "Mit modelliertem BESS",
           kpiGridImpactEyebrow: "Daempfung |Netto| je Slot",
           kpiGridImpactSubtitle: "Vs. Roh-Nettos (Viertelstunden)",
           kpiGridImpactValue: (pct: string) =>
@@ -792,6 +848,28 @@ export default function GermanyDayEnergyFlow({
           observedModeLead:
             "P95 aus diesem Fenster. Simulation zeigt Überschussaufnahme und Netzwirkung.",
           capacityBadgeUnavailable: "Keine berechenbare Simulationskapazitaet",
+          simulatedCapacityBadgeLabel: (capacity: string) => `Simulierte Kapazitaet: ${capacity}`,
+          simulatedCapacityModeAuto: "Automatik · Fenster-P95",
+          simulatedCapacityModeCustom: "Manuell gesetzt",
+          simulatedCapacityPowerBadge: (power: string) => `Leistungslimit: ${power}`,
+          simulatedCapacityControlEyebrow: "Simulationssteuerung",
+          simulatedCapacityControlTitle: "Simulierte BESS-Kapazitaet anpassen",
+          simulatedCapacityControlHintAuto: (capacity: string) =>
+            `Aktuell nutzt die Kurve automatisch ${capacity} (praktische Fenster-P95). Trage einen Wert ein, um die Simulation zu ueberschreiben.`,
+          simulatedCapacityControlHintCustom: (capacity: string | null) =>
+            capacity
+              ? `Manuelle Kapazitaet aktiv. Die automatische Fenster-P95 waere ${capacity}.`
+              : "Manuelle Kapazitaet aktiv. Fuer dieses Fenster ist derzeit keine automatische Groesse berechenbar.",
+          simulatedCapacityInputLabel: "Kapazitaet (GWh)",
+          simulatedCapacityInputHint: (power: string) =>
+            `Das Leistungslimit bleibt bei ${power} (balanced).`,
+          simulatedCapacityInputHintUnavailable:
+            "Das Leistungsmodell wird geladen. Sobald die Fenster-Empfehlung da ist, erscheint hier das Power-Limit.",
+          simulatedCapacityReset: "Automatik wiederherstellen",
+          simulatedCapacityInputInvalid:
+            "Bitte eine positive GWh-Zahl eingeben, z. B. 2,5.",
+          simulatedCapacitySourceAuto: "Automatik",
+          simulatedCapacitySourceCustom: "Manuell",
           aiInsightTitle: "KI-Einblick",
           insightRuleBasedTitle: "Automatische Kurzfassung",
           aiInsightPlaceholder:
@@ -871,7 +949,7 @@ export default function GermanyDayEnergyFlow({
           profileTitle: "Germany Day Profile",
           profileSubtitle: "Energy-Charts · structural balance · Europe/Berlin",
           modeObserved: "Observed",
-          modeSimulated: "Simulated with optimal BESS",
+          modeSimulated: "Simulated BESS",
           timeframeLabelShort: "Period",
           dataCoverageInfoAria: "What does data coverage mean?",
           dataCoverageTooltip:
@@ -889,8 +967,8 @@ export default function GermanyDayEnergyFlow({
           kpiCapturedSurplusSubtitle: "Greedy simulation, ideal round-trip (no losses)",
           kpiDeficitCoveredEyebrow: "Deficit covered",
           kpiDeficitCoveredSubtitle: "From discharged storage",
-          kpiNewSelfConsumptionEyebrow: "Self-consumption (with optimal BESS)",
-          kpiNewSelfConsumptionSubtitle: "With optimal BESS",
+          kpiNewSelfConsumptionEyebrow: "Self-consumption (with modeled BESS)",
+          kpiNewSelfConsumptionSubtitle: "With modeled BESS",
           kpiGridImpactEyebrow: "Imbalance damping (Σ|slot|)",
           kpiGridImpactSubtitle: "Vs raw structural net per quarter-hour",
           kpiGridImpactValue: (pct: string) =>
@@ -898,6 +976,28 @@ export default function GermanyDayEnergyFlow({
           observedModeLead:
             "P95 for this window. Simulated mode shows surplus capture and grid impact.",
           capacityBadgeUnavailable: "Simulation capacity not computable yet",
+          simulatedCapacityBadgeLabel: (capacity: string) => `Simulated capacity: ${capacity}`,
+          simulatedCapacityModeAuto: "Auto · window P95",
+          simulatedCapacityModeCustom: "Manual override",
+          simulatedCapacityPowerBadge: (power: string) => `Power cap: ${power}`,
+          simulatedCapacityControlEyebrow: "Simulation control",
+          simulatedCapacityControlTitle: "Adjust simulated BESS capacity",
+          simulatedCapacityControlHintAuto: (capacity: string) =>
+            `The chart currently auto-uses ${capacity} (practical window P95). Enter a value to override the simulation.`,
+          simulatedCapacityControlHintCustom: (capacity: string | null) =>
+            capacity
+              ? `Manual capacity active. The automatic window P95 would be ${capacity}.`
+              : "Manual capacity active. No automatic size is computable for this window yet.",
+          simulatedCapacityInputLabel: "Capacity (GWh)",
+          simulatedCapacityInputHint: (power: string) =>
+            `The power cap stays at ${power} (balanced).`,
+          simulatedCapacityInputHintUnavailable:
+            "The power model is still loading. The power cap appears here once the window recommendation is ready.",
+          simulatedCapacityReset: "Restore auto",
+          simulatedCapacityInputInvalid:
+            "Enter a positive GWh value, for example 2.5.",
+          simulatedCapacitySourceAuto: "Auto",
+          simulatedCapacitySourceCustom: "Manual",
           aiInsightTitle: "AI insight",
           insightRuleBasedTitle: "Rule-based insight",
           aiInsightPlaceholder:
@@ -945,7 +1045,7 @@ export default function GermanyDayEnergyFlow({
     return computePracticalDailyCycleCapacityMwh(previousDaySlots);
   }, [selectorMode, previousDaySlots]);
 
-  const effectivePracticalCapacityMwh = useMemo(() => {
+  const autoPracticalCapacityMwh = useMemo(() => {
     const current = practicalCapacity?.practicalCapacityMwh ?? 0;
     if (current > 0) {
       return current;
@@ -953,6 +1053,17 @@ export default function GermanyDayEnergyFlow({
     const fallback = previousDayPracticalCapacity?.practicalCapacityMwh ?? 0;
     return fallback > 0 ? fallback : 0;
   }, [practicalCapacity, previousDayPracticalCapacity]);
+
+  const customSimulatedCapacityMwh = useMemo(
+    () => parseCapacityGwhInput(customSimulatedCapacityGwhInput),
+    [customSimulatedCapacityGwhInput]
+  );
+  const customSimulatedCapacityInvalid =
+    customSimulatedCapacityGwhInput.trim().length > 0 && customSimulatedCapacityMwh === null;
+  const hasCustomSimulatedCapacity = customSimulatedCapacityMwh !== null;
+  const effectivePracticalCapacityMwh = hasCustomSimulatedCapacity
+    ? customSimulatedCapacityMwh
+    : autoPracticalCapacityMwh;
 
   const recommendationByTier = useMemo(() => {
     if (!recommendation) {
@@ -1104,22 +1215,11 @@ export default function GermanyDayEnergyFlow({
     estimatedInitialSocMwh,
   ]);
 
-  /** Balanced-tier BESS sizing: share of generation that serves load directly or via time-shifted discharge. */
-  const selfConsumptionOptimalPct = useMemo(() => {
-    if (!flow?.slots.length || !selectedWindowRecommendation?.balanced) {
+  /** Active simulated BESS sizing: share of generation that serves load directly or via time-shifted discharge. */
+  const selfConsumptionSimulatedPct = useMemo(() => {
+    if (!flow?.slots.length || !recommendedCoverage || effectivePracticalCapacityMwh <= 0) {
       return null;
     }
-    const cap = selectedWindowRecommendation.balanced.recommendedEnergyMwh;
-    const pw = selectedWindowRecommendation.balanced.recommendedPowerMw;
-    if (!Number.isFinite(cap) || cap <= 0) {
-      return null;
-    }
-    const initialForCap = Math.min(cap, Math.max(0, estimatedInitialSocMwh));
-    const coverage = computeCoverageAtCapacityMwh(flow.slots, cap, {
-      resetDailyByBerlin: visualizationResetDailyByBerlin,
-      maxPowerMw: pw > 0 && Number.isFinite(pw) ? pw : null,
-      initialSocMwh: initialForCap,
-    });
     let directLocalMwh = 0;
     let totalGenMwh = 0;
     for (const s of flow.slots) {
@@ -1129,9 +1229,9 @@ export default function GermanyDayEnergyFlow({
     if (totalGenMwh <= 0) {
       return null;
     }
-    const numerator = directLocalMwh + coverage.servedDeficitEnergyMwh;
+    const numerator = directLocalMwh + recommendedCoverage.servedDeficitEnergyMwh;
     return Math.min(100, Math.max(0, (numerator / totalGenMwh) * 100));
-  }, [flow, selectedWindowRecommendation, visualizationResetDailyByBerlin, estimatedInitialSocMwh]);
+  }, [flow, recommendedCoverage, effectivePracticalCapacityMwh]);
 
   /** Share of domestic generation paired directly to contemporaneous demand (before BESS reshaping). */
   const baselineSelfConsumptionPct = useMemo(() => {
@@ -1263,7 +1363,15 @@ export default function GermanyDayEnergyFlow({
     const simCapGwh = effectivePracticalCapacityMwh > 0 ? effectivePracticalCapacityMwh / 1_000 : undefined;
     const chartHeadingShare =
       showSimulatedNet && simCapGwh !== undefined
-        ? `${energyFormatter.format(simCapGwh)} GWh BESS · ${language === "de" ? "Simulation" : "simulated"}`
+        ? `${energyFormatter.format(simCapGwh)} GWh BESS · ${
+            hasCustomSimulatedCapacity
+              ? language === "de"
+                ? "manuell simuliert"
+                : "manual simulation"
+              : language === "de"
+                ? "Simulation"
+                : "simulated"
+          }`
         : showSimulatedNet
           ? language === "de"
             ? "Simulation · Kapazität offen"
@@ -1307,8 +1415,8 @@ export default function GermanyDayEnergyFlow({
             ? gridImpactReductionPct
             : undefined,
         selfConsumptionWithBessPct:
-          selfConsumptionOptimalPct !== null && Number.isFinite(selfConsumptionOptimalPct)
-            ? selfConsumptionOptimalPct
+          selfConsumptionSimulatedPct !== null && Number.isFinite(selfConsumptionSimulatedPct)
+            ? selfConsumptionSimulatedPct
             : undefined,
         optimalBessEnergyGwh: simCapGwh !== undefined && Number.isFinite(simCapGwh) ? simCapGwh : undefined,
         optimalBessPowerGw: optGw,
@@ -1351,10 +1459,11 @@ export default function GermanyDayEnergyFlow({
     gridImpactReductionPct,
     effectivePracticalCapacityMwh,
     selectedWindowBalancedPowerMw,
-    selfConsumptionOptimalPct,
+    selfConsumptionSimulatedPct,
     baselineSelfConsumptionPct,
     windowNetStructuralBalanceGwh,
     t.observedChartTitle,
+    hasCustomSimulatedCapacity,
   ]);
 
   /** Four-up strip rendered above the chart inside the social/poster PNG region. */
@@ -1399,8 +1508,8 @@ export default function GermanyDayEnergyFlow({
           accent: "teal" as const,
           eyebrow: t.kpiNewSelfConsumptionEyebrow,
           value:
-            selfConsumptionOptimalPct !== null
-              ? `${integerFormatter.format(Math.round(selfConsumptionOptimalPct))}%`
+            selfConsumptionSimulatedPct !== null
+              ? `${integerFormatter.format(Math.round(selfConsumptionSimulatedPct))}%`
               : "—",
           hint: language === "de" ? "Erzeugung lokal wirksam (Modell)" : "Generation paired locally (model)",
           subtitle: t.kpiNewSelfConsumptionSubtitle,
@@ -1468,7 +1577,7 @@ export default function GermanyDayEnergyFlow({
     language,
     showSimulatedNet,
     recommendedCoverage,
-    selfConsumptionOptimalPct,
+    selfConsumptionSimulatedPct,
     gridImpactReductionPct,
     effectivePracticalCapacityMwh,
     fleetEnergyCapacityMwh,
@@ -1659,17 +1768,23 @@ export default function GermanyDayEnergyFlow({
     effectivePracticalCapacityMwh > 0
       ? `${energyFormatter.format(effectivePracticalCapacityMwh / 1_000)} GWh`
       : null;
+  const autoSimulatedCapacityGwhLabel =
+    autoPracticalCapacityMwh > 0
+      ? `${energyFormatter.format(autoPracticalCapacityMwh / 1_000)} GWh`
+      : null;
+  const autoSimulatedCapacityInputPlaceholder =
+    autoPracticalCapacityMwh > 0
+      ? energyFormatter.format(autoPracticalCapacityMwh / 1_000)
+      : undefined;
+  const simulatedCapacitySourceLabel = hasCustomSimulatedCapacity
+    ? t.simulatedCapacitySourceCustom
+    : t.simulatedCapacitySourceAuto;
+  const simulatedCapacityBadgeText = simulatedCapacityGwhLabel
+    ? t.simulatedCapacityBadgeLabel(simulatedCapacityGwhLabel)
+    : t.capacityBadgeUnavailable;
 
   const netLineColor = showSimulatedNet ? SIM_CHART_NET_STROKE : "rgb(51,104,247)";
   const coverageSummaryLine = t.coverage(flow.samplePoints, coveragePct, flow.dateBerlin, isMultiDayFlow);
-  const simulatedBriefCopy =
-    simulatedCapacityGwhLabel !== null
-      ? language === "de"
-        ? `Mit der empfohlenen ${simulatedCapacityGwhLabel} BESS wird nahezu der gesamte Überschuss genutzt; die strukturelle Netzunbalance sinkt deutlich.`
-        : `With the recommended ${simulatedCapacityGwhLabel} BESS we capture nearly all surplus and significantly reduce grid imbalance.`
-      : language === "de"
-        ? "Kapazitaet noch nicht ableitbar — Kurve zeigt nur die strukturelle Bilanz."
-        : "Sizing unavailable — curve shows structural balance only.";
 
   const resolvedLlmInsightText = String(simulationAiInsight ?? "").trim();
   const heuristicInsightParagraph = deriveGermanyFlowRuleBasedInsightText({
@@ -1686,6 +1801,18 @@ export default function GermanyDayEnergyFlow({
     resolvedLlmInsightText.length > 0 ? t.aiInsightTitle : t.insightRuleBasedTitle;
   const insightPanelBody =
     resolvedLlmInsightText || heuristicInsightParagraph || t.aiInsightPlaceholder;
+  const powerCapLabel =
+    selectedWindowBalancedPowerMw !== null ? formatPowerFromMw(selectedWindowBalancedPowerMw) : "—";
+  const absorbedPctLabel =
+    recommendedCoverage !== null && recommendedCoverage.totalSurplusEnergyMwh > 1e-9
+      ? `${pctFormatter.format(recommendedCoverage.absorbedSurplusShare * 100)}%`
+      : "—";
+  const servedPctLabel =
+    recommendedCoverage !== null && recommendedCoverage.totalDeficitEnergyMwh > 1e-9
+      ? `${pctFormatter.format(recommendedCoverage.servedDeficitShare * 100)}%`
+      : "—";
+  const dampingPctLabel =
+    gridImpactReductionPct !== null ? `${pctFormatter.format(gridImpactReductionPct)}%` : "—";
 
   return (
     <article
@@ -1954,9 +2081,32 @@ export default function GermanyDayEnergyFlow({
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="lg:max-w-[min(680px,calc(100%-10rem))]">
             {showSimulatedNet ? (
-              <p className="text-[13px] font-semibold leading-snug text-slate-600 dark:text-slate-300 md:text-[0.875rem]">
-                {t.chartSimulatedPanelTitle}
-              </p>
+              <div className="space-y-2">
+                <p className="text-[13px] font-semibold leading-snug text-slate-600 dark:text-slate-300 md:text-[0.875rem]">
+                  {t.chartSimulatedPanelTitle}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                      simulatedCapacityGwhLabel
+                        ? "border-emerald-300/80 bg-emerald-50 text-emerald-800 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-200"
+                        : "border-amber-300/80 bg-amber-50 text-amber-900 dark:border-amber-400/35 dark:bg-amber-500/10 dark:text-amber-100"
+                    }`}
+                  >
+                    {simulatedCapacityBadgeText}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-slate-200/85 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/55 dark:bg-slate-950/70 dark:text-slate-200">
+                    {hasCustomSimulatedCapacity
+                      ? t.simulatedCapacityModeCustom
+                      : t.simulatedCapacityModeAuto}
+                  </span>
+                  {selectedWindowBalancedPowerMw !== null ? (
+                    <span className="inline-flex items-center rounded-full border border-slate-200/85 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/55 dark:bg-slate-950/70 dark:text-slate-200">
+                      {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             ) : (
               <div className="space-y-0.5">
                 <p className="text-[10px] font-semibold uppercase leading-none tracking-[0.22em] text-slate-500 dark:text-slate-400">
@@ -2170,64 +2320,117 @@ export default function GermanyDayEnergyFlow({
           </h3>
         </header>
 
-        <div className="space-y-2 border-b border-border/70 pb-4 dark:border-slate-600/40">
-          <div className="flex flex-wrap items-end gap-x-3 gap-y-1" aria-live="polite">
-            {showSimulatedNet ? (
-              simulatedCapacityGwhLabel ? (
-                <>
-                  <span className="text-[2.5rem] font-extrabold leading-none tracking-tight text-emerald-700 tabular-nums dark:text-emerald-300 sm:text-[2.85rem] [font-family:var(--font-sans)]">
-                    {simulatedCapacityGwhLabel}
-                  </span>
-                  <span className="mb-2 text-base font-semibold tracking-wide text-slate-700 dark:text-slate-300">
-                    BESS
-                  </span>
-                </>
-              ) : (
-                <span className="text-base font-semibold text-amber-800 dark:text-amber-100">{t.capacityBadgeUnavailable}</span>
-              )
-            ) : selectedWindowRecommendation?.conservative ? (
-              <>
-                <span className="text-[2.5rem] font-extrabold leading-none tracking-tight text-violet-950 tabular-nums dark:text-violet-100 sm:text-[2.85rem] [font-family:var(--font-sans)]">
-                  {formatEnergyFromMwh(selectedWindowRecommendation.conservative.recommendedEnergyMwh)}
-                </span>
-                <span className="mb-2 rounded-md bg-violet-600/14 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-violet-900 dark:bg-violet-400/28 dark:text-violet-50">
-                  P95
-                </span>
-              </>
-            ) : (
-              <span className="text-xl font-semibold text-slate-400">—</span>
-            )}
-          </div>
-          {!showSimulatedNet && selectedWindowRecommendation?.conservative?.recommendedPowerMw ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              {language === "de"
-                ? `Begleit-Leistung (konservativ): ${formatPowerFromMw(selectedWindowRecommendation.conservative.recommendedPowerMw)}`
-                : `Companion power (conservative): ${formatPowerFromMw(selectedWindowRecommendation.conservative.recommendedPowerMw)}`}
-            </p>
-          ) : null}
-          {showSimulatedNet && selectedWindowBalancedPowerMw !== null ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              {language === "de"
-                ? `Modell-Leistung (balanced): ${formatPowerFromMw(selectedWindowBalancedPowerMw)}`
-                : `Modeled power (balanced): ${formatPowerFromMw(selectedWindowBalancedPowerMw)}`}
-            </p>
-          ) : null}
+        <div className="grid grid-cols-2 gap-2.5 border-b border-border/70 pb-4 md:grid-cols-3 xl:grid-cols-5 dark:border-slate-600/40">
+          <SectionKpiTile
+            eyebrow={showSimulatedNet ? (language === "de" ? "Aktive Sim.-Kapazitaet" : "Active sim. size") : (language === "de" ? "Fenster-BESS" : "Window BESS")}
+            value={simulatedCapacityGwhLabel ?? "—"}
+            subtitle={simulatedCapacitySourceLabel}
+            tone={showSimulatedNet ? "emerald" : "violet"}
+          />
+          <SectionKpiTile
+            eyebrow={language === "de" ? "Leistungslimit" : "Power cap"}
+            value={powerCapLabel}
+            subtitle={language === "de" ? "Balanced-Fensterleistung" : "Balanced window power"}
+            tone="sky"
+          />
+          <SectionKpiTile
+            eyebrow={t.kpiCapturedSurplusEyebrow}
+            value={absorbedPctLabel}
+            subtitle={t.kpiCapturedSurplusSubtitle}
+            tone="emerald"
+          />
+          <SectionKpiTile
+            eyebrow={t.kpiDeficitCoveredEyebrow}
+            value={servedPctLabel}
+            subtitle={t.kpiDeficitCoveredSubtitle}
+            tone="amber"
+          />
+          <SectionKpiTile
+            eyebrow={t.kpiGridImpactEyebrow}
+            value={dampingPctLabel}
+            subtitle={t.kpiGridImpactSubtitle}
+            tone="slate"
+          />
         </div>
 
-        <p className="max-w-[40rem] text-[0.9375rem] leading-relaxed text-slate-700 dark:text-slate-300">
-          {showSimulatedNet ? simulatedBriefCopy : t.observedModeLead}
-        </p>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+          <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/65 px-3.5 py-3 shadow-sm dark:border-emerald-500/25 dark:bg-emerald-500/10">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-800 dark:text-emerald-200">
+                  {t.simulatedCapacityControlEyebrow}
+                </p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {t.simulatedCapacityControlTitle}
+                </p>
+                <p className="max-w-2xl text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                  {hasCustomSimulatedCapacity
+                    ? t.simulatedCapacityControlHintCustom(autoSimulatedCapacityGwhLabel)
+                    : autoSimulatedCapacityGwhLabel
+                      ? t.simulatedCapacityControlHintAuto(autoSimulatedCapacityGwhLabel)
+                      : t.simulatedCapacityControlHintCustom(null)}
+                </p>
+              </div>
+              {hasCustomSimulatedCapacity ? (
+                <button
+                  type="button"
+                  onClick={() => setCustomSimulatedCapacityGwhInput("")}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-300/80 bg-white px-3 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/80 focus-visible:ring-offset-2 dark:border-emerald-400/30 dark:bg-slate-950/70 dark:text-emerald-100 dark:hover:bg-slate-900 dark:focus-visible:ring-offset-slate-950"
+                >
+                  {t.simulatedCapacityReset}
+                </button>
+              ) : null}
+            </div>
 
-        <div className="rounded-lg border border-indigo-200/60 bg-card px-3.5 py-3 shadow-sm dark:border-indigo-500/35 dark:bg-indigo-950/35">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.65)]" aria-hidden />
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-800 dark:text-indigo-200">
-              {insightPanelTitle}
+            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <label htmlFor={simulatedCapacityInputId} className="w-full max-w-xs space-y-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200">
+                  {t.simulatedCapacityInputLabel}
+                </span>
+                <input
+                  id={simulatedCapacityInputId}
+                  type="text"
+                  inputMode="decimal"
+                  value={customSimulatedCapacityGwhInput}
+                  onChange={(event) => setCustomSimulatedCapacityGwhInput(event.target.value)}
+                  placeholder={autoSimulatedCapacityInputPlaceholder}
+                  aria-describedby={simulatedCapacityHintId}
+                  aria-invalid={customSimulatedCapacityInvalid}
+                  className={`h-11 w-full rounded-xl border bg-white px-3 text-sm font-semibold tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-400/70 dark:bg-slate-950/75 dark:text-white dark:placeholder:text-slate-500 ${
+                    customSimulatedCapacityInvalid
+                      ? "border-rose-300/90 focus-visible:border-rose-300 dark:border-rose-400/45"
+                      : "border-emerald-300/80 dark:border-emerald-400/30"
+                  }`}
+                />
+              </label>
+              <p
+                id={simulatedCapacityHintId}
+                className="max-w-md text-xs leading-relaxed text-slate-600 dark:text-slate-300"
+              >
+                {selectedWindowBalancedPowerMw !== null
+                  ? t.simulatedCapacityInputHint(formatPowerFromMw(selectedWindowBalancedPowerMw))
+                  : t.simulatedCapacityInputHintUnavailable}
+              </p>
+            </div>
+
+            {customSimulatedCapacityInvalid ? (
+              <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-200">
+                {t.simulatedCapacityInputInvalid}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="rounded-lg border border-indigo-200/60 bg-card px-3.5 py-3 shadow-sm dark:border-indigo-500/35 dark:bg-indigo-950/35">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.65)]" aria-hidden />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-800 dark:text-indigo-200">
+                {insightPanelTitle}
+              </p>
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-slate-800 dark:text-slate-100">
+              {insightPanelBody}
             </p>
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-slate-800 dark:text-slate-100">
-            {insightPanelBody}
-          </p>
         </div>
 
         <div className="flex flex-col gap-3 border-t border-border/70 pt-4 dark:border-slate-600/40 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
