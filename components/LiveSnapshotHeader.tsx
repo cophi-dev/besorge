@@ -214,25 +214,31 @@ export function LiveSnapshotHeader({
     );
 
   return (
-    <header className="sticky top-16 z-[100] -mx-5 mb-6 border-b border-border/50 bg-background/92 pb-4 backdrop-blur-md md:-mx-8 lg:top-[68px] lg:-mx-12">
-      <div className="px-0 pt-0.5">
-        <div className="mb-2 flex flex-col gap-0.5 sm:mb-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-          <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+    <section className="space-y-4 rounded-[28px] border border-border/70 bg-card/55 px-4 py-4 shadow-[0_18px_44px_-28px_rgba(15,23,42,0.32)] backdrop-blur-xl md:px-5 md:py-5 dark:border-white/[0.06] dark:bg-[rgba(9,14,26,0.72)] dark:shadow-[0_24px_56px_-30px_rgba(0,0,0,0.75)]">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold tracking-[0.22em] text-slate-500 uppercase dark:text-slate-400">
             {labels.title}
           </p>
-          {isLoading ? (
-            <Skeleton className="h-3.5 w-40 sm:mt-0" />
-          ) : (
-            <p className="text-[11px] font-medium tracking-[0.02em] text-slate-500 tabular-nums sm:text-right dark:text-slate-400">
-              {subheadingAsOf}
-            </p>
-          )}
+          <p className="text-sm font-medium text-slate-900 dark:text-white md:text-base">
+            {language === "de"
+              ? "Operativer Echtzeitblick auf das deutsche Stromsystem und den modellierten BESS-Zustand."
+              : "Operational real-time view of the German power system and the modeled BESS state."}
+          </p>
         </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+        {isLoading ? (
+          <Skeleton className="h-4 w-44 sm:mt-0" />
+        ) : (
+          <p className="text-[11px] font-medium tracking-[0.02em] text-slate-500 tabular-nums sm:text-right dark:text-slate-400">
+            {subheadingAsOf}
+          </p>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
           {/* Generation */}
-          <article className="group relative overflow-hidden rounded-xl border border-border/80 bg-card px-3.5 py-3 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:border-slate-600/45 dark:bg-slate-900/80 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)]">
+          <article className="group relative overflow-hidden rounded-2xl border border-border/80 bg-card/92 px-4 py-4 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:border-slate-600/45 dark:bg-slate-900/82 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)]">
             <div className="pointer-events-none absolute inset-y-2.5 left-0 w-1 rounded-full bg-emerald-500/70" aria-hidden />
-            <div className="pl-2.5">
+            <div className="pl-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
                   {labels.gen}
@@ -246,7 +252,7 @@ export function LiveSnapshotHeader({
                 </div>
               ) : (
                 <>
-                  <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white md:text-[1.65rem]">
+                  <p className="mt-3 text-[1.9rem] font-bold tracking-tight text-slate-900 dark:text-white md:text-[2rem]">
                     <KpiValue flash={genFlash}>
                       {generationGw !== null ? `${gwFormatter.format(generationGw)} GW` : labels.unavailable}
                     </KpiValue>
@@ -263,7 +269,7 @@ export function LiveSnapshotHeader({
           </article>
 
           {/* Demand */}
-          <article className="group relative overflow-hidden rounded-xl border border-border/80 bg-card px-3.5 py-3 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:border-slate-600/45 dark:bg-slate-900/80 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)]">
+          <article className="group relative overflow-hidden rounded-2xl border border-border/80 bg-card/92 px-4 py-4 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:border-slate-600/45 dark:bg-slate-900/82 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)]">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
                 {labels.demand}
@@ -275,7 +281,7 @@ export function LiveSnapshotHeader({
                 <Skeleton className="h-9 w-[min(100%,7rem)]" />
               </div>
             ) : (
-              <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white md:text-[1.65rem]">
+              <p className="mt-3 text-[1.9rem] font-bold tracking-tight text-slate-900 dark:text-white md:text-[2rem]">
                 <KpiValue flash={demandFlash}>
                   {demandGw !== null ? `${gwFormatter.format(demandGw)} GW` : labels.unavailable}
                 </KpiValue>
@@ -285,18 +291,18 @@ export function LiveSnapshotHeader({
 
           {/* Net position */}
           <article
-            className={`group relative overflow-hidden rounded-xl border bg-card px-3.5 py-3 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:bg-slate-900/80 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)] ${
+            className={`group relative overflow-hidden rounded-2xl border px-4 py-4 shadow-[0_18px_42px_-26px_rgba(16,185,129,0.35)] transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-lg dark:shadow-[0_18px_42px_-24px_rgba(0,0,0,0.52)] ${
               netPositionGw === null
-                ? "border-border/80 dark:border-slate-600/45"
+                ? "border-border/80 bg-card/92 dark:border-slate-600/45 dark:bg-slate-900/82"
                 : netPositionGw > 0
-                  ? "border-emerald-300/70 dark:border-emerald-500/35"
+                  ? "border-emerald-300/70 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/70 dark:border-emerald-500/35 dark:bg-[linear-gradient(135deg,rgba(5,46,22,0.42),rgba(9,14,26,0.9))]"
                   : netPositionGw < 0
-                    ? "border-rose-300/70 dark:border-rose-500/35"
-                    : "border-border/80 dark:border-slate-600/45"
+                    ? "border-rose-300/70 bg-gradient-to-br from-rose-50 via-white to-rose-50/70 dark:border-rose-500/35 dark:bg-[linear-gradient(135deg,rgba(76,5,25,0.34),rgba(9,14,26,0.9))]"
+                    : "border-border/80 bg-card/92 dark:border-slate-600/45 dark:bg-slate-900/82"
             }`}
           >
             <div
-              className={`pointer-events-none absolute inset-x-3 top-0 h-0.5 rounded-full bg-gradient-to-r ${netBar}`}
+              className={`pointer-events-none absolute inset-x-4 top-0 h-0.5 rounded-full bg-gradient-to-r ${netBar}`}
               aria-hidden
             />
             <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
@@ -309,7 +315,7 @@ export function LiveSnapshotHeader({
               </div>
             ) : (
               <>
-                <p className={`mt-2 text-2xl font-bold tracking-tight md:text-[1.65rem] ${netTone}`}>
+                <p className={`mt-3 text-[1.95rem] font-bold tracking-tight md:text-[2.05rem] ${netTone}`}>
                   <KpiValue flash={netFlash} className={netTone}>
                     {netPositionGw !== null ? (
                       <>
@@ -331,9 +337,9 @@ export function LiveSnapshotHeader({
           </article>
 
           {/* BESS fleet inference */}
-          <article className="group relative overflow-hidden rounded-xl border border-violet-200/60 bg-card px-3.5 py-3 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md dark:border-violet-500/28 dark:bg-slate-900/80 dark:shadow-[0_8px_28px_rgb(0_0_0_/_0.32)] dark:hover:shadow-[0_12px_36px_rgb(0_0_0_/_0.42)]">
+          <article className="group relative overflow-hidden rounded-2xl border border-violet-200/60 bg-gradient-to-br from-violet-50 via-white to-violet-50/60 px-4 py-4 shadow-[0_18px_42px_-26px_rgba(99,102,241,0.34)] transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-lg dark:border-violet-500/28 dark:bg-[linear-gradient(135deg,rgba(49,46,129,0.28),rgba(9,14,26,0.92))] dark:shadow-[0_18px_42px_-24px_rgba(0,0,0,0.52)]">
             <div className="pointer-events-none absolute inset-y-2.5 left-0 w-1 rounded-full bg-violet-500/65 dark:bg-violet-400/55" aria-hidden />
-            <div className="flex items-start justify-between gap-3 pl-2.5">
+            <div className="flex items-start justify-between gap-3 pl-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase dark:text-slate-400">
                   {labels.bess}
@@ -345,10 +351,10 @@ export function LiveSnapshotHeader({
                   </div>
                 ) : (
                   <>
-                    <p className="mt-2 line-clamp-2 text-lg font-bold text-violet-900 dark:text-violet-100 md:text-xl">
+                    <p className="mt-3 line-clamp-2 text-xl font-bold text-violet-900 dark:text-violet-100 md:text-[1.45rem]">
                       {fleetLabel}
                     </p>
-                    <p className="mt-1.5 space-y-0.5 text-[11px] leading-snug text-slate-600 dark:text-slate-400">
+                    <p className="mt-2 space-y-0.5 text-[11px] leading-snug text-slate-600 dark:text-slate-400">
                       <span className="block">
                         {socLabel}:{" "}
                         {socMidpointPct !== null && socLowPct !== null && socHighPct !== null ? (
@@ -378,11 +384,10 @@ export function LiveSnapshotHeader({
                   </>
                 )}
               </div>
-              <div className="shrink-0 rounded-xl bg-violet-500/10 p-2 dark:bg-violet-400/10">{fleetIcon}</div>
+              <div className="shrink-0 rounded-2xl bg-violet-500/10 p-2.5 dark:bg-violet-400/10">{fleetIcon}</div>
             </div>
           </article>
         </div>
-      </div>
-    </header>
+    </section>
   );
 }

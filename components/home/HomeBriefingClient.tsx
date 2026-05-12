@@ -6,11 +6,8 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { ChevronDown } from "lucide-react";
 import { z } from "zod";
 
-import { BriefingDailyStory } from "@/components/briefing/BriefingDailyStory";
-import { BriefingLiveStrip } from "@/components/briefing/BriefingLiveStrip";
 import { MethodologySection } from "@/components/briefing/MethodologySection";
 import { LiveSnapshotHeader } from "@/components/LiveSnapshotHeader";
-import NewsPreviewSection from "@/components/NewsPreviewSection";
 import { useLanguage } from "@/components/language-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createLogger } from "@/lib/debug";
@@ -188,15 +185,14 @@ type HomeBriefingClientProps = {
  */
 function GermanyFlowStoryBridge({
   urlAnchoredBerlinDateKey,
-  language,
   storyRefreshNonce,
   children,
 }: {
   urlAnchoredBerlinDateKey: string;
-  language: "en" | "de";
   storyRefreshNonce: number;
   children: (args: {
-    dailyStorySlot: ReactNode;
+    briefingStoryWindow: BriefingStoryWindow;
+    briefingStoryRefreshNonce: number;
     onBriefingStoryWindowChange: (window: BriefingStoryWindow) => void;
   }) => ReactNode;
 }) {
@@ -224,14 +220,7 @@ function GermanyFlowStoryBridge({
     },
     [defaultSerialized]
   );
-  const dailyStorySlot = (
-    <BriefingDailyStory
-      language={language}
-      storyWindow={storyWindow}
-      refreshNonce={storyRefreshNonce}
-    />
-  );
-  return <>{children({ dailyStorySlot, onBriefingStoryWindowChange })}</>;
+  return <>{children({ briefingStoryWindow: storyWindow, briefingStoryRefreshNonce: storyRefreshNonce, onBriefingStoryWindowChange })}</>;
 }
 
 export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
@@ -399,7 +388,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
   return (
     <div
       id="bessforge-briefing-root"
-      className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-5 pb-16 pt-4 md:gap-7 md:px-8 md:pb-20 md:pt-5 lg:px-12"
+      className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 pb-16 pt-5 md:gap-8 md:px-8 md:pb-20 lg:px-12"
     >
       {isLiveDataLoading && initial.market === null ? (
         <div className="pointer-events-none fixed top-16 left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-md">
@@ -416,15 +405,6 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
           </div>
         </div>
       ) : null}
-
-      <BriefingLiveStrip
-        language={language}
-        lastUpdatedIso={market?.realtimeSystem.timestampIso ?? initial.market?.realtimeSystem.timestampIso ?? null}
-        isRefreshing={isLiveDataLoading}
-        onRefresh={handleRefresh}
-        onShare={handleShare}
-        shareBusy={shareBusy}
-      />
 
       <LiveSnapshotHeader
         language={language}
@@ -443,21 +423,28 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         <GermanyFlowStoryBridge
           key={urlAnchoredBerlinDateKey}
           urlAnchoredBerlinDateKey={urlAnchoredBerlinDateKey}
-          language={language}
           storyRefreshNonce={storyRefreshNonce}
         >
-          {({ dailyStorySlot, onBriefingStoryWindowChange }) => (
+          {({ briefingStoryWindow, briefingStoryRefreshNonce, onBriefingStoryWindowChange }) => (
             <GermanyDayEnergyFlow
               fleetCapacityGwh={market?.bess.installedCapacityGwh}
               fleetPowerGw={market?.bess.installedPowerGw}
               language={language}
+              isRefreshing={isLiveDataLoading}
+              lastUpdatedIso={
+                market?.realtimeSystem.timestampIso ?? initial.market?.realtimeSystem.timestampIso ?? null
+              }
+              onRefresh={handleRefresh}
+              onShare={handleShare}
+              shareBusy={shareBusy}
               onChartFleetSocSnapshot={handleChartFleetSoc}
               initialEnergyFlow={initial.todayEnergyFlow}
               initialBerlinDateKey={initial.berlinDateKey}
               seedDateKey={seedDateKey}
               onBerlinDateChange={handleBerlinDateChange}
               onBriefingStoryWindowChange={onBriefingStoryWindowChange}
-              dailyStorySlot={dailyStorySlot}
+              briefingStoryWindow={briefingStoryWindow}
+              briefingStoryRefreshNonce={briefingStoryRefreshNonce}
               initialSimulatedNet={initialSimulatedNet}
               onSimulatedModeChange={handleSimulatedModeChange}
             />
@@ -495,9 +482,6 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         </details>
       </section>
 
-      <section className="border-t border-border/50 pt-8 md:pt-10">
-        <NewsPreviewSection limit={5} compact showHeaderLink={false} />
-      </section>
     </div>
   );
 }

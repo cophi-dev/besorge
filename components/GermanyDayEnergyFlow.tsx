@@ -1,6 +1,13 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Info } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Info,
+  SlidersHorizontal,
+} from "lucide-react";
 import {
   useEffect,
   useId,
@@ -10,6 +17,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { motion } from "framer-motion";
 import {
   Bar,
   CartesianGrid,
@@ -30,6 +38,11 @@ import {
   formatBerlinDateKeyFromUtcDate,
   mondayBerlinIsoWeekContaining,
 } from "@/lib/berlinCalendar";
+import {
+  computeEconomics,
+  defaultEconomicsAssumptions,
+  marketRevenueReferenceSchema,
+} from "@/lib/bessEconomics";
 import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
 import { berlinDateKeySchema } from "@/lib/germanyEnergyFlowPeriod";
 import { createLogger } from "@/lib/debug";
@@ -53,11 +66,10 @@ import {
   type ChartRowTailForFleetMode,
 } from "@/lib/chartFleetSocSnapshot";
 import { BerlinDayCalendarButton } from "@/components/briefing/BerlinDayCalendarButton";
+import { BriefingDailyStory } from "@/components/briefing/BriefingDailyStory";
 import { FlowExportButtons } from "@/components/briefing/FlowExportButtons";
-import { FlowPosterKpiStrip, type FlowPosterKpiItem } from "@/components/briefing/FlowPosterKpiStrip";
-import { FlowShareToXButton } from "@/components/briefing/FlowShareToXButton";
-import type { FlowSharePayload } from "@/lib/flowSharePayload";
-import { flowSharePayloadSchema } from "@/lib/flowSharePayload";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const log = createLogger("germany-day-energy-flow");
 
@@ -102,6 +114,15 @@ const energyFormatter = new Intl.NumberFormat("de-DE", {
 const powerFormatter = new Intl.NumberFormat("de-DE", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 0,
+});
+const euroCurrencyFormatter = new Intl.NumberFormat("de-DE", {
+  style: "currency",
+  currency: "EUR",
+  maximumFractionDigits: 0,
+});
+const priceFormatter = new Intl.NumberFormat("de-DE", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
 });
 
 const germanyDispatchSlotSchema = z.object({
@@ -165,8 +186,26 @@ const bessRecommendationApiSchema = z.object({
     .nullable(),
 });
 
+const revenueMarketContextSchema = z.object({
+  sampledSlots: z.number().int().nonnegative(),
+  sampleStartIso: z.string(),
+  sampleEndIso: z.string(),
+  averageLowPriceEurPerMwh: z.number(),
+  averageHighPriceEurPerMwh: z.number(),
+  averageMiddayPriceEurPerMwh: z.number(),
+  averageEveningPriceEurPerMwh: z.number(),
+  eveningPeakPremiumEurPerMwh: z.number(),
+  negativePriceSharePct: z.number().min(0).max(100),
+});
+
+const revenueModelApiSchema = z.object({
+  marketReference: marketRevenueReferenceSchema,
+  marketContext: revenueMarketContextSchema.nullable(),
+});
+
 type SelectorMode = "day" | "week" | "month";
 type BessRecommendation = z.infer<typeof bessRecommendationApiSchema>;
+type RevenueModelPayload = z.infer<typeof revenueModelApiSchema>;
 
 const monthLabelFormatter = new Intl.DateTimeFormat("de-DE", {
   timeZone: "Europe/Berlin",
@@ -273,6 +312,11 @@ export type GermanyDayEnergyFlowProps = {
   fleetCapacityGwh?: number | null;
   fleetPowerGw?: number | null;
   language: "en" | "de";
+  isRefreshing?: boolean;
+  lastUpdatedIso?: string | null;
+  onRefresh?: () => void;
+  onShare?: () => void;
+  shareBusy?: boolean;
   /** Fires when the plotted SoC series updates so the live header can match the dashed chart line. */
   onChartFleetSocSnapshot?: (snapshot: ChartFleetSocSnapshot | null) => void;
   /** Optional LLM-generated impact blurb for simulated mode; placeholder until wired. */
@@ -290,13 +334,21 @@ export type GermanyDayEnergyFlowProps = {
    * selector (day / ISO week / calendar month). Does not replace `onBerlinDateChange`.
    */
   onBriefingStoryWindowChange?: (window: BriefingStoryWindow) => void;
-  /** Rendered after the poster/chart block and before the BESS recommendation section. */
-  dailyStorySlot?: ReactNode;
+  /** Story window rendered inline with the chart area. */
+  briefingStoryWindow?: BriefingStoryWindow | null;
+  /** Bumped when the user refreshes the live briefing. */
+  briefingStoryRefreshNonce?: number;
   /** Start in simulated-BESS view (e.g. `?sim=1` for morning export screenshots). */
   initialSimulatedNet?: boolean;
   /** Sync simulated mode to the URL or parent so it survives remounts when the date changes. */
   onSimulatedModeChange?: (simulated: boolean) => void;
 };
+
+type DashboardTabValue =
+  | "daily-briefing"
+  | "structural-power"
+  | "optimal-bess"
+  | "long-term-view";
 
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
@@ -343,6 +395,30 @@ function SectionKpiTile({
         <p className="mt-1 text-[10px] leading-snug text-slate-600/92 dark:text-slate-400/95">
           {subtitle}
         </p>
+      ) : null}
+    </div>
+  );
+}
+
+function CompactDetailStat({
+  label,
+  value,
+  subtitle,
+}: {
+  label: string;
+  value: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-3 shadow-sm dark:border-slate-600/45 dark:bg-slate-950/55">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 text-base font-extrabold leading-tight text-slate-900 tabular-nums dark:text-white md:text-[1.1rem]">
+        {value}
+      </p>
+      {subtitle ? (
+        <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-slate-400">{subtitle}</p>
       ) : null}
     </div>
   );
@@ -413,6 +489,211 @@ type BorderTradeTotals = {
   importDeltaEnergyMwh: number;
   exportDeltaEnergyMwh: number;
 };
+
+type ScenarioImpactSnapshot = {
+  coverage: ReturnType<typeof computeCoverageAtCapacityMwh>;
+  absorbedCurtailmentEnergyMwh: number;
+  remainingCurtailmentEnergyMwh: number;
+  peakReductionMw: number;
+  gridImpactReductionPct: number | null;
+  observedImportEnergyMwh: number | null;
+  simulatedImportEnergyMwh: number | null;
+  importReductionEnergyMwh: number | null;
+  bessRevenueTodayEur: number | null;
+  avoidedRedispatchCostsEur: number | null;
+  avoidedCurtailmentValueEur: number | null;
+  totalValueCreatedEur: number | null;
+  missedOpportunityEur: number | null;
+  curtailedRecoveredToLoadEnergyMwh: number;
+  gridReliefScore: number | null;
+};
+
+type ChartPerspective = "with-bess" | "without-bess";
+
+const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+
+function formatCurrencyCompact(value: number | null): string {
+  return value !== null && Number.isFinite(value) ? euroCurrencyFormatter.format(Math.round(value)) : "—";
+}
+
+function computeGridReliefScore(input: {
+  curtailedAvoidedShare: number | null;
+  dampingPct: number | null;
+  peakReductionShare: number | null;
+  importReductionShare: number | null;
+}): number | null {
+  const parts = [
+    input.curtailedAvoidedShare !== null ? { value: clamp01(input.curtailedAvoidedShare), weight: 0.32 } : null,
+    input.dampingPct !== null ? { value: clamp01(input.dampingPct / 100), weight: 0.33 } : null,
+    input.peakReductionShare !== null ? { value: clamp01(input.peakReductionShare), weight: 0.2 } : null,
+    input.importReductionShare !== null ? { value: clamp01(input.importReductionShare), weight: 0.15 } : null,
+  ].filter((part): part is { value: number; weight: number } => part !== null);
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  const totalWeight = parts.reduce((sum, part) => sum + part.weight, 0);
+  const weighted = parts.reduce((sum, part) => sum + part.value * part.weight, 0);
+  return Math.round((weighted / totalWeight) * 100);
+}
+
+function evaluateBessScenario(params: {
+  slots: GermanyDispatchSlotsResponse["slots"];
+  capacityMwh: number;
+  maxPowerMw: number | null;
+  initialSocMwh: number;
+  resetDailyByBerlin: boolean;
+  marketReference: RevenueModelPayload["marketReference"] | null;
+}): ScenarioImpactSnapshot {
+  const { slots, capacityMwh, maxPowerMw, initialSocMwh, resetDailyByBerlin, marketReference } = params;
+
+  const coverage = computeCoverageAtCapacityMwh(slots, capacityMwh, {
+    maxPowerMw,
+    initialSocMwh,
+    resetDailyByBerlin,
+  });
+
+  const dispatchSeries =
+    capacityMwh > 0
+      ? simulatePracticalDispatchAtCapacity(slots, capacityMwh, {
+          maxPowerMw,
+          initialSocMwh,
+          resetDailyByBerlin,
+        })
+      : [];
+  const adjustedNetSeries =
+    capacityMwh > 0
+      ? simulateAdjustedNetMwAtCapacity(slots, capacityMwh, {
+          maxPowerMw,
+          initialSocMwh,
+          resetDailyByBerlin,
+        })
+      : [];
+
+  let absorbedCurtailmentEnergyMwh = 0;
+  let peakAbsNetMw = 0;
+  let peakAbsAdjustedNetMw = 0;
+  let baselineAbsMwh = 0;
+  let adjustedAbsMwh = 0;
+  let hasObservedCrossBorder = false;
+  let observedImportEnergyMwh = 0;
+  let simulatedImportEnergyMwh = 0;
+
+  for (let i = 0; i < slots.length; i += 1) {
+    const slot = slots[i]!;
+    const structuralSurplusMwh = Math.max(0, slot.totalGenerationMw - slot.loadMw) * QUARTER_HOUR_H;
+    const curtailedMwh = Math.max(0, slot.curtailmentMw ?? 0) * QUARTER_HOUR_H;
+    const chargeMwh = (dispatchSeries[i]?.chargeMw ?? 0) * QUARTER_HOUR_H;
+    const totalChargeOpportunityMwh = structuralSurplusMwh + curtailedMwh;
+    if (chargeMwh > 0 && totalChargeOpportunityMwh > 0 && curtailedMwh > 0) {
+      absorbedCurtailmentEnergyMwh += Math.min(
+        curtailedMwh,
+        chargeMwh * (curtailedMwh / totalChargeOpportunityMwh)
+      );
+    }
+
+    const netMw = slot.totalGenerationMw - slot.loadMw;
+    baselineAbsMwh += Math.abs(netMw) * QUARTER_HOUR_H;
+    adjustedAbsMwh += Math.abs(adjustedNetSeries[i] ?? netMw) * QUARTER_HOUR_H;
+    peakAbsNetMw = Math.max(peakAbsNetMw, Math.abs(netMw));
+    peakAbsAdjustedNetMw = Math.max(
+      peakAbsAdjustedNetMw,
+      Math.abs(adjustedNetSeries[i] ?? netMw)
+    );
+
+    if (slot.crossBorderElectricityTradingMw !== null && slot.crossBorderElectricityTradingMw !== undefined) {
+      hasObservedCrossBorder = true;
+      const observedCrossBorderMw = slot.crossBorderElectricityTradingMw;
+      const practicalChargeMw = dispatchSeries[i]?.chargeMw ?? 0;
+      const practicalDischargeMw = dispatchSeries[i]?.dischargeMw ?? 0;
+      observedImportEnergyMwh += Math.max(0, observedCrossBorderMw) * QUARTER_HOUR_H;
+      simulatedImportEnergyMwh +=
+        Math.max(0, observedCrossBorderMw + practicalChargeMw - practicalDischargeMw) * QUARTER_HOUR_H;
+    }
+  }
+
+  const remainingCurtailmentEnergyMwh = Math.max(0, coverage.totalCurtailmentEnergyMwh - absorbedCurtailmentEnergyMwh);
+  const peakReductionMw = Math.max(0, peakAbsNetMw - peakAbsAdjustedNetMw);
+  const gridImpactReductionPct =
+    baselineAbsMwh > 0
+      ? Math.min(100, Math.max(0, (1 - adjustedAbsMwh / baselineAbsMwh) * 100))
+      : null;
+  const importReductionEnergyMwh = hasObservedCrossBorder
+    ? Math.max(0, observedImportEnergyMwh - simulatedImportEnergyMwh)
+    : null;
+
+  const spreadEurPerMwh =
+    marketReference !== null && marketReference.derivedSpotSpreadEurPerMwh > 0
+      ? marketReference.derivedSpotSpreadEurPerMwh
+      : null;
+  const redispatchEurPerMwh =
+    marketReference !== null && marketReference.positiveRedispatchCostEurPerMwh > 0
+      ? marketReference.positiveRedispatchCostEurPerMwh
+      : null;
+
+  const curtailedRecoveredToLoadEnergyMwh = Math.min(
+    absorbedCurtailmentEnergyMwh,
+    coverage.servedDeficitEnergyMwh
+  );
+  const bessRevenueTodayEur =
+    spreadEurPerMwh !== null
+      ? Math.max(0, coverage.servedDeficitEnergyMwh - curtailedRecoveredToLoadEnergyMwh) * spreadEurPerMwh
+      : null;
+  const avoidedCurtailmentValueEur =
+    spreadEurPerMwh !== null ? curtailedRecoveredToLoadEnergyMwh * spreadEurPerMwh : null;
+  const avoidedRedispatchCostsEur =
+    redispatchEurPerMwh !== null ? absorbedCurtailmentEnergyMwh * redispatchEurPerMwh : null;
+
+  const curtailedShareOfOpportunity =
+    coverage.totalChargeOpportunityEnergyMwh > 1e-9
+      ? coverage.totalCurtailmentEnergyMwh / coverage.totalChargeOpportunityEnergyMwh
+      : 0;
+  const opportunityValuePerMwh =
+    (spreadEurPerMwh ?? 0) + (redispatchEurPerMwh ?? 0) * curtailedShareOfOpportunity;
+  const missedOpportunityEur =
+    opportunityValuePerMwh > 0
+      ? Math.max(0, coverage.totalChargeOpportunityEnergyMwh - coverage.absorbedSurplusEnergyMwh) *
+        opportunityValuePerMwh
+      : null;
+  const totalValueCreatedEur =
+    bessRevenueTodayEur !== null &&
+    avoidedCurtailmentValueEur !== null &&
+    avoidedRedispatchCostsEur !== null
+      ? bessRevenueTodayEur + avoidedCurtailmentValueEur + avoidedRedispatchCostsEur
+      : null;
+
+  const gridReliefScore = computeGridReliefScore({
+    curtailedAvoidedShare:
+      coverage.totalCurtailmentEnergyMwh > 1e-9
+        ? absorbedCurtailmentEnergyMwh / coverage.totalCurtailmentEnergyMwh
+        : null,
+    dampingPct: coverage.totalChargeOpportunityEnergyMwh > 0 ? gridImpactReductionPct : null,
+    peakReductionShare: peakAbsNetMw > 0 ? peakReductionMw / peakAbsNetMw : null,
+    importReductionShare:
+      hasObservedCrossBorder && observedImportEnergyMwh > 1e-9 && importReductionEnergyMwh !== null
+        ? importReductionEnergyMwh / observedImportEnergyMwh
+        : null,
+  });
+
+  return {
+    coverage,
+    absorbedCurtailmentEnergyMwh,
+    remainingCurtailmentEnergyMwh,
+    peakReductionMw,
+    gridImpactReductionPct,
+    observedImportEnergyMwh: hasObservedCrossBorder ? observedImportEnergyMwh : null,
+    simulatedImportEnergyMwh: hasObservedCrossBorder ? simulatedImportEnergyMwh : null,
+    importReductionEnergyMwh,
+    bessRevenueTodayEur,
+    avoidedRedispatchCostsEur,
+    avoidedCurtailmentValueEur,
+    totalValueCreatedEur,
+    missedOpportunityEur,
+    curtailedRecoveredToLoadEnergyMwh,
+    gridReliefScore,
+  };
+}
 
 /**
  * Deterministic prose when `simulationAiInsight` prop is unset — no backend LLM wired yet from the dashboard.
@@ -555,14 +836,15 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     seedDateKey = null,
     onBerlinDateChange,
     onBriefingStoryWindowChange,
-    dailyStorySlot = null,
+    briefingStoryWindow = null,
+    briefingStoryRefreshNonce = 0,
   } = props;
   const resolvedSeedKey = resolveSeedDateKey(seedDateKey ?? undefined);
   const [selectorMode, setSelectorMode] = useState<SelectorMode>("day");
   const [selectedDate, setSelectedDate] = useState(resolvedSeedKey);
   const [selectedWeek, setSelectedWeek] = useState(dateKeyToIsoWeekKey(resolvedSeedKey));
   const [selectedMonth, setSelectedMonth] = useState(resolvedSeedKey.slice(0, 7));
-  const [dayModeResetAtStart, setDayModeResetAtStart] = useState(false);
+  const [dayModeResetAtStart] = useState(false);
   const [customSimulatedCapacityGwhInput, setCustomSimulatedCapacityGwhInput] = useState("");
   const serverHydratedFirstLoad =
     initialEnergyFlow !== null &&
@@ -574,6 +856,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     serverHydratedFirstLoad ? initialEnergyFlow : null
   );
   const [recommendation, setRecommendation] = useState<BessRecommendation | null>(null);
+  const [revenueModel, setRevenueModel] = useState<RevenueModelPayload | null>(null);
   const [previousDaySlots, setPreviousDaySlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
   /** Berlin day D−2 slots; used only in day mode with carry-in to seed D−1’s starting SoC instead of forcing 0%. */
   const [dayBeforePreviousSlots, setDayBeforePreviousSlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
@@ -591,11 +874,16 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const prevDayModeResetAtStartRef = useRef(dayModeResetAtStart);
   const [isFlowLoading, setIsFlowLoading] = useState(!serverHydratedFirstLoad);
   const [isRecommendationLoading, setIsRecommendationLoading] = useState(true);
+  const [isRevenueModelLoading, setIsRevenueModelLoading] = useState(true);
   const [flowLoadError, setFlowLoadError] = useState(false);
   const [recommendationLoadError, setRecommendationLoadError] = useState(false);
-  const dataCoverageTooltipId = useId();
+  const [revenueModelLoadError, setRevenueModelLoadError] = useState(false);
   const simulatedCapacityInputId = useId();
   const simulatedCapacityHintId = useId();
+  const simulatedCapacityInputRef = useRef<HTMLInputElement | null>(null);
+  const [activeDashboardTab, setActiveDashboardTab] =
+    useState<DashboardTabValue>("daily-briefing");
+  const [chartPerspective, setChartPerspective] = useState<ChartPerspective>("with-bess");
   const [chartLayoutCompact, setChartLayoutCompact] = useState(false);
 
   useEffect(() => {
@@ -677,7 +965,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     onBerlinDateChange(selectedDate);
   }, [selectedDate, selectorMode, onBerlinDateChange]);
 
-  const briefingStoryWindow = useMemo((): BriefingStoryWindow => {
+  const currentBriefingStoryWindow = useMemo((): BriefingStoryWindow => {
     if (selectorMode === "day") {
       return { type: "day", date: selectedDate };
     }
@@ -691,8 +979,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     if (!onBriefingStoryWindowChange) {
       return;
     }
-    onBriefingStoryWindowChange(briefingStoryWindow);
-  }, [briefingStoryWindow, onBriefingStoryWindowChange]);
+    onBriefingStoryWindowChange(currentBriefingStoryWindow);
+  }, [currentBriefingStoryWindow, onBriefingStoryWindowChange]);
 
   /** Loads D−1 and D−2 for carry-in maths only — intentionally not keyed on the reset checkbox to avoid reloading the chart. */
   useEffect(() => {
@@ -832,6 +1120,45 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       } finally {
         if (!controller.signal.aborted) {
           setIsRecommendationLoading(false);
+        }
+      }
+    };
+    void load();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const load = async () => {
+      setIsRevenueModelLoading(true);
+      setRevenueModelLoadError(false);
+      try {
+        const response = await fetch("/api/revenue-model/de", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`revenue-model ${response.status}`);
+        }
+        const raw: unknown = await response.json();
+        const parsed = revenueModelApiSchema.safeParse(raw);
+        if (!parsed.success) {
+          log("revenue model schema failed %o", { errors: parsed.error.flatten() });
+          throw new Error("revenue model schema");
+        }
+        if (!controller.signal.aborted) {
+          setRevenueModel(parsed.data);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        log("revenue model fetch failed %o", { error });
+        setRevenueModel(null);
+        setRevenueModelLoadError(true);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsRevenueModelLoading(false);
         }
       }
     };
@@ -1219,6 +1546,53 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     };
   }, [recommendation]);
 
+  const liveBalancedEconomics = useMemo(() => {
+    if (
+      revenueModel?.marketReference.spotPriceStatus !== "live" ||
+      !recommendationByTier?.balanced
+    ) {
+      return null;
+    }
+    return computeEconomics(
+      {
+        totalPowerMw: recommendationByTier.balanced.recommendedPowerMw,
+        totalEnergyMwh: recommendationByTier.balanced.recommendedEnergyMwh,
+        roundTripEfficiency: 90,
+      },
+      defaultEconomicsAssumptions,
+      revenueModel.marketReference
+    );
+  }, [recommendationByTier, revenueModel]);
+
+  const liveMarketPriceChartData = useMemo(() => {
+    if (revenueModel?.marketContext === null || revenueModel?.marketContext === undefined) {
+      return [];
+    }
+    return [
+      {
+        label: language === "de" ? "Niedrig" : "Low",
+        value: revenueModel.marketContext.averageLowPriceEurPerMwh,
+      },
+      {
+        label: language === "de" ? "Mittag" : "Midday",
+        value: revenueModel.marketContext.averageMiddayPriceEurPerMwh,
+      },
+      {
+        label: language === "de" ? "Abend" : "Evening",
+        value: revenueModel.marketContext.averageEveningPriceEurPerMwh,
+      },
+      {
+        label: language === "de" ? "Hoch" : "High",
+        value: revenueModel.marketContext.averageHighPriceEurPerMwh,
+      },
+    ];
+  }, [language, revenueModel]);
+
+  const balancedRevenueTileValue =
+    liveBalancedEconomics?.annualRevenue ??
+    recommendation?.indicativeEconomicsAtBalancedTier?.annualRevenueEur ??
+    null;
+
   const selectedWindowRecommendation = useMemo(() => {
     if (!flow?.slots.length) {
       return null;
@@ -1357,23 +1731,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     estimatedInitialSocMwh,
   ]);
 
-  /** Share of domestic generation paired directly to contemporaneous demand (before BESS reshaping). */
-  const baselineSelfConsumptionPct = useMemo(() => {
-    if (!flow?.slots.length) {
-      return null;
-    }
-    let directLocalMwh = 0;
-    let totalGenMwh = 0;
-    for (const s of flow.slots) {
-      totalGenMwh += s.totalGenerationMw * QUARTER_HOUR_H;
-      directLocalMwh += Math.min(s.totalGenerationMw, s.loadMw) * QUARTER_HOUR_H;
-    }
-    if (totalGenMwh <= 0) {
-      return null;
-    }
-    return Math.min(100, Math.max(0, (directLocalMwh / totalGenMwh) * 100));
-  }, [flow]);
-
   const chartRows: ChartRow[] = useMemo(() => {
     if (!flow?.slots.length || !absorption) {
       return [];
@@ -1485,16 +1842,46 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     return Math.min(100, Math.max(0, reduction * 100));
   }, [chartRows, effectivePracticalCapacityMwh]);
 
-  const selectorCaption = useMemo(() => {
-    if (selectorMode === "day") {
-      return selectedDate;
+  const totalGenerationEnergyMwh = useMemo(
+    () => flow?.slots.reduce((sum, slot) => sum + slot.totalGenerationMw * QUARTER_HOUR_H, 0) ?? 0,
+    [flow]
+  );
+  const totalDemandEnergyMwh = useMemo(
+    () => flow?.slots.reduce((sum, slot) => sum + slot.loadMw * QUARTER_HOUR_H, 0) ?? 0,
+    [flow]
+  );
+
+  const currentFleetMode = useMemo(() => {
+    if (chartRows.length === 0) {
+      return null;
     }
-    if (selectorMode === "week") {
-      const start = isoWeekKeyToStartKey(selectedWeek);
-      return `${selectedWeek} (${start} - ${addBerlinCalendarDays(start, 6)})`;
-    }
-    return monthLabelFormatter.format(new Date(`${selectedMonth}-01T00:00:00.000Z`));
-  }, [selectorMode, selectedDate, selectedWeek, selectedMonth]);
+    const last = chartRows[chartRows.length - 1]!;
+    const previous = chartRows.length > 1 ? chartRows[chartRows.length - 2]! : null;
+    return inferFleetModeFromChartTail({
+      showSimulatedNet: false,
+      last: {
+        estimatedFleetSocPct: last.estimatedFleetSocPct,
+        simulatedPracticalSocPct: last.simulatedPracticalSocPct,
+        netBalanceMw: last.netBalanceMw,
+        practicalChargeMw: last.practicalChargeMw,
+        practicalDischargeMw: last.practicalDischargeMw,
+        fleetChargeMw: last.fleetChargeMw,
+        fleetDischargeMw: last.fleetDischargeMw,
+      },
+      previous:
+        previous === null
+          ? null
+          : {
+              estimatedFleetSocPct: previous.estimatedFleetSocPct,
+              simulatedPracticalSocPct: previous.simulatedPracticalSocPct,
+              netBalanceMw: previous.netBalanceMw,
+              practicalChargeMw: previous.practicalChargeMw,
+              practicalDischargeMw: previous.practicalDischargeMw,
+              fleetChargeMw: previous.fleetChargeMw,
+              fleetDischargeMw: previous.fleetDischargeMw,
+            },
+    });
+  }, [chartRows]);
 
   const windowNetStructuralBalanceGwh = useMemo(() => {
     if (!chartRows.length) {
@@ -1540,144 +1927,12 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     };
   }, [chartRows]);
 
-  const flowSharePayload = useMemo((): FlowSharePayload | null => {
-    if (!flow?.slots.length || chartRows.length === 0) {
-      return null;
-    }
-
-    const baseFields = {
-      language,
-      dateBerlin: flow.dateBerlin,
-      selectorMode,
-      windowLabel: selectorCaption,
-      dataCoveragePct: flow.pointFractionOfDay * 100,
-      sampleQuarterHours: flow.samplePoints,
-      netBalanceGwhWindow: windowNetStructuralBalanceGwh,
-      chartHeading: t.observedChartTitle,
-    };
-
-    const observedPayload = flowSharePayloadSchema.safeParse({
-      ...baseFields,
-      presentationMode: "observed" as const,
-      grossSurplusGwh:
-        absorption !== null && absorption.grossChargeOpportunityEnergyMwh > 0
-          ? absorption.grossChargeOpportunityEnergyMwh / 1_000
-          : undefined,
-      missedSurplusGwh:
-        absorption !== null && absorption.missedSurplusEnergyMwh > 0
-          ? absorption.missedSurplusEnergyMwh / 1_000
-          : undefined,
-      missedSurplusPctOfGross:
-        absorption !== null &&
-        absorption.grossChargeOpportunityEnergyMwh > 1e-6 &&
-        Number.isFinite(absorption.missedSurplusEnergyMwh)
-          ? absorption.missedSurplusEnergyMwh / absorption.grossChargeOpportunityEnergyMwh
-          : undefined,
-      baselineSelfConsumptionPct:
-        baselineSelfConsumptionPct !== null && Number.isFinite(baselineSelfConsumptionPct)
-          ? baselineSelfConsumptionPct
-          : undefined,
-    });
-    return observedPayload.success ? observedPayload.data : null;
-  }, [
-    flow,
-    chartRows,
-    absorption,
-    language,
-    selectorMode,
-    selectorCaption,
-    baselineSelfConsumptionPct,
-    windowNetStructuralBalanceGwh,
-    t.observedChartTitle,
-  ]);
-
   const curtailmentStatusLabel =
     flow?.curtailmentStatus === "loaded"
       ? t.curtailmentStatusConfigured
       : flow?.curtailmentStatus === "unavailable_not_configured"
         ? t.curtailmentStatusMissingConfig
         : t.curtailmentStatusUpstream;
-
-  /** Four-up strip rendered above the chart inside the social/poster PNG region. */
-  const observedPosterKpiItems = useMemo(
-    (): [FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem] | null => {
-    if (!flow || chartRows.length === 0) {
-      return null;
-    }
-    const nw = windowNetStructuralBalanceGwh;
-    const netValue = `${nw >= 0 ? "+" : "−"}${energyFormatter.format(Math.abs(nw))}`;
-    const netHint =
-      language === "de" ? "GWh · Σ(Gen − Last), Fenster" : "GWh · Σ(gen − load), window";
-
-    const missedOk =
-      fleetEnergyCapacityMwh !== null &&
-      absorption !== null &&
-      absorption.grossChargeOpportunityEnergyMwh > 1e-6;
-    const missedPctStr =
-      missedOk && absorption
-        ? `${pctFormatter.format((absorption.missedSurplusEnergyMwh / absorption.grossChargeOpportunityEnergyMwh) * 100)}% · ${language === "de" ? "der Ladechance" : "of charge opportunity"}`
-        : undefined;
-    const curtailmentPctStr =
-      absorption && absorption.grossChargeOpportunityEnergyMwh > 1e-6
-        ? `${pctFormatter.format((absorption.curtailedEnergyMwh / absorption.grossChargeOpportunityEnergyMwh) * 100)}% · ${language === "de" ? "der Ladechance" : "of charge opportunity"}`
-        : curtailmentStatusLabel;
-
-    return [
-      {
-        accent: "emerald" as const,
-        eyebrow: t.kpiGrossSurplusEyebrow,
-        value: absorption ? formatEnergyFromMwh(absorption.grossChargeOpportunityEnergyMwh) : "—",
-        hint:
-          absorption && absorption.curtailedEnergyMwh > 1e-6
-            ? language === "de"
-              ? `${formatEnergyFromMwh(absorption.grossSurplusEnergyMwh)} strukturell + ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} abgeregelt`
-              : `${formatEnergyFromMwh(absorption.grossSurplusEnergyMwh)} structural + ${formatEnergyFromMwh(absorption.curtailedEnergyMwh)} curtailed`
-            : language === "de"
-              ? `Struktureller Ueberschuss · ${curtailmentStatusLabel}`
-              : `Structural surplus only · ${curtailmentStatusLabel}`,
-        subtitle: t.kpiGrossSurplusSubtitle,
-      },
-      {
-        accent: "amber" as const,
-        eyebrow: t.kpiMissedSurplusEyebrow,
-        value:
-          missedOk && absorption ? formatEnergyFromMwh(absorption.missedSurplusEnergyMwh) : "—",
-        hint:
-          fleetEnergyCapacityMwh !== null && absorption
-            ? missedPctStr ??
-              (language === "de" ? "Ladechance an heutiger Flotte vorbei" : "Charge opportunity missed at fleet sizing")
-            : t.kpiFleetRequiredShort,
-        subtitle: t.kpiMissedSurplusSubtitle,
-      },
-      {
-        accent: "sky" as const,
-        eyebrow: t.kpiCurtailmentEyebrow,
-        value:
-          flow.curtailmentStatus === "loaded" && absorption
-            ? formatEnergyFromMwh(absorption.curtailedEnergyMwh)
-            : language === "de"
-              ? "Keine Daten"
-              : "No data",
-        hint: curtailmentPctStr,
-        subtitle: t.kpiCurtailmentSubtitle,
-      },
-      {
-        accent: "slate" as const,
-        eyebrow: language === "de" ? "Nettobilanz (Fenster)" : "Net balance (window)",
-        value: netValue,
-        hint: netHint,
-      },
-    ];
-  }, [
-    flow,
-    chartRows.length,
-    windowNetStructuralBalanceGwh,
-    language,
-    fleetEnergyCapacityMwh,
-    absorption,
-    curtailmentStatusLabel,
-    t,
-  ]);
 
   useEffect(() => {
     if (selectorMode !== "day" || chartRows.length === 0) {
@@ -1794,10 +2049,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const yNetWidth = chartLayoutCompact ? 40 : 48;
   const ySocWidth = chartLayoutCompact ? 36 : 44;
 
-  const dailyStoryWrapped = dailyStorySlot ? (
-    <div className="mt-6 md:mt-8 [&>*]:max-w-none">{dailyStorySlot}</div>
-  ) : null;
-
   if (isFlowLoading) {
     return (
       <article className="scroll-mt-8 space-y-5 rounded-2xl border-2 border-border/60 bg-card p-5 shadow-md md:p-6 dark:border-slate-500/40 dark:bg-slate-900/70 dark:shadow-black/35">
@@ -1806,7 +2057,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         </p>
         <Skeleton className="h-10 max-w-xl rounded-xl" />
         <Skeleton className="h-[min(460px,calc(72vw))] min-h-[320px] w-full rounded-2xl" />
-        {dailyStoryWrapped}
       </article>
     );
   }
@@ -1870,9 +2120,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     autoPracticalCapacityMwh > 0
       ? energyFormatter.format(autoPracticalCapacityMwh / 1_000)
       : undefined;
-  const simulatedCapacitySourceLabel = hasCustomSimulatedCapacity
-    ? t.simulatedCapacitySourceCustom
-    : t.simulatedCapacitySourceAuto;
   const simulatedCapacityBadgeText = simulatedCapacityGwhLabel
     ? t.simulatedCapacityBadgeLabel(simulatedCapacityGwhLabel)
     : t.capacityBadgeUnavailable;
@@ -1899,28 +2146,132 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     resolvedLlmInsightText || heuristicInsightParagraph || t.aiInsightPlaceholder;
   const powerCapLabel =
     selectedWindowBalancedPowerMw !== null ? formatPowerFromMw(selectedWindowBalancedPowerMw) : "—";
-  const absorbedPctLabel =
-    recommendedCoverage !== null && recommendedCoverage.totalChargeOpportunityEnergyMwh > 1e-9
-      ? `${pctFormatter.format(recommendedCoverage.absorbedSurplusShare * 100)}%`
+  const balancedRecommendation = recommendationByTier?.balanced ?? null;
+  const trailingPaybackLabel =
+    recommendation?.indicativeEconomicsAtBalancedTier
+      ? language === "de"
+        ? `${pctFormatter.format(recommendation.indicativeEconomicsAtBalancedTier.paybackYears)} J`
+        : `${pctFormatter.format(recommendation.indicativeEconomicsAtBalancedTier.paybackYears)} yr`
       : "—";
-  const servedPctLabel =
-    recommendedCoverage !== null && recommendedCoverage.totalDeficitEnergyMwh > 1e-9
-      ? `${pctFormatter.format(recommendedCoverage.servedDeficitShare * 100)}%`
+  const trailingImpactLabel =
+    recommendation?.impactAtBalancedTier
+      ? `${pctFormatter.format(recommendation.impactAtBalancedTier.absorbedSurplusShare * 100)}% ${
+          language === "de" ? "Ladechance" : "charge opportunity"
+        } · ${pctFormatter.format(recommendation.impactAtBalancedTier.servedDeficitShare * 100)}% ${
+          language === "de" ? "Defizit" : "deficit"
+        }`
       : "—";
-  const dampingPctLabel =
-    gridImpactReductionPct !== null ? `${pctFormatter.format(gridImpactReductionPct)}%` : "—";
-  const observedImportLabel =
-    borderTradeTotals !== null ? formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh) : "—";
-  const observedExportLabel =
-    borderTradeTotals !== null ? formatEnergyFromMwh(borderTradeTotals.observedExportEnergyMwh) : "—";
-  const simulatedImportLabel =
-    borderTradeTotals !== null ? formatEnergyFromMwh(borderTradeTotals.simulatedImportEnergyMwh) : "—";
-  const simulatedExportLabel =
-    borderTradeTotals !== null ? formatEnergyFromMwh(borderTradeTotals.simulatedExportEnergyMwh) : "—";
-  const importDeltaLabel =
-    borderTradeTotals !== null ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh) : "—";
-  const exportDeltaLabel =
-    borderTradeTotals !== null ? formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh) : "—";
+  const trailingChainPeakValue =
+    recommendation && Number.isFinite(recommendation.continuousWindowRequiredEnergyMwh)
+      ? formatEnergyFromMwh(recommendation.continuousWindowRequiredEnergyMwh)
+      : "—";
+  const trailingWindowLabel =
+    recommendation !== null
+      ? `${recommendation.rangeStartBerlin}–${recommendation.rangeEndBerlin} · ${recommendation.observedDays} ${
+          language === "de" ? "Tage" : "days"
+        }`
+      : "—";
+
+  const marketReference = revenueModel?.marketReference ?? null;
+  const currentFleetScenario =
+    flow?.slots.length &&
+    fleetEnergyCapacityMwh !== null &&
+    fleetEnergyCapacityMwh > 0 &&
+    fleetPowerMw !== null &&
+    fleetPowerMw > 0
+      ? evaluateBessScenario({
+          slots: flow.slots,
+          capacityMwh: fleetEnergyCapacityMwh,
+          maxPowerMw: fleetPowerMw,
+          initialSocMwh: estimatedInitialFleetSocMwh,
+          resetDailyByBerlin: visualizationResetDailyByBerlin,
+          marketReference,
+        })
+      : null;
+
+  const modeledScenario =
+    flow?.slots.length && effectivePracticalCapacityMwh > 0
+      ? evaluateBessScenario({
+          slots: flow.slots,
+          capacityMwh: effectivePracticalCapacityMwh,
+          maxPowerMw: selectedWindowBalancedPowerMw,
+          initialSocMwh: estimatedInitialSocMwh,
+          resetDailyByBerlin: visualizationResetDailyByBerlin,
+          marketReference,
+        })
+      : null;
+
+  const scalingScenarioColumns =
+    flow?.slots.length &&
+    fleetEnergyCapacityMwh !== null &&
+    fleetEnergyCapacityMwh > 0 &&
+    fleetPowerMw !== null &&
+    fleetPowerMw > 0
+      ? [
+          { label: language === "de" ? "Aktuelle Flotte" : "Current fleet", multiplier: 1 },
+          { label: "+30%", multiplier: 1.3 },
+          { label: "+50%", multiplier: 1.5 },
+          { label: "+100%", multiplier: 2 },
+        ].map((entry) => {
+          const initialSocRatio =
+            fleetEnergyCapacityMwh > 0 ? estimatedInitialFleetSocMwh / fleetEnergyCapacityMwh : 0;
+          const capacityMwh = fleetEnergyCapacityMwh * entry.multiplier;
+          const powerMw = fleetPowerMw * entry.multiplier;
+          return {
+            ...entry,
+            scenario: evaluateBessScenario({
+              slots: flow.slots,
+              capacityMwh,
+              maxPowerMw: powerMw,
+              initialSocMwh: capacityMwh * initialSocRatio,
+              resetDailyByBerlin: visualizationResetDailyByBerlin,
+              marketReference,
+            }),
+          };
+        })
+      : [];
+
+  const realitySummary =
+    currentFleetScenario === null
+      ? language === "de"
+        ? `Im Fenster ${selectorLabel} liegt die Nettobilanz bei ${formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}.`
+        : `Across ${selectorLabel}, net position sits at ${formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}.`
+      : (() => {
+          const netLabel = formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000);
+          const structuralSurplusLabel = formatEnergyFromMwh(
+            currentFleetScenario.coverage.totalSurplusEnergyMwh
+          );
+          const servedLabel = formatEnergyFromMwh(currentFleetScenario.coverage.servedDeficitEnergyMwh);
+          const servedPctLabel =
+            currentFleetScenario.coverage.totalDeficitEnergyMwh > 1e-9
+              ? `${pctFormatter.format(currentFleetScenario.coverage.servedDeficitShare * 100)}%`
+              : "0%";
+
+          return language === "de"
+            ? `${selectorLabel}: Nettoposition ${netLabel}, struktureller Ueberschuss ${structuralSurplusLabel}; die heutige DE-Flotte deckt ${servedLabel} bzw. ${servedPctLabel} des Defizits.`
+            : `${selectorLabel}: net position ${netLabel}, structural surplus ${structuralSurplusLabel}; the current German fleet serves ${servedLabel}, or ${servedPctLabel} of deficit energy.`;
+        })();
+
+  const currentFleetStatusLabel =
+    currentFleetMode === "charging"
+      ? language === "de"
+        ? "Laden"
+        : "Charging"
+      : currentFleetMode === "discharging"
+        ? language === "de"
+          ? "Entladen"
+          : "Discharging"
+        : currentFleetMode === "idle"
+          ? language === "de"
+            ? "Leerlauf"
+            : "Idle"
+          : language === "de"
+            ? "k. A."
+            : "n/a";
+  const currentFleetSocStatusValue =
+    chartRows.length > 0
+      ? `~${pctFormatter.format(chartRows[chartRows.length - 1]!.estimatedFleetSocPct)}% · ${currentFleetStatusLabel}`
+      : currentFleetStatusLabel;
 
   const renderFlowChartSection = (mode: "observed" | "simulated") => {
     const isSimulated = mode === "simulated";
@@ -2240,28 +2591,772 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     );
   };
 
-  return (
-    <article
-      id="germany-day-energy-flow"
-      className="scroll-mt-8 space-y-4 rounded-2xl border border-border/80 bg-card p-5 shadow-[0_1px_0_rgb(255_255_255_/_0.7)_inset,0_12px_36px_rgb(15_23_42_/_0.06)] md:space-y-5 md:p-6 lg:p-8 dark:border-slate-600/35 dark:bg-[linear-gradient(180deg,rgb(13_19_33_/_0.98),rgb(15_23_42_/_0.94))] dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_16px_44px_rgb(0_0_0_/_0.38)]"
-    >
-      <header className="flex flex-col gap-3 md:gap-4">
-        <div className="min-w-0 space-y-1 lg:max-w-xl">
-          <h2 className="text-2xl font-bold leading-tight tracking-tight text-slate-950 md:text-3xl dark:text-white [font-family:var(--font-heading)]">
-            {t.profileTitle}
-          </h2>
-          <p className="max-w-xl text-xs leading-relaxed text-slate-500 md:text-[0.8125rem] dark:text-slate-400">
-            {t.profileSubtitle}
-          </p>
-        </div>
+  const handlePreviousWindow = () => {
+    if (selectorMode === "day") {
+      setSelectedDate((current) => addBerlinCalendarDays(current, -1));
+      return;
+    }
+    if (selectorMode === "week") {
+      const currentStart = isoWeekKeyToStartKey(selectedWeek);
+      setSelectedWeek(dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, -7)));
+      return;
+    }
+    setSelectedMonth((current) => shiftMonthKey(current, -1));
+  };
 
-        <div className="relative border-t border-border/60 pt-3 dark:border-slate-600/35">
-          <div
-            className="sticky top-16 z-[1100] -mx-5 flex flex-col gap-2 border-b border-border/55 bg-card/92 px-4 py-2 shadow-[0_8px_28px_-18px_rgba(15,23,42,0.35)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/78 md:-mx-6 md:px-5 lg:-mx-8 lg:top-[68px] lg:px-6 dark:border-slate-600/40 dark:bg-[rgba(11,17,29,0.93)] dark:shadow-[0_12px_40px_-22px_rgba(0,0,0,0.55)] dark:supports-[backdrop-filter]:bg-[rgba(11,17,29,0.82)]"
-          >
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+  const handleNextWindow = () => {
+    if (selectorMode === "day") {
+      setSelectedDate((current) => {
+        const next = addBerlinCalendarDays(current, 1);
+        return next > todayKey ? todayKey : next;
+      });
+      return;
+    }
+    if (selectorMode === "week") {
+      const currentStart = isoWeekKeyToStartKey(selectedWeek);
+      const nextWeek = dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, 7));
+      setSelectedWeek(nextWeek > currentWeekKey ? currentWeekKey : nextWeek);
+      return;
+    }
+    setSelectedMonth((current) => {
+      const next = shiftMonthKey(current, 1);
+      return next > currentMonthKey ? currentMonthKey : next;
+    });
+  };
+
+  const renderDashboard = ({
+    introSection = null,
+    footerSection = null,
+  }: {
+    introSection?: ReactNode;
+    footerSection?: ReactNode;
+  }) => (
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="min-w-0">
+        <div className="rounded-[30px] border border-border/75 bg-card/70 p-5 shadow-[0_22px_52px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl md:p-6 lg:p-7 dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_28px_64px_-30px_rgba(0,0,0,0.78)]">
+          <div className="flex flex-col gap-4 border-b border-border/55 pb-5 dark:border-slate-600/35">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold tracking-[0.22em] text-slate-500 uppercase dark:text-slate-400">
+                  {language === "de" ? "Analyst Workspace" : "Analyst workspace"}
+                </p>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-3xl dark:text-white [font-family:var(--font-heading)]">
+                    {t.profileTitle}
+                  </h2>
+                  <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                    {t.profileSubtitle}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                  <CalendarDays className="size-3.5" aria-hidden />
+                  {selectorLabel}
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                  {coveragePct}% {language === "de" ? "Abdeckung" : "coverage"}
+                </span>
+              </div>
+            </div>
+
+            <Tabs
+              value={activeDashboardTab}
+              onValueChange={(value) => setActiveDashboardTab(value as DashboardTabValue)}
+              className="gap-0"
+            >
+              <TabsList
+                variant="line"
+                className="w-full justify-start overflow-x-auto rounded-2xl border border-border/70 bg-background/45 p-1.5 dark:border-slate-600/40 dark:bg-slate-950/30"
+              >
+                <TabsTrigger value="daily-briefing" className="min-w-fit px-4 py-2 text-sm">
+                  {language === "de" ? "Today’s Reality" : "Today’s Reality"}
+                </TabsTrigger>
+                <TabsTrigger value="structural-power" className="min-w-fit px-4 py-2 text-sm">
+                  {language === "de" ? "Grid Stress & Relief" : "Grid Stress & Relief"}
+                </TabsTrigger>
+                <TabsTrigger value="optimal-bess" className="min-w-fit px-4 py-2 text-sm">
+                  {language === "de" ? "Value Created" : "Value Created"}
+                </TabsTrigger>
+                <TabsTrigger value="long-term-view" className="min-w-fit px-4 py-2 text-sm">
+                  {language === "de" ? "Scaling & Long-term" : "Scaling & Long-term"}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="daily-briefing" className="mt-0 pt-5">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                  className="space-y-5"
+                >
+                  <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-3 text-sm leading-relaxed text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-50">
+                    {realitySummary}
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <SectionKpiTile
+                      eyebrow={language === "de" ? "Generation" : "Generation"}
+                      value={formatEnergyFromMwh(totalGenerationEnergyMwh)}
+                      subtitle={coverageSummaryLine}
+                      tone="emerald"
+                    />
+                    <SectionKpiTile
+                      eyebrow={language === "de" ? "Demand" : "Demand"}
+                      value={formatEnergyFromMwh(totalDemandEnergyMwh)}
+                      subtitle={selectorLabel}
+                      tone="slate"
+                    />
+                    <SectionKpiTile
+                      eyebrow={language === "de" ? "Net Position" : "Net Position"}
+                      value={formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}
+                      subtitle={language === "de" ? "Σ Erzeugung minus Last" : "Σ generation minus demand"}
+                      tone="sky"
+                    />
+                    <SectionKpiTile
+                      eyebrow={language === "de" ? "Structural Surplus" : "Structural Surplus"}
+                      value={
+                        currentFleetScenario !== null
+                          ? formatEnergyFromMwh(currentFleetScenario.coverage.totalSurplusEnergyMwh)
+                          : "—"
+                      }
+                      subtitle={
+                        language === "de"
+                          ? "Positive strukturelle Viertelstunden"
+                          : "Positive structural quarter-hours"
+                      }
+                      tone="emerald"
+                    />
+                    <SectionKpiTile
+                      eyebrow={language === "de" ? "Fleet SoC + Status" : "Fleet SoC + Status"}
+                      value={currentFleetSocStatusValue}
+                      subtitle={language === "de" ? "Aktuelle DE-Flotte" : "Current German fleet"}
+                      tone="violet"
+                    />
+                    <SectionKpiTile
+                      eyebrow={language === "de" ? "BESS Contribution today" : "BESS Contribution today"}
+                      value={
+                        currentFleetScenario !== null
+                          ? `${formatEnergyFromMwh(currentFleetScenario.coverage.servedDeficitEnergyMwh)} · ${
+                              currentFleetScenario.coverage.totalDeficitEnergyMwh > 1e-9
+                                ? `${pctFormatter.format(currentFleetScenario.coverage.servedDeficitShare * 100)}%`
+                                : "0%"
+                            }`
+                          : "—"
+                      }
+                      subtitle={
+                        language === "de"
+                          ? "Geliefert / Defizit gedeckt"
+                          : "Delivered / deficit covered"
+                      }
+                      tone="amber"
+                    />
+                  </div>
+
+                  {renderFlowChartSection("observed")}
+                  {introSection}
+                  {footerSection ? (
+                    <div className="rounded-2xl border border-border/65 bg-background/40 px-4 py-3 dark:border-slate-600/40 dark:bg-slate-950/25">
+                      {footerSection}
+                    </div>
+                  ) : null}
+                </motion.div>
+              </TabsContent>
+
+              <TabsContent value="structural-power" className="mt-0 pt-5">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                  className="space-y-5"
+                >
+                  <section
+                    id="bessforge-germany-poster-capture"
+                    className="space-y-5 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 shadow-[0_24px_56px_-30px_rgb(15_23_42_/_0.26)] md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
+                  >
+                    <div className="space-y-3 border-b border-slate-200/75 pb-4 dark:border-slate-600/50">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400/95">
+                          {language === "de" ? "Grid Stress & Relief" : "Grid Stress & Relief"}
+                        </p>
+                        <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                          {modeledScenario !== null
+                            ? language === "de"
+                              ? `Bei ${simulatedCapacityGwhLabel ?? "—"} sinken strukturelle Schwankungen um ${modeledScenario.gridImpactReductionPct !== null ? `${pctFormatter.format(modeledScenario.gridImpactReductionPct)}%` : "—"}; ${formatEnergyFromMwh(modeledScenario.absorbedCurtailmentEnergyMwh)} Curtailment koennen aufgenommen werden.`
+                              : `At ${simulatedCapacityGwhLabel ?? "—"}, structural swings fall by ${modeledScenario.gridImpactReductionPct !== null ? `${pctFormatter.format(modeledScenario.gridImpactReductionPct)}%` : "—"} and ${formatEnergyFromMwh(modeledScenario.absorbedCurtailmentEnergyMwh)} of curtailment can be absorbed.`
+                            : language === "de"
+                              ? "Zeigt, wie die gewählte BESS-Schicht Curtailment, Importe und strukturelle Lastspitzen dämpft."
+                              : "Shows how the selected BESS layer reduces curtailment, imports, and structural stress."}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Curtailment Avoided" : "Curtailment Avoided"}
+                        value={
+                          modeledScenario !== null
+                            ? formatEnergyFromMwh(modeledScenario.absorbedCurtailmentEnergyMwh)
+                            : "—"
+                        }
+                        subtitle={
+                          modeledScenario !== null && modeledScenario.coverage.totalCurtailmentEnergyMwh > 1e-9
+                            ? `${pctFormatter.format(
+                                (modeledScenario.absorbedCurtailmentEnergyMwh /
+                                  modeledScenario.coverage.totalCurtailmentEnergyMwh) *
+                                  100
+                              )}%`
+                            : curtailmentStatusLabel
+                        }
+                        tone="emerald"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Remaining Curtailment" : "Remaining Curtailment"}
+                        value={
+                          modeledScenario !== null
+                            ? formatEnergyFromMwh(modeledScenario.remainingCurtailmentEnergyMwh)
+                            : "—"
+                        }
+                        subtitle={
+                          language === "de"
+                            ? "Nicht absorbiert"
+                            : "Not absorbed"
+                        }
+                        tone="amber"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Imbalance Damping" : "Imbalance Damping"}
+                        value={
+                          modeledScenario?.gridImpactReductionPct !== null &&
+                          modeledScenario?.gridImpactReductionPct !== undefined
+                            ? `${pctFormatter.format(modeledScenario.gridImpactReductionPct)}%`
+                            : "—"
+                        }
+                        subtitle={
+                          language === "de"
+                            ? "Σ|Netto| gegen Rohspur"
+                            : "Σ|net| vs raw trace"
+                        }
+                        tone="sky"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Peak Reduction" : "Peak Reduction"}
+                        value={
+                          modeledScenario !== null
+                            ? formatPowerFromMw(modeledScenario.peakReductionMw)
+                            : "—"
+                        }
+                        subtitle={
+                          language === "de"
+                            ? "Max. Abbau der Slot-Spitze"
+                            : "Maximum slot-peak reduction"
+                        }
+                        tone="violet"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Grid Relief Score" : "Grid Relief Score"}
+                        value={
+                          modeledScenario?.gridReliefScore !== null &&
+                          modeledScenario?.gridReliefScore !== undefined
+                            ? `${modeledScenario.gridReliefScore}/100`
+                            : "—"
+                        }
+                        subtitle={
+                          language === "de"
+                            ? "Curtailment, Dämpfung, Peak, Importe"
+                            : "Curtailment, damping, peak, imports"
+                        }
+                        tone="slate"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                        {simulatedCapacityBadgeText}
+                      </span>
+                      {selectedWindowBalancedPowerMw !== null ? (
+                        <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                          {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
+                        </span>
+                      ) : null}
+                      <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                        {chartPerspective === "with-bess"
+                          ? language === "de"
+                            ? "Primäransicht: mit BESS"
+                            : "Primary view: with BESS"
+                          : language === "de"
+                            ? "Primäransicht: ohne BESS"
+                            : "Primary view: without BESS"}
+                      </span>
+                    </div>
+
+                    <div id="bessforge-germany-flow-capture" className="space-y-4 md:space-y-5">
+                      {chartPerspective === "with-bess" ? (
+                        <>
+                          {renderFlowChartSection("simulated")}
+                          {renderFlowChartSection("observed")}
+                        </>
+                      ) : (
+                        <>
+                          {renderFlowChartSection("observed")}
+                          {renderFlowChartSection("simulated")}
+                        </>
+                      )}
+                    </div>
+                  </section>
+                </motion.div>
+              </TabsContent>
+
+              <TabsContent value="optimal-bess" className="mt-0 pt-5">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                  className="space-y-5"
+                >
+                  <section
+                    className="space-y-5 rounded-[28px] border border-border/80 bg-muted/30 px-4 py-5 md:space-y-6 md:px-6 md:py-7 dark:border-slate-600/45 dark:bg-slate-950/45"
+                  >
+                    <header className="space-y-0.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                        {language === "de" ? "Value Created" : "Value Created"}
+                      </p>
+                      <h3 className="text-xl font-semibold text-slate-900 md:text-2xl dark:text-white [font-family:var(--font-heading)]">
+                        {language === "de" ? "Monetärer Effekt der gewählten BESS-Schicht" : "Monetary effect of the selected BESS layer"}
+                      </h3>
+                      <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                        {language === "de"
+                          ? "Verdichtet den Tageseffekt auf Energieverschiebung, vermiedene Redispatch-Kosten, Curtailment-Verwertung und Importreduktion."
+                          : "Condenses the daily effect into shifted-energy revenue, avoided redispatch costs, curtailed-energy recovery, and import reduction."}
+                      </p>
+                    </header>
+
+                    <div className="rounded-[28px] border border-emerald-200/75 bg-gradient-to-br from-emerald-50/80 via-white to-sky-50/40 p-5 shadow-sm dark:border-emerald-500/28 dark:from-emerald-500/10 dark:via-slate-950/70 dark:to-slate-950/85">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-800 dark:text-emerald-200">
+                        {language === "de" ? "Total Value Created" : "Total Value Created"}
+                      </p>
+                      <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                        <div>
+                          <p className="text-4xl font-black leading-none tracking-tight text-slate-950 dark:text-white md:text-[3.4rem]">
+                            {formatCurrencyCompact(modeledScenario?.totalValueCreatedEur ?? null)}
+                          </p>
+                          <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                            {language === "de"
+                              ? "Energieverschiebung plus Curtailment-Verwertung und vermiedene Redispatch-Kosten."
+                              : "Energy-shift value plus curtailed-energy recovery and avoided redispatch costs."}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                            {simulatedCapacityBadgeText}
+                          </span>
+                          <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                            {powerCapLabel}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "BESS Revenue today" : "BESS Revenue today"}
+                        value={formatCurrencyCompact(modeledScenario?.bessRevenueTodayEur ?? null)}
+                        subtitle={
+                          language === "de"
+                            ? "Shift-Wert exkl. Curtailment"
+                            : "Shift value excluding curtailed recovery"
+                        }
+                        tone="emerald"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Avoided Redispatch Costs" : "Avoided Redispatch Costs"}
+                        value={formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null)}
+                        subtitle={
+                          marketReference !== null
+                            ? `${priceFormatter.format(marketReference.positiveRedispatchCostEurPerMwh)} EUR/MWh`
+                            : "—"
+                        }
+                        tone="sky"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Avoided Curtailment Value" : "Avoided Curtailment Value"}
+                        value={formatCurrencyCompact(modeledScenario?.avoidedCurtailmentValueEur ?? null)}
+                        subtitle={
+                          modeledScenario !== null
+                            ? formatEnergyFromMwh(modeledScenario.curtailedRecoveredToLoadEnergyMwh)
+                            : "—"
+                        }
+                        tone="violet"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Import Reduction" : "Import Reduction"}
+                        value={
+                          modeledScenario?.importReductionEnergyMwh !== null &&
+                          modeledScenario?.importReductionEnergyMwh !== undefined
+                            ? formatEnergyFromMwh(modeledScenario.importReductionEnergyMwh)
+                            : "—"
+                        }
+                        subtitle={
+                          modeledScenario?.observedImportEnergyMwh !== null &&
+                          modeledScenario?.simulatedImportEnergyMwh !== null
+                            ? `${formatEnergyFromMwh(modeledScenario.observedImportEnergyMwh)} -> ${formatEnergyFromMwh(modeledScenario.simulatedImportEnergyMwh)}`
+                            : language === "de"
+                              ? "Keine Grenzhandelsbasis"
+                              : "No border-flow baseline"
+                        }
+                        tone="amber"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Missed Opportunity" : "Missed Opportunity"}
+                        value={formatEnergyFromMwh(Math.max(0, (modeledScenario?.coverage.totalChargeOpportunityEnergyMwh ?? 0) - (modeledScenario?.coverage.absorbedSurplusEnergyMwh ?? 0)))}
+                        subtitle={formatCurrencyCompact(modeledScenario?.missedOpportunityEur ?? null)}
+                        tone="slate"
+                      />
+                    </div>
+
+                    <div className="rounded-2xl border border-indigo-200/60 bg-card px-4 py-4 shadow-sm dark:border-indigo-500/35 dark:bg-indigo-950/35">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.65)]" aria-hidden />
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-800 dark:text-indigo-200">
+                          {insightPanelTitle}
+                        </p>
+                      </div>
+                      <p className="mt-2 text-sm leading-relaxed whitespace-pre-line text-slate-800 dark:text-slate-100">
+                        {insightPanelBody}
+                      </p>
+                    </div>
+                  </section>
+                </motion.div>
+              </TabsContent>
+
+              <TabsContent value="long-term-view" className="mt-0 pt-5">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                  className="space-y-5"
+                >
+                  <section
+                    className="space-y-5 rounded-[28px] border border-border/75 bg-background/35 p-5 dark:border-slate-600/40 dark:bg-slate-950/25 md:space-y-6"
+                    aria-labelledby="trailing-bess-analysis-heading"
+                  >
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                        {t.longTermEyebrow}
+                      </p>
+                      <h3
+                        id="trailing-bess-analysis-heading"
+                        className="text-xl font-semibold text-slate-900 md:text-2xl dark:text-slate-100 [font-family:var(--font-heading)]"
+                      >
+                        {t.longTermTitle}
+                      </h3>
+                      <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                        {language === "de"
+                          ? "Verdichtet die 12-Monats-Heuristik auf Marktbild, empfohlene Balanced-Groesse und deren grobe Wirkung."
+                          : "Condenses the 12-month heuristic into market context, the balanced recommendation, and its indicative impact."}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                      {isRevenueModelLoading ? (
+                        <Skeleton className="h-[25rem] w-full rounded-2xl" />
+                      ) : revenueModel && revenueModel.marketContext ? (
+                        <div className="rounded-2xl border border-slate-200/90 bg-white/90 p-5 shadow-sm dark:border-slate-600/50 dark:bg-slate-950/70">
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                              {language === "de" ? "Live-Preissnapshot" : "Live price snapshot"}
+                            </p>
+                            <p className="text-sm text-slate-600 dark:text-slate-300">
+                              {language === "de"
+                                ? "Kompakte Marktansicht aus aktuellen SMARD-Viertelstundenpreisen plus publizierter Redispatch-Basis."
+                                : "Compact market view from recent SMARD quarter-hour prices plus the published redispatch basis."}
+                            </p>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <CompactDetailStat
+                              label={language === "de" ? "Spread-Basis" : "Spread basis"}
+                              value={`${priceFormatter.format(revenueModel.marketReference.derivedSpotSpreadEurPerMwh)} EUR/MWh`}
+                              subtitle={
+                                language === "de"
+                                  ? `${revenueModel.marketReference.sampledDays} Tage SMARD`
+                                  : `${revenueModel.marketReference.sampledDays} SMARD day(s)`
+                              }
+                            />
+                            <CompactDetailStat
+                              label={language === "de" ? "Abend-Aufschlag" : "Evening premium"}
+                              value={`${priceFormatter.format(revenueModel.marketContext.eveningPeakPremiumEurPerMwh)} EUR/MWh`}
+                              subtitle={language === "de" ? "Ø Abend minus Ø Mittag" : "Avg evening minus avg midday"}
+                            />
+                            <CompactDetailStat
+                              label={language === "de" ? "Redispatch-Basis" : "Redispatch basis"}
+                              value={`${priceFormatter.format(revenueModel.marketReference.positiveRedispatchCostEurPerMwh)} EUR/MWh`}
+                              subtitle={
+                                language === "de"
+                                  ? `${formatEnergyFromMwh(revenueModel.marketReference.averageDailyCurtailmentOpportunityMwh)} pro Tag`
+                                  : `${formatEnergyFromMwh(revenueModel.marketReference.averageDailyCurtailmentOpportunityMwh)} per day`
+                              }
+                            />
+                            <CompactDetailStat
+                              label={language === "de" ? "12M Balanced · Erlös" : "12M balanced revenue"}
+                              value={
+                                balancedRevenueTileValue !== null
+                                  ? euroCurrencyFormatter.format(Math.round(balancedRevenueTileValue))
+                                  : "—"
+                              }
+                              subtitle={
+                                liveBalancedEconomics
+                                  ? language === "de"
+                                    ? "Mit Live-Preisreferenz"
+                                    : "Using the live price reference"
+                                  : language === "de"
+                                    ? "Fallback auf 12M-Heuristik"
+                                    : "Fallback to the 12M heuristic"
+                              }
+                            />
+                          </div>
+
+                          <div className="mt-4 h-44 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <ComposedChart data={liveMarketPriceChartData} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+                                <CartesianGrid stroke="rgba(148,163,184,0.18)" strokeDasharray="3 3" />
+                                <XAxis
+                                  dataKey="label"
+                                  tick={{ fontSize: 11, fill: "rgb(100,116,139)" }}
+                                  axisLine={{ stroke: "rgba(148,163,184,0.35)" }}
+                                  tickLine={false}
+                                />
+                                <YAxis
+                                  tick={{ fontSize: 11, fill: "rgb(100,116,139)" }}
+                                  tickFormatter={(value) =>
+                                    `${priceFormatter.format(typeof value === "number" ? value : 0)}`
+                                  }
+                                  width={56}
+                                />
+                                <Tooltip
+                                  formatter={(value) => [
+                                    `${priceFormatter.format(typeof value === "number" ? value : Number(value ?? 0))} EUR/MWh`,
+                                    language === "de" ? "Preis" : "Price",
+                                  ]}
+                                  contentStyle={{
+                                    background: "rgba(255,255,255,0.97)",
+                                    border: "1px solid rgba(148,163,184,0.45)",
+                                    borderRadius: 12,
+                                    fontSize: 12,
+                                  }}
+                                />
+                                <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]} maxBarSize={42} />
+                              </ComposedChart>
+                            </ResponsiveContainer>
+                          </div>
+
+                          <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                            {language === "de"
+                              ? "Preisprofil: niedrig / Mittag / Abend / hoch. Negative Preisanteile zuletzt "
+                              : "Price profile: low / midday / evening / high. Recent negative-price share "}
+                            <span className="font-medium text-slate-700 dark:text-slate-200">
+                              {pctFormatter.format(revenueModel.marketContext.negativePriceSharePct)}%
+                            </span>
+                            . {revenueModel.marketReference.redispatchSourceLabel}.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-5 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
+                          {revenueModelLoadError
+                            ? language === "de"
+                              ? "Live-Preissnapshot aktuell nicht verfuegbar."
+                              : "Live price snapshot is unavailable right now."
+                            : language === "de"
+                              ? "Live-Preissnapshot derzeit ohne Daten."
+                              : "Live price snapshot currently has no data."}
+                        </div>
+                      )}
+
+                      {isRecommendationLoading ? (
+                        <Skeleton className="h-[25rem] w-full rounded-2xl" />
+                      ) : recommendationLoadError || !recommendation || !balancedRecommendation ? (
+                        <div className="rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-5 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
+                          {t.kpiRecommendationUnavailable}
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-emerald-200/75 bg-gradient-to-br from-emerald-50/80 via-white to-sky-50/35 p-5 shadow-sm dark:border-emerald-500/28 dark:from-emerald-500/10 dark:via-slate-950/70 dark:to-slate-950/85">
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-800 dark:text-emerald-200">
+                              {language === "de" ? "Balanced-Empfehlung" : "Balanced recommendation"}
+                            </p>
+                            <h4 className="text-lg font-semibold text-slate-900 dark:text-white md:text-xl">
+                              {language === "de"
+                                ? "Empfohlene BESS-Groesse fuer die letzten 12 Monate"
+                                : "Recommended BESS size across the last 12 months"}
+                            </h4>
+                          </div>
+
+                          <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1fr)]">
+                            <div className="rounded-2xl border border-emerald-200/75 bg-white/80 px-4 py-4 shadow-sm dark:border-emerald-400/30 dark:bg-slate-950/55">
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                                {t.trailingKpiCapacity}
+                              </p>
+                              <p className="mt-2 text-4xl font-black leading-none tabular-nums text-slate-950 dark:text-white md:text-[3.35rem]">
+                                {formatEnergyFromMwh(balancedRecommendation.recommendedEnergyMwh)}
+                              </p>
+                              <p className="mt-2 text-base font-semibold text-slate-700 dark:text-slate-200">
+                                {formatPowerFromMw(balancedRecommendation.recommendedPowerMw)}
+                              </p>
+                              <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                                {t.trailingKpiDailyPercentileCaption}
+                              </p>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <CompactDetailStat label={t.trailingKpiPayback} value={trailingPaybackLabel} />
+                              <CompactDetailStat label={t.trailingKpiImpact} value={trailingImpactLabel} />
+                              <CompactDetailStat label={t.trailingChainPeakLabel} value={trailingChainPeakValue} />
+                              <CompactDetailStat
+                                label={language === "de" ? "Beobachtungsfenster" : "Observed window"}
+                                value={trailingWindowLabel}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-4 space-y-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                            <p>{t.trailingBulletTier}</p>
+                            <p>
+                              {language === "de"
+                                ? "Kann stark von „Tages-Energie“ abweichen — hier läuft dieselbe Bilanz ohne Mitternachts-Reset weiter."
+                                : "Can diverge materially from the daily-energy row—the same heuristic here without nightly SOC resets."}
+                            </p>
+                            <p className="text-slate-400 dark:text-slate-500">
+                              {language === "de"
+                                ? "Ökonomie und Deckungsgrade mit idealisierten Annahmen; Marktpreise und Verluste ausgeschlossen."
+                                : "Economics/coverage uses idealised assumptions; excludes market spreads and losses."}{" "}
+                              {t.trailingNotAuditedNote}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="rounded-[28px] border border-border/75 bg-background/35 p-5 dark:border-slate-600/40 dark:bg-slate-950/25">
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                        {language === "de" ? "Marginal Impact of More Capacity" : "Marginal Impact of More Capacity"}
+                      </p>
+                      <h4 className="text-lg font-semibold text-slate-900 dark:text-white md:text-xl">
+                        {language === "de"
+                          ? "Wie mehr DE-BESS den Tageseffekt verschiebt"
+                          : "How more German BESS shifts the daily effect"}
+                      </h4>
+                      <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                        {language === "de"
+                          ? "Alle Szenarien skalieren Energie und Leistung der aktuellen Flotte gemeinsam."
+                          : "All scenarios scale current fleet energy and power together."}
+                      </p>
+                    </div>
+
+                    {scalingScenarioColumns.length > 0 ? (
+                      <div className="mt-4 overflow-x-auto">
+                        <table className="min-w-full border-separate border-spacing-0 text-sm">
+                          <thead>
+                            <tr>
+                              <th className="sticky left-0 z-10 rounded-l-2xl border border-border/70 bg-background/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-400">
+                                {language === "de" ? "Metric" : "Metric"}
+                              </th>
+                              {scalingScenarioColumns.map((column, index) => (
+                                <th
+                                  key={column.label}
+                                  className={`border border-border/70 bg-background/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-400 ${index === scalingScenarioColumns.length - 1 ? "rounded-r-2xl" : ""}`}
+                                >
+                                  {column.label}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              {
+                                label: language === "de" ? "Absorbed Energy" : "Absorbed Energy",
+                                render: (scenario: ScenarioImpactSnapshot) =>
+                                  formatEnergyFromMwh(scenario.coverage.absorbedSurplusEnergyMwh),
+                              },
+                              {
+                                label: language === "de" ? "Curtailment Avoided" : "Curtailment Avoided",
+                                render: (scenario: ScenarioImpactSnapshot) =>
+                                  formatEnergyFromMwh(scenario.absorbedCurtailmentEnergyMwh),
+                              },
+                              {
+                                label: language === "de" ? "Revenue" : "Revenue",
+                                render: (scenario: ScenarioImpactSnapshot) =>
+                                  formatCurrencyCompact(
+                                    (scenario.bessRevenueTodayEur ?? 0) +
+                                      (scenario.avoidedCurtailmentValueEur ?? 0)
+                                  ),
+                              },
+                              {
+                                label: language === "de" ? "Avoided Costs" : "Avoided Costs",
+                                render: (scenario: ScenarioImpactSnapshot) =>
+                                  formatCurrencyCompact(scenario.avoidedRedispatchCostsEur),
+                              },
+                              {
+                                label: language === "de" ? "Grid Relief" : "Grid Relief",
+                                render: (scenario: ScenarioImpactSnapshot) =>
+                                  scenario.gridReliefScore !== null ? `${scenario.gridReliefScore}/100` : "—",
+                              },
+                            ].map((row, rowIndex, rows) => (
+                              <tr key={row.label}>
+                                <th
+                                  className={`sticky left-0 z-[1] border border-border/70 bg-background/95 px-4 py-3 text-left font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-200 ${rowIndex === rows.length - 1 ? "rounded-bl-2xl" : ""}`}
+                                >
+                                  {row.label}
+                                </th>
+                                {scalingScenarioColumns.map((column, columnIndex) => (
+                                  <td
+                                    key={`${row.label}-${column.label}`}
+                                    className={`border border-border/70 bg-background/60 px-4 py-3 text-slate-900 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-100 ${rowIndex === rows.length - 1 && columnIndex === scalingScenarioColumns.length - 1 ? "rounded-br-2xl" : ""}`}
+                                  >
+                                    {row.render(column.scenario)}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-5 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
+                        {language === "de"
+                          ? "Skalierungstabelle derzeit nicht berechenbar."
+                          : "Scaling table is not computable right now."}
+                      </div>
+                    )}
+                  </section>
+
+                  <p className="text-[10px] text-slate-400 dark:text-slate-600">{t.technicalDisclaimer}</p>
+                </motion.div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </div>
+
+      <motion.aside
+        initial={{ opacity: 0, x: 10 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
+        className="space-y-4 xl:sticky xl:top-24"
+      >
+        <section className="rounded-[28px] border border-border/75 bg-card/70 p-4 shadow-[0_20px_46px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_24px_56px_-30px_rgba(0,0,0,0.78)]">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+              {language === "de" ? "Date" : "Date"}
+            </p>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <div className="rounded-2xl border border-border/70 bg-background/45 p-3 dark:border-slate-600/40 dark:bg-slate-950/25">
               <div
-                className="inline-flex min-h-8 w-full max-w-full shrink-0 overflow-x-auto rounded-full border border-slate-200/90 bg-slate-100/95 p-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/55 dark:bg-slate-900/80 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] [&::-webkit-scrollbar]:hidden sm:w-auto"
+                className="inline-flex min-h-8 w-full overflow-x-auto rounded-full border border-slate-200/90 bg-slate-100/95 p-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/55 dark:bg-slate-900/80 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] [&::-webkit-scrollbar]:hidden"
                 role="tablist"
                 aria-label={t.timeframeLabelShort}
               >
@@ -2276,7 +3371,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                     role="tab"
                     aria-selected={selectorMode === option.mode}
                     onClick={() => setSelectorMode(option.mode)}
-                    className={`min-h-8 shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-tight transition sm:px-4 sm:text-xs ${
+                    className={`min-h-8 flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-tight transition ${
                       selectorMode === option.mode
                         ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90 dark:bg-slate-950 dark:text-white dark:ring-slate-600/70"
                         : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
@@ -2287,430 +3382,199 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 ))}
               </div>
 
-              <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-2 lg:flex-1 lg:justify-end">
-                <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 sm:flex-nowrap">
-                  <div className="inline-flex min-w-0 flex-1 items-center gap-1 rounded-2xl border border-slate-200/90 bg-white/95 p-1 shadow-sm dark:border-slate-600/60 dark:bg-slate-950/95 sm:max-w-[min(100%,22rem)] sm:flex-initial">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (selectorMode === "day") {
-                          setSelectedDate((current) => addBerlinCalendarDays(current, -1));
-                          return;
-                        }
-                        if (selectorMode === "week") {
-                          const currentStart = isoWeekKeyToStartKey(selectedWeek);
-                          setSelectedWeek(dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, -7)));
-                          return;
-                        }
-                        setSelectedMonth((current) => shiftMonthKey(current, -1));
-                      }}
-                      className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                      aria-label={t.previousRange}
-                    >
-                      <ChevronLeft className="size-4" aria-hidden />
-                    </button>
-                    {selectorMode === "day" ? (
-                      <BerlinDayCalendarButton
-                        value={selectedDate}
-                        max={todayKey}
-                        onChange={setSelectedDate}
-                        language={language}
-                        className="min-w-0 flex-1 border-0 bg-transparent shadow-none dark:bg-transparent"
-                      />
-                    ) : null}
-                    {selectorMode === "week" ? (
-                      <input
-                        type="week"
-                        value={selectedWeek}
-                        max={currentWeekKey}
-                        onChange={(event) => setSelectedWeek(event.target.value)}
-                        className="h-9 min-w-[min(100%,10.5rem)] flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
-                      />
-                    ) : null}
-                    {selectorMode === "month" ? (
-                      <input
-                        type="month"
-                        value={selectedMonth}
-                        max={currentMonthKey}
-                        onChange={(event) => setSelectedMonth(event.target.value)}
-                        className="h-9 min-w-[min(100%,10rem)] flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
-                      />
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={nextDisabled}
-                      onClick={() => {
-                        if (selectorMode === "day") {
-                          setSelectedDate((current) => {
-                            const next = addBerlinCalendarDays(current, 1);
-                            return next > todayKey ? todayKey : next;
-                          });
-                          return;
-                        }
-                        if (selectorMode === "week") {
-                          const currentStart = isoWeekKeyToStartKey(selectedWeek);
-                          const nextWeek = dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, 7));
-                          setSelectedWeek(nextWeek > currentWeekKey ? currentWeekKey : nextWeek);
-                          return;
-                        }
-                        setSelectedMonth((current) => {
-                          const next = shiftMonthKey(current, 1);
-                          return next > currentMonthKey ? currentMonthKey : next;
-                        });
-                      }}
-                      className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                      aria-label={t.nextRange}
-                    >
-                      <ChevronRight className="size-4" aria-hidden />
-                    </button>
-                  </div>
-
-                  <div
-                    className="group/cov relative inline-flex max-w-full min-w-0 flex-wrap items-center justify-end gap-1"
-                    title={t.dataCoverageTooltip}
-                  >
-                    <span className="inline-flex min-w-0 items-baseline gap-x-1.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
-                      <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">{coveragePct}%</span>
-                      <span className="text-slate-400 dark:text-slate-500">·</span>
-                      <span className="min-w-0 text-slate-500 dark:text-slate-400">{t.coverageBadgeSuffix}</span>
-                    </span>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-full p-1 text-slate-400 outline-none transition hover:bg-slate-200/80 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-slate-400/60 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-                      aria-label={t.dataCoverageInfoAria}
-                      aria-describedby={dataCoverageTooltipId}
-                      title={t.dataCoverageTooltip}
-                    >
-                      <Info className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                    </button>
-                    <span
-                      id={dataCoverageTooltipId}
-                      role="tooltip"
-                      className="pointer-events-none invisible absolute bottom-[calc(100%+8px)] right-0 z-[1300] w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-slate-200/95 bg-white px-3 py-2 text-[11px] leading-snug text-slate-600 opacity-0 shadow-lg transition duration-100 group-hover/cov:visible group-hover/cov:opacity-100 group-focus-within/cov:visible group-focus-within/cov:opacity-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 sm:right-auto sm:left-0"
-                    >
-                      {t.dataCoverageTooltip}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:border-l sm:border-slate-200/65 sm:pl-2.5 dark:sm:border-slate-600/45">
-                  <FlowExportButtons language={language} flow={flow} captureElementId="bessforge-germany-flow-capture" />
-                  <FlowShareToXButton
-                    language={language}
-                    socialCaptureElementId="bessforge-germany-poster-capture"
-                    payload={flowSharePayload}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {selectorMode === "day" ? (
-              <label className="flex max-w-full cursor-pointer items-start gap-2 border-t border-border/45 pt-2 text-[10px] leading-snug text-slate-400 dark:border-slate-600/35 dark:text-slate-500">
-                <input
-                  type="checkbox"
-                  checked={dayModeResetAtStart}
-                  onChange={(event) => setDayModeResetAtStart(event.target.checked)}
-                  className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded border-slate-300 text-slate-500 focus-visible:ring-1 focus-visible:ring-slate-400 dark:border-slate-600 dark:bg-slate-900"
-                />
-                <span>{t.dayResetToggleLabel}</span>
-              </label>
-            ) : null}
-          </div>
-        </div>
-      </header>
-
-      <div
-        id="bessforge-germany-poster-capture"
-        className="space-y-2.5 rounded-2xl border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white px-3 pb-3 pt-2 shadow-[0_20px_50px_-24px_rgb(15_23_42_/_0.2)] sm:space-y-3 sm:px-4 md:pb-3.5 md:pt-2.5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-slate-200/75 pb-2 dark:border-slate-600/50">
-          <p className="text-[10px] font-semibold uppercase leading-none tracking-[0.2em] text-emerald-600 dark:text-emerald-400/95">
-            {language === "de" ? "BESSForge · Strukturkraft" : "BESSForge · structural power"}
-          </p>
-          <p className="text-[11px] font-medium leading-tight tracking-tight text-slate-600 tabular-nums dark:text-slate-400">
-            {selectorMode === "day" && selectorLabel === flow.dateBerlin ? (
-              <>
-                <span>{flow.dateBerlin}</span>
-                {" · "}
-              </>
-            ) : (
-              <>
-                {selectorLabel}
-                {" · "}
-              </>
-            )}
-            <span>{Math.round(flow.pointFractionOfDay * 100)}%</span>{" "}
-            {language === "de" ? "Datenabdeckung" : "data coverage"}
-            {selectorMode === "day" && selectorLabel === flow.dateBerlin ? null : (
-              <>
-                {" · "}
-                <span>{flow.dateBerlin}</span>
-              </>
-            )}
-            {" · "}
-            {language === "de" ? "Beobachtung + Simulation" : "Observed + simulation"}
-          </p>
-        </div>
-
-        {observedPosterKpiItems ? <FlowPosterKpiStrip items={observedPosterKpiItems} /> : null}
-
-        <div id="bessforge-germany-flow-capture" className="space-y-4">
-          {renderFlowChartSection("observed")}
-          {renderFlowChartSection("simulated")}
-        </div>
-      </div>
-
-      {dailyStoryWrapped}
-
-      <section
-        className="space-y-4 rounded-xl border border-border/80 bg-muted/30 px-4 py-5 md:space-y-5 md:px-6 md:py-6 dark:border-slate-600/45 dark:bg-slate-950/45"
-        aria-labelledby="reco-impact-heading"
-      >
-        <header className="space-y-0.5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            {t.recoImpactEyebrow}
-          </p>
-          <h3
-            id="reco-impact-heading"
-            className="text-lg font-semibold text-slate-900 md:text-xl dark:text-white [font-family:var(--font-heading)]"
-          >
-            {t.recoImpactTitle}
-          </h3>
-          <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-            {t.recoImpactLead}
-          </p>
-        </header>
-
-        <div className="grid grid-cols-2 gap-2.5 border-b border-border/70 pb-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 dark:border-slate-600/40">
-          <SectionKpiTile
-            eyebrow={language === "de" ? "Aktive Sim.-Kapazitaet" : "Active sim. size"}
-            value={simulatedCapacityGwhLabel ?? "—"}
-            subtitle={simulatedCapacitySourceLabel}
-            tone="emerald"
-          />
-          <SectionKpiTile
-            eyebrow={language === "de" ? "Leistungslimit" : "Power cap"}
-            value={powerCapLabel}
-            subtitle={language === "de" ? "Balanced-Fensterleistung" : "Balanced window power"}
-            tone="sky"
-          />
-          <SectionKpiTile
-            eyebrow={t.kpiCapturedSurplusEyebrow}
-            value={absorbedPctLabel}
-            subtitle={t.kpiCapturedSurplusSubtitle}
-            tone="emerald"
-          />
-          <SectionKpiTile
-            eyebrow={t.kpiDeficitCoveredEyebrow}
-            value={servedPctLabel}
-            subtitle={t.kpiDeficitCoveredSubtitle}
-            tone="amber"
-          />
-          <SectionKpiTile
-            eyebrow={t.kpiGridImpactEyebrow}
-            value={dampingPctLabel}
-            subtitle={t.kpiGridImpactSubtitle}
-            tone="slate"
-          />
-          <SectionKpiTile
-            eyebrow={t.kpiImportsAfterBessEyebrow}
-            value={simulatedImportLabel}
-            subtitle={t.kpiCrossBorderDeltaSubtitle(observedImportLabel, importDeltaLabel)}
-            tone="amber"
-          />
-          <SectionKpiTile
-            eyebrow={t.kpiExportsAfterBessEyebrow}
-            value={simulatedExportLabel}
-            subtitle={t.kpiCrossBorderDeltaSubtitle(observedExportLabel, exportDeltaLabel)}
-            tone="sky"
-          />
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-          <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/65 px-3.5 py-3 shadow-sm dark:border-emerald-500/25 dark:bg-emerald-500/10">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="space-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-800 dark:text-emerald-200">
-                  {t.simulatedCapacityControlEyebrow}
-                </p>
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                  {t.simulatedCapacityControlTitle}
-                </p>
-                <p className="max-w-2xl text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-                  {hasCustomSimulatedCapacity
-                    ? t.simulatedCapacityControlHintCustom(autoSimulatedCapacityGwhLabel)
-                    : autoSimulatedCapacityGwhLabel
-                      ? t.simulatedCapacityControlHintAuto(autoSimulatedCapacityGwhLabel)
-                      : t.simulatedCapacityControlHintCustom(null)}
-                </p>
-              </div>
-              {hasCustomSimulatedCapacity ? (
+              <div className="mt-3 inline-flex w-full items-center gap-1 rounded-2xl border border-slate-200/90 bg-white/95 p-1 shadow-sm dark:border-slate-600/60 dark:bg-slate-950/95">
                 <button
                   type="button"
-                  onClick={() => setCustomSimulatedCapacityGwhInput("")}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-300/80 bg-white px-3 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/80 focus-visible:ring-offset-2 dark:border-emerald-400/30 dark:bg-slate-950/70 dark:text-emerald-100 dark:hover:bg-slate-900 dark:focus-visible:ring-offset-slate-950"
+                  onClick={handlePreviousWindow}
+                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  aria-label={t.previousRange}
                 >
-                  {t.simulatedCapacityReset}
+                  <ChevronLeft className="size-4" aria-hidden />
                 </button>
-              ) : null}
-            </div>
+                {selectorMode === "day" ? (
+                  <BerlinDayCalendarButton
+                    value={selectedDate}
+                    max={todayKey}
+                    onChange={setSelectedDate}
+                    language={language}
+                    className="min-w-0 flex-1 border-0 bg-transparent shadow-none dark:bg-transparent"
+                  />
+                ) : null}
+                {selectorMode === "week" ? (
+                  <input
+                    type="week"
+                    value={selectedWeek}
+                    max={currentWeekKey}
+                    onChange={(event) => setSelectedWeek(event.target.value)}
+                    className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
+                  />
+                ) : null}
+                {selectorMode === "month" ? (
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    max={currentMonthKey}
+                    onChange={(event) => setSelectedMonth(event.target.value)}
+                    className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  disabled={nextDisabled}
+                  onClick={handleNextWindow}
+                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  aria-label={t.nextRange}
+                >
+                  <ChevronRight className="size-4" aria-hidden />
+                </button>
+              </div>
 
-            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <label htmlFor={simulatedCapacityInputId} className="w-full max-w-xs space-y-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200">
-                  {t.simulatedCapacityInputLabel}
-                </span>
-                <input
-                  id={simulatedCapacityInputId}
-                  type="text"
-                  inputMode="decimal"
-                  value={customSimulatedCapacityGwhInput}
-                  onChange={(event) => setCustomSimulatedCapacityGwhInput(event.target.value)}
-                  placeholder={autoSimulatedCapacityInputPlaceholder}
-                  aria-describedby={simulatedCapacityHintId}
-                  aria-invalid={customSimulatedCapacityInvalid}
-                  className={`h-11 w-full rounded-xl border bg-white px-3 text-sm font-semibold tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-400/70 dark:bg-slate-950/75 dark:text-white dark:placeholder:text-slate-500 ${
-                    customSimulatedCapacityInvalid
-                      ? "border-rose-300/90 focus-visible:border-rose-300 dark:border-rose-400/45"
-                      : "border-emerald-300/80 dark:border-emerald-400/30"
-                  }`}
-                />
-              </label>
-              <p
-                id={simulatedCapacityHintId}
-                className="max-w-md text-xs leading-relaxed text-slate-600 dark:text-slate-300"
-              >
-                {selectedWindowBalancedPowerMw !== null
-                  ? t.simulatedCapacityInputHint(formatPowerFromMw(selectedWindowBalancedPowerMw))
-                  : t.simulatedCapacityInputHintUnavailable}
+              <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                {coverageSummaryLine}
               </p>
             </div>
+          </div>
+        </section>
 
+        <section className="rounded-[28px] border border-border/75 bg-card/70 p-4 shadow-[0_20px_46px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_24px_56px_-30px_rgba(0,0,0,0.78)]">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+              {language === "de" ? "Capacity Override" : "Capacity Override"}
+            </p>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <label htmlFor={simulatedCapacityInputId} className="space-y-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200">
+                {t.simulatedCapacityInputLabel}
+              </span>
+              <input
+                id={simulatedCapacityInputId}
+                ref={simulatedCapacityInputRef}
+                type="text"
+                inputMode="decimal"
+                value={customSimulatedCapacityGwhInput}
+                onChange={(event) => setCustomSimulatedCapacityGwhInput(event.target.value)}
+                placeholder={autoSimulatedCapacityInputPlaceholder}
+                aria-describedby={simulatedCapacityHintId}
+                aria-invalid={customSimulatedCapacityInvalid}
+                className={`h-11 w-full rounded-xl border bg-white px-3 text-sm font-semibold tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-400/70 dark:bg-slate-950/75 dark:text-white dark:placeholder:text-slate-500 ${
+                  customSimulatedCapacityInvalid
+                    ? "border-rose-300/90 focus-visible:border-rose-300 dark:border-rose-400/45"
+                    : "border-emerald-300/80 dark:border-emerald-400/30"
+                }`}
+              />
+            </label>
+            <p id={simulatedCapacityHintId} className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+              {hasCustomSimulatedCapacity
+                ? language === "de"
+                  ? `Manuelle Schicht aktiv. Automatik: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
+                  : `Manual layer active. Auto size: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
+                : autoSimulatedCapacityGwhLabel
+                  ? language === "de"
+                    ? `Automatik aktiv: ${autoSimulatedCapacityGwhLabel}.`
+                    : `Auto sizing active: ${autoSimulatedCapacityGwhLabel}.`
+                  : t.simulatedCapacityInputHintUnavailable}
+              {selectedWindowBalancedPowerMw !== null ? (
+                <>
+                  {" "}
+                  {language === "de"
+                    ? `Leistung: ${formatPowerFromMw(selectedWindowBalancedPowerMw)}.`
+                    : `Power cap: ${formatPowerFromMw(selectedWindowBalancedPowerMw)}.`}
+                </>
+              ) : null}
+            </p>
             {customSimulatedCapacityInvalid ? (
-              <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-200">
+              <p className="text-xs font-medium text-rose-700 dark:text-rose-200">
                 {t.simulatedCapacityInputInvalid}
               </p>
             ) : null}
+            {hasCustomSimulatedCapacity ? (
+              <Button type="button" variant="outline" size="sm" onClick={() => setCustomSimulatedCapacityGwhInput("")}>
+                {t.simulatedCapacityReset}
+              </Button>
+            ) : null}
           </div>
+        </section>
 
-          <div className="rounded-lg border border-indigo-200/60 bg-card px-3.5 py-3 shadow-sm dark:border-indigo-500/35 dark:bg-indigo-950/35">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.65)]" aria-hidden />
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-800 dark:text-indigo-200">
-                {insightPanelTitle}
-              </p>
-            </div>
-            <p className="mt-2 text-sm leading-relaxed whitespace-pre-line text-slate-800 dark:text-slate-100">
-              {insightPanelBody}
+        <section className="rounded-[28px] border border-border/75 bg-card/70 p-4 shadow-[0_20px_46px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_24px_56px_-30px_rgba(0,0,0,0.78)]">
+          <div className="flex items-center gap-2">
+            <Info className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+              {language === "de" ? "View Toggle" : "View Toggle"}
             </p>
           </div>
-        </div>
 
-        <div className="flex flex-col gap-2 border-t border-border/70 pt-4 dark:border-slate-600/40 sm:flex-row sm:items-start sm:justify-between">
-          <p className="max-w-md text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-            {t.bottomControlsHint}
+          <div className="mt-4 inline-flex w-full rounded-full border border-border/70 bg-background/55 p-1 dark:border-slate-600/40 dark:bg-slate-950/35">
+            <button
+              type="button"
+              onClick={() => setChartPerspective("without-bess")}
+              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-semibold transition ${
+                chartPerspective === "without-bess"
+                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
+            >
+              {language === "de" ? "Ohne BESS" : "Without BESS"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartPerspective("with-bess")}
+              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-semibold transition ${
+                chartPerspective === "with-bess"
+                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
+            >
+              {language === "de" ? "Mit BESS" : "With BESS"}
+            </button>
+          </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+            {language === "de"
+              ? "Steuert, welche Netzansicht in Tab 2 zuerst gezeigt und für Exporte hervorgehoben wird."
+              : "Controls which grid view appears first in Tab 2 and is emphasized for exports."}
           </p>
-          <p className="max-w-xl text-[11px] leading-snug text-slate-400 dark:text-slate-500 sm:text-right">
-            {coverageSummaryLine}
-            <span aria-hidden> · </span>
-            <span>{t.dataNote}</span>
-          </p>
-        </div>
-      </section>
+        </section>
 
-      <section
-        className="space-y-3 border-t border-border/70 pt-6 dark:border-slate-600/40"
-        aria-labelledby="trailing-bess-analysis-heading"
-      >
-        <div className="space-y-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            {t.longTermEyebrow}
-          </p>
-          <h3
-            id="trailing-bess-analysis-heading"
-            className="text-base font-semibold text-slate-800 dark:text-slate-100 md:text-[1.0625rem] [font-family:var(--font-heading)]"
-          >
-            {t.longTermTitle}
-          </h3>
-        </div>
+        <section className="rounded-[28px] border border-border/75 bg-card/70 p-4 shadow-[0_20px_46px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_24px_56px_-30px_rgba(0,0,0,0.78)]">
+          <div className="flex items-center gap-2">
+            <Download className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+              {language === "de" ? "Export" : "Export"}
+            </p>
+          </div>
 
+          <div className="mt-4 space-y-3">
+            <FlowExportButtons
+              language={language}
+              flow={flow}
+              captureElementId="bessforge-germany-flow-capture"
+            />
+            <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+              {language === "de"
+                ? "Export nutzt die Vergleichsfläche aus Tab 2. Öffne für das sauberste Capture die Grid-Stress-&-Relief-Ansicht."
+                : "Export uses the comparison surface from Tab 2. For the cleanest capture, open Grid Stress & Relief first."}
+            </p>
+          </div>
+        </section>
+      </motion.aside>
+    </div>
+  );
 
-        {isRecommendationLoading ? (
-          <Skeleton className="h-14 w-full max-w-5xl rounded-lg" />
-        ) : recommendationLoadError || !recommendation || !recommendationByTier?.balanced ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t.kpiRecommendationUnavailable}</p>
-        ) : (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg border border-slate-200/90 bg-white/90 px-3.5 py-3 shadow-sm dark:border-slate-600/50 dark:bg-slate-950/70">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {t.trailingKpiCapacity}
-                </p>
-                <p className="mt-1.5 text-lg font-bold tabular-nums text-slate-900 dark:text-white [font-family:var(--font-sans)] md:text-xl">
-                  {formatEnergyFromMwh(recommendationByTier.balanced.recommendedEnergyMwh)}
-                </p>
-                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                  {formatPowerFromMw(recommendationByTier.balanced.recommendedPowerMw)}
-                </p>
-                <p className="mt-2 text-[10px] leading-snug text-slate-400 dark:text-slate-500">
-                  {t.trailingKpiDailyPercentileCaption}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-200/90 bg-white/90 px-3.5 py-3 shadow-sm dark:border-slate-600/50 dark:bg-slate-950/70">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {t.trailingKpiPayback}
-                </p>
-                <p className="mt-1.5 text-lg font-bold tabular-nums text-slate-900 dark:text-white md:text-xl [font-family:var(--font-sans)]">
-                  {recommendation.indicativeEconomicsAtBalancedTier
-                    ? language === "de"
-                      ? `${pctFormatter.format(recommendation.indicativeEconomicsAtBalancedTier.paybackYears)} J`
-                      : `${pctFormatter.format(recommendation.indicativeEconomicsAtBalancedTier.paybackYears)} yr`
-                    : "—"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-200/90 bg-white/90 px-3.5 py-3 shadow-sm dark:border-slate-600/50 dark:bg-slate-950/70">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {t.trailingKpiImpact}
-                </p>
-                <p className="mt-2 text-sm font-semibold leading-snug text-slate-800 dark:text-slate-100">
-                  {recommendation.impactAtBalancedTier
-                    ? `${pctFormatter.format(recommendation.impactAtBalancedTier.absorbedSurplusShare * 100)}% ${
-                        language === "de" ? "Ladechance ·" : "charge opportunity ·"
-                      } ${pctFormatter.format(recommendation.impactAtBalancedTier.servedDeficitShare * 100)}% ${
-                        language === "de" ? "Defizit" : "deficit"
-                      }`
-                    : "—"}
-                </p>
-              </div>
-            </div>
-            <div className="max-w-4xl space-y-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-              <p>
-                {recommendation.rangeStartBerlin}–{recommendation.rangeEndBerlin} · {recommendation.observedDays}{" "}
-                {language === "de" ? "Tage" : "days"} · {t.trailingBulletTier}
-              </p>
-              <p>
-                <span className="font-medium text-slate-600 dark:text-slate-300">{t.trailingChainPeakLabel}:</span>{" "}
-                {Number.isFinite(recommendation.continuousWindowRequiredEnergyMwh) &&
-                recommendation.continuousWindowRequiredEnergyMwh >= 0
-                  ? formatEnergyFromMwh(recommendation.continuousWindowRequiredEnergyMwh)
-                  : "—"}
-                <span aria-hidden> · </span>
-                {language === "de"
-                  ? "Kann stark von „Tages-Energie“ abweichen — hier läuft dieselbe Bilanz ohne Mitternachts-Reset weiter."
-                  : "Can diverge materially from the daily-energy row—the same heuristic here without nightly SOC resets."}
-              </p>
-              <p className="text-slate-400 dark:text-slate-500">
-                {language === "de"
-                  ? "Ökonomie und Deckungsgrade mit idealisierten Annahmen; Marktpreise und Verluste ausgeschlossen."
-                  : "Economics/coverage uses idealised assumptions; excludes market spreads and losses."}{" "}
-                {t.trailingNotAuditedNote}
-              </p>
-            </div>
-          </>
-        )}
-      </section>
-
-      <p className="text-[10px] text-slate-400 dark:text-slate-600">{t.technicalDisclaimer}</p>
+  return (
+    <article id="germany-day-energy-flow" className="scroll-mt-24">
+      {briefingStoryWindow ? (
+        <BriefingDailyStory
+          language={language}
+          storyWindow={briefingStoryWindow}
+          refreshNonce={briefingStoryRefreshNonce}
+        >
+          {({ introSection, footerSection }) => renderDashboard({ introSection, footerSection })}
+        </BriefingDailyStory>
+      ) : (
+        renderDashboard({})
+      )}
     </article>
   );
 }
