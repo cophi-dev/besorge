@@ -15,7 +15,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { motion } from "framer-motion";
 import {
@@ -2634,13 +2633,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     });
   };
 
-  const renderDashboard = ({
-    introSection = null,
-    footerSection = null,
-  }: {
-    introSection?: ReactNode;
-    footerSection?: ReactNode;
-  }) => (
+  const renderDashboard = () => (
     <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-w-0">
         <div className="rounded-[30px] border border-border/75 bg-card/70 p-5 shadow-[0_22px_52px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl md:p-6 lg:p-7 dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_28px_64px_-30px_rgba(0,0,0,0.78)]">
@@ -2764,11 +2757,12 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                   </div>
 
                   {renderFlowChartSection("observed")}
-                  {introSection}
-                  {footerSection ? (
-                    <div className="rounded-2xl border border-border/65 bg-background/40 px-4 py-3 dark:border-slate-600/40 dark:bg-slate-950/25">
-                      {footerSection}
-                    </div>
+                  {briefingStoryWindow ? (
+                    <BriefingDailyStory
+                      language={language}
+                      storyWindow={briefingStoryWindow}
+                      refreshNonce={briefingStoryRefreshNonce}
+                    />
                   ) : null}
                 </motion.div>
               </TabsContent>
@@ -3575,17 +3569,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
 
   return (
     <article id="germany-day-energy-flow" className="scroll-mt-24">
-      {briefingStoryWindow ? (
-        <BriefingDailyStory
-          language={language}
-          storyWindow={briefingStoryWindow}
-          refreshNonce={briefingStoryRefreshNonce}
-        >
-          {({ introSection, footerSection }) => renderDashboard({ introSection, footerSection })}
-        </BriefingDailyStory>
-      ) : (
-        renderDashboard({})
-      )}
+      {renderDashboard()}
     </article>
   );
 }
