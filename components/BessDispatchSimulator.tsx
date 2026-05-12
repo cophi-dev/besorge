@@ -224,7 +224,7 @@ function formatSignedMw(mw: number): string {
 const copy = {
   en: {
     eyebrow: "Layer incremental capacity on the same day",
-    title: "BESS Dispatch Simulator",
+    title: "BESSForge Dispatch Simulator",
     flowBridge:
       "Based on the observed Germany Day Profile directly above—same timestamps, quarters, and Energy-Charts series—this simulator layers additional nameplate MW/MWh your chart does not assume for the fleet today.",
     dataMatchNote:
@@ -341,7 +341,7 @@ const copy = {
   },
   de: {
     eyebrow: "Zusaetzliche Kapazitaet – gleicher Tag",
-    title: "BESS Dispatch Simulator",
+    title: "BESSForge Dispatch Simulator",
     flowBridge:
       "Bezugspunkt ist das Deutschland-Tagesprofil direkt darueber — dieselben Zeitstempel, Viertelstunden und Energy-Charts-Totale. Hier legen wir nur modellierte zusaetzliche Nennleistung und -energie obenauf, die das Chart fuer die heutige Flotte nicht annimmt.",
     dataMatchNote:

@@ -2268,10 +2268,10 @@ export default function GermanyDayEnergyFlow({
                 </div>
 
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:border-l sm:border-slate-200/65 sm:pl-2.5 dark:sm:border-slate-600/45">
-                  <FlowExportButtons language={language} flow={flow} captureElementId="aether-germany-flow-capture" />
+                  <FlowExportButtons language={language} flow={flow} captureElementId="bessforge-germany-flow-capture" />
                   <FlowShareToXButton
                     language={language}
-                    socialCaptureElementId="aether-germany-poster-capture"
+                    socialCaptureElementId="bessforge-germany-poster-capture"
                     payload={flowSharePayload}
                   />
                 </div>
@@ -2294,12 +2294,12 @@ export default function GermanyDayEnergyFlow({
       </header>
 
       <div
-        id="aether-germany-poster-capture"
+        id="bessforge-germany-poster-capture"
         className="space-y-2.5 rounded-2xl border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white px-3 pb-3 pt-2 shadow-[0_20px_50px_-24px_rgb(15_23_42_/_0.2)] sm:space-y-3 sm:px-4 md:pb-3.5 md:pt-2.5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
       >
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-slate-200/75 pb-2 dark:border-slate-600/50">
           <p className="text-[10px] font-semibold uppercase leading-none tracking-[0.2em] text-emerald-600 dark:text-emerald-400/95">
-            {language === "de" ? "Aether · Strukturkraft" : "Aether · structural power"}
+            {language === "de" ? "BESSForge · Strukturkraft" : "BESSForge · structural power"}
           </p>
           <p className="text-[11px] font-medium leading-tight tracking-tight text-slate-600 tabular-nums dark:text-slate-400">
             {selectorMode === "day" && selectorLabel === flow.dateBerlin ? (
@@ -2334,7 +2334,7 @@ export default function GermanyDayEnergyFlow({
         {posterKpiItems ? <FlowPosterKpiStrip items={posterKpiItems} /> : null}
 
       <div
-        id="aether-germany-flow-capture"
+        id="bessforge-germany-flow-capture"
         className={`rounded-xl border px-3 py-2.5 shadow-inner md:px-4 md:py-3 ${
           showSimulatedNet
             ? "border-border/90 bg-card shadow-[inset_0_0_0_1px_rgb(34_193_115_/_0.05)] dark:border-slate-600/50 dark:bg-slate-950/78 dark:shadow-[inset_0_0_0_1px_rgba(52,211,153,0.08)]"

@@ -16,7 +16,7 @@ function Calendar({ className, showOutsideDays = true, ...props }: CalendarProps
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
-      className={cn("aether-rdp p-2", className)}
+      className={cn("bessforge-rdp p-2", className)}
       classNames={{
         root: "font-sans text-foreground",
         months: "flex flex-col gap-3 sm:flex-row",

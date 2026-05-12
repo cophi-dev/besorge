@@ -136,7 +136,7 @@ export function FlowShareToXButton({ language, socialCaptureElementId, payload }
       });
       const a = document.createElement("a");
       a.href = dataUrl;
-      a.download = `aether-de-poster-${dateKey}.png`;
+      a.download = `bessforge-de-poster-${dateKey}.png`;
       a.click();
     } catch (error) {
       log("social png export failed %o", { error });

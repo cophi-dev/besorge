@@ -23,21 +23,21 @@ const xCreatorHandle =
 export const metadata: Metadata = {
   metadataBase: new URL(siteOrigin),
   title: {
-    default: "AETHER | Daily Energy Briefing",
-    template: "%s | AETHER",
+    default: "BESSForge - BESS Planning & Dispatch Simulator",
+    template: "%s | BESSForge",
   },
   description:
     "Germany day-ahead energy briefing: Energy-Charts quarter-hours, BESS heuristics, fleet signals — Fraunhofer ISE data.",
   openGraph: {
-    title: "AETHER | Daily Energy Briefing",
+    title: "BESSForge - BESS Planning & Dispatch Simulator",
     description: "Energy-Charts-powered Germany daily profile, BESS simulation, and market snapshot.",
     type: "website",
     url: siteOrigin,
-    siteName: "AETHER",
+    siteName: "BESSForge",
   },
   twitter: {
     card: "summary_large_image",
-    title: "AETHER | Daily Energy Briefing",
+    title: "BESSForge - BESS Planning & Dispatch Simulator",
     description: "Germany energy transition signals — daily.",
     ...(xSiteHandle ? { site: `@${xSiteHandle}` as const } : {}),
     ...(xCreatorHandle ? { creator: `@${xCreatorHandle}` as const } : {}),

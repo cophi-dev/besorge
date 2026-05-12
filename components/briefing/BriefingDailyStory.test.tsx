@@ -98,7 +98,7 @@ describe("BriefingDailyStory", () => {
     expect(screen.getByText(goodPayload.story.insights[0])).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.narrative)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.counterfactual)).toBeInTheDocument();
-    expect(screen.getByText(/Aether analyst \(LLM\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/BESSForge analyst \(LLM\)/i)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.dataAsOfNote!)).toBeInTheDocument();
     expect(screen.getByText(/Net balance/i)).toBeInTheDocument();
     expect(screen.getByText(/Data snapshot/i)).toBeInTheDocument();
@@ -123,7 +123,7 @@ describe("BriefingDailyStory", () => {
     render(<BriefingDailyStory language="en" storyWindow={dayWindow} />);
     await waitFor(() =>
       expect(
-        screen.getByText(/Aether analyst \(deterministic — model offline\)/i)
+        screen.getByText(/BESSForge analyst \(deterministic — model offline\)/i)
       ).toBeInTheDocument()
     );
   });

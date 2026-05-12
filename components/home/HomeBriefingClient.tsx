@@ -397,7 +397,10 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
     seedDateKey ?? initial.berlinDateKey ?? formatBerlinDateKeyFromUtcDate(new Date());
 
   return (
-    <div id="aether-briefing-root" className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-5 pb-16 pt-4 md:gap-7 md:px-8 md:pb-20 md:pt-5 lg:px-12">
+    <div
+      id="bessforge-briefing-root"
+      className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-5 pb-16 pt-4 md:gap-7 md:px-8 md:pb-20 md:pt-5 lg:px-12"
+    >
       {isLiveDataLoading && initial.market === null ? (
         <div className="pointer-events-none fixed top-16 left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-md">
           <p className="text-xs text-muted-foreground">

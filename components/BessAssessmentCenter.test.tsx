@@ -34,7 +34,7 @@ const mockAssessmentPayload = {
   },
   dataGapsImpact: "Data gaps impact text",
   analystSummary:
-    "AETHER currently reads this window as beneficial now, with recent solar support and constructive near-term recharge conditions.",
+    "BESSForge currently reads this window as beneficial now, with recent solar support and constructive near-term recharge conditions.",
   fullAnalysisSummary:
     "Recent renewable patterns and forward profile keep short-term arbitrage windows constructive while maintaining execution discipline.",
   asOf: "2026-05-06T10:00:00.000Z",

@@ -181,7 +181,7 @@ export default function BessAiChatOverlay({
           <div>
             <p className="inline-flex items-center gap-2 text-xs tracking-[0.16em] text-primary uppercase dark:text-emerald-200">
               <Sparkles className="h-3.5 w-3.5" />
-              AETHER Chat
+              BESSForge Chat
             </p>
             <h2 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
               {language === "de" ? "BESS-Entscheidungen mit mehr Klarheit" : "BESS decisions with more clarity"}
@@ -228,7 +228,7 @@ export default function BessAiChatOverlay({
               }`}
             >
               <p className="mb-1 text-[11px] tracking-[0.1em] uppercase opacity-75">
-                {message.role === "assistant" ? "AETHER" : language === "de" ? "Sie" : "You"}
+                {message.role === "assistant" ? "BESSForge" : language === "de" ? "Sie" : "You"}
               </p>
               <p className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
             </div>

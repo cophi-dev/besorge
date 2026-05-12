@@ -3,7 +3,7 @@ import Script from "next/script";
 const SCRIPT = `
 (() => {
   try {
-    const STORAGE = "aether-theme";
+    const STORAGE = "bessforge-theme";
     const root = document.documentElement;
     const stored = localStorage.getItem(STORAGE);
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -25,5 +25,5 @@ const SCRIPT = `
 })();`;
 
 export function ThemeInitScript() {
-  return <Script id="aether-theme-init" strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: SCRIPT }} />;
+  return <Script id="bessforge-theme-init" strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: SCRIPT }} />;
 }
