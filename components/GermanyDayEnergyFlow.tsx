@@ -2,7 +2,6 @@
 
 import { ChevronLeft, ChevronRight, Info } from "lucide-react";
 import {
-  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -544,36 +543,27 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
   return parts.length > 0 ? parts.join("\n") : null;
 }
 
-export default function GermanyDayEnergyFlow({
-  fleetCapacityGwh,
-  fleetPowerGw,
-  language,
-  onChartFleetSocSnapshot,
-  simulationAiInsight = null,
-  initialEnergyFlow = null,
-  initialBerlinDateKey = null,
-  seedDateKey = null,
-  onBerlinDateChange,
-  onBriefingStoryWindowChange,
-  dailyStorySlot = null,
-  initialSimulatedNet = false,
-  onSimulatedModeChange,
-}: GermanyDayEnergyFlowProps) {
+export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
+  const {
+    fleetCapacityGwh,
+    fleetPowerGw,
+    language,
+    onChartFleetSocSnapshot,
+    simulationAiInsight = null,
+    initialEnergyFlow = null,
+    initialBerlinDateKey = null,
+    seedDateKey = null,
+    onBerlinDateChange,
+    onBriefingStoryWindowChange,
+    dailyStorySlot = null,
+  } = props;
   const resolvedSeedKey = resolveSeedDateKey(seedDateKey ?? undefined);
   const [selectorMode, setSelectorMode] = useState<SelectorMode>("day");
   const [selectedDate, setSelectedDate] = useState(resolvedSeedKey);
   const [selectedWeek, setSelectedWeek] = useState(dateKeyToIsoWeekKey(resolvedSeedKey));
   const [selectedMonth, setSelectedMonth] = useState(resolvedSeedKey.slice(0, 7));
   const [dayModeResetAtStart, setDayModeResetAtStart] = useState(false);
-  const [showSimulatedNet, setShowSimulatedNet] = useState(initialSimulatedNet);
   const [customSimulatedCapacityGwhInput, setCustomSimulatedCapacityGwhInput] = useState("");
-  const commitSimulatedMode = useCallback(
-    (next: boolean) => {
-      setShowSimulatedNet(next);
-      onSimulatedModeChange?.(next);
-    },
-    [onSimulatedModeChange]
-  );
   const serverHydratedFirstLoad =
     initialEnergyFlow !== null &&
     initialBerlinDateKey !== null &&
@@ -999,7 +989,8 @@ export default function GermanyDayEnergyFlow({
           simulatedCapacitySourceCustom: "Manuell",
           aiInsightTitle: "KI-Einblick",
           insightRuleBasedTitle: "Kurzfazit",
-          bottomControlsHint: "Zwischen Beobachtet und Simulation oben im Diagramm wechseln.",
+          bottomControlsHint:
+            "Beobachtete Daten stehen oben; die modellierte BESS-Simulation mit ihren KPIs folgt direkt darunter.",
           aiInsightPlaceholder:
             "Keine Zahlenbasis fuer diese Kurzfassung. Nach Anbindung eines LLM kann zusätzlicher Text uber die Prop simulationAiInsight kommen.",
           observedCtaSimulated: "Zu Simulation wechseln",
@@ -1149,7 +1140,8 @@ export default function GermanyDayEnergyFlow({
           simulatedCapacitySourceCustom: "Manual",
           aiInsightTitle: "AI insight",
           insightRuleBasedTitle: "Takeaway",
-          bottomControlsHint: "Use the mode toggle above the chart to switch between observed and simulated.",
+          bottomControlsHint:
+            "Observed data stays on top; the modeled BESS simulation with its KPIs sits directly below.",
           aiInsightPlaceholder:
             "Not enough KPI context to summarise. Pass narrative text via the simulationAiInsight prop once an LLM route exists.",
           observedCtaSimulated: "Switch to Simulated mode to see impact at this size.",
@@ -1365,24 +1357,6 @@ export default function GermanyDayEnergyFlow({
     estimatedInitialSocMwh,
   ]);
 
-  /** Active simulated BESS sizing: share of generation that serves load directly or via time-shifted discharge. */
-  const selfConsumptionSimulatedPct = useMemo(() => {
-    if (!flow?.slots.length || !recommendedCoverage || effectivePracticalCapacityMwh <= 0) {
-      return null;
-    }
-    let directLocalMwh = 0;
-    let totalGenMwh = 0;
-    for (const s of flow.slots) {
-      totalGenMwh += s.totalGenerationMw * QUARTER_HOUR_H;
-      directLocalMwh += Math.min(s.totalGenerationMw, s.loadMw) * QUARTER_HOUR_H;
-    }
-    if (totalGenMwh <= 0) {
-      return null;
-    }
-    const numerator = directLocalMwh + recommendedCoverage.servedDeficitEnergyMwh;
-    return Math.min(100, Math.max(0, (numerator / totalGenMwh) * 100));
-  }, [flow, recommendedCoverage, effectivePracticalCapacityMwh]);
-
   /** Share of domestic generation paired directly to contemporaneous demand (before BESS reshaping). */
   const baselineSelfConsumptionPct = useMemo(() => {
     if (!flow?.slots.length) {
@@ -1571,24 +1545,6 @@ export default function GermanyDayEnergyFlow({
       return null;
     }
 
-    const simCapGwh = effectivePracticalCapacityMwh > 0 ? effectivePracticalCapacityMwh / 1_000 : undefined;
-    const chartHeadingShare =
-      showSimulatedNet && simCapGwh !== undefined
-        ? `${energyFormatter.format(simCapGwh)} GWh BESS · ${
-            hasCustomSimulatedCapacity
-              ? language === "de"
-                ? "manuell simuliert"
-                : "manual simulation"
-              : language === "de"
-                ? "Simulation"
-                : "simulated"
-          }`
-        : showSimulatedNet
-          ? language === "de"
-            ? "Simulation · Kapazität offen"
-            : "Simulation · sizing pending"
-          : t.observedChartTitle;
-
     const baseFields = {
       language,
       dateBerlin: flow.dateBerlin,
@@ -1597,43 +1553,8 @@ export default function GermanyDayEnergyFlow({
       dataCoveragePct: flow.pointFractionOfDay * 100,
       sampleQuarterHours: flow.samplePoints,
       netBalanceGwhWindow: windowNetStructuralBalanceGwh,
-      chartHeading: chartHeadingShare,
+      chartHeading: t.observedChartTitle,
     };
-
-    if (showSimulatedNet) {
-      const optGw =
-        selectedWindowBalancedPowerMw !== null &&
-        Number.isFinite(selectedWindowBalancedPowerMw) &&
-        selectedWindowBalancedPowerMw > 0
-          ? selectedWindowBalancedPowerMw / 1_000
-          : undefined;
-
-      const simulatedPayload = flowSharePayloadSchema.safeParse({
-        ...baseFields,
-        presentationMode: "simulated" as const,
-        absorbedStructuralSurplusGwh:
-          recommendedCoverage !== null && recommendedCoverage.absorbedSurplusEnergyMwh > 0
-            ? recommendedCoverage.absorbedSurplusEnergyMwh / 1_000
-            : undefined,
-        absorbedSurplusPct: recommendedCoverage?.absorbedSurplusShare,
-        servedDeficitGwh:
-          recommendedCoverage !== null && recommendedCoverage.servedDeficitEnergyMwh > 0
-            ? recommendedCoverage.servedDeficitEnergyMwh / 1_000
-            : undefined,
-        servedDeficitPct: recommendedCoverage?.servedDeficitShare,
-        imbalanceDampingPct:
-          gridImpactReductionPct !== null && Number.isFinite(gridImpactReductionPct)
-            ? gridImpactReductionPct
-            : undefined,
-        selfConsumptionWithBessPct:
-          selfConsumptionSimulatedPct !== null && Number.isFinite(selfConsumptionSimulatedPct)
-            ? selfConsumptionSimulatedPct
-            : undefined,
-        optimalBessEnergyGwh: simCapGwh !== undefined && Number.isFinite(simCapGwh) ? simCapGwh : undefined,
-        optimalBessPowerGw: optGw,
-      });
-      return simulatedPayload.success ? simulatedPayload.data : null;
-    }
 
     const observedPayload = flowSharePayloadSchema.safeParse({
       ...baseFields,
@@ -1665,16 +1586,9 @@ export default function GermanyDayEnergyFlow({
     language,
     selectorMode,
     selectorCaption,
-    showSimulatedNet,
-    recommendedCoverage,
-    gridImpactReductionPct,
-    effectivePracticalCapacityMwh,
-    selectedWindowBalancedPowerMw,
-    selfConsumptionSimulatedPct,
     baselineSelfConsumptionPct,
     windowNetStructuralBalanceGwh,
     t.observedChartTitle,
-    hasCustomSimulatedCapacity,
   ]);
 
   const curtailmentStatusLabel =
@@ -1685,7 +1599,8 @@ export default function GermanyDayEnergyFlow({
         : t.curtailmentStatusUpstream;
 
   /** Four-up strip rendered above the chart inside the social/poster PNG region. */
-  const posterKpiItems = useMemo((): [FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem] | null => {
+  const observedPosterKpiItems = useMemo(
+    (): [FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem, FlowPosterKpiItem] | null => {
     if (!flow || chartRows.length === 0) {
       return null;
     }
@@ -1693,56 +1608,6 @@ export default function GermanyDayEnergyFlow({
     const netValue = `${nw >= 0 ? "+" : "−"}${energyFormatter.format(Math.abs(nw))}`;
     const netHint =
       language === "de" ? "GWh · Σ(Gen − Last), Fenster" : "GWh · Σ(gen − load), window";
-
-    if (showSimulatedNet) {
-      const capHint =
-        effectivePracticalCapacityMwh > 0
-          ? language === "de"
-            ? "Modellierte greedy-BESS-Schicht"
-            : "Modeled greedy BESS slice"
-          : undefined;
-      return [
-        {
-          accent: "emerald" as const,
-          eyebrow: t.kpiCapturedSurplusEyebrow,
-          value: recommendedCoverage ? formatEnergyFromMwh(recommendedCoverage.absorbedSurplusEnergyMwh) : "—",
-          hint:
-            recommendedCoverage && recommendedCoverage.totalChargeOpportunityEnergyMwh > 1e-9
-              ? `${pctFormatter.format(recommendedCoverage.absorbedSurplusShare * 100)}% · ${language === "de" ? "Ladechance" : "charge opportunity"}`
-              : capHint,
-          subtitle: t.kpiCapturedSurplusSubtitle,
-        },
-        {
-          accent: "sky" as const,
-          eyebrow: t.kpiDeficitCoveredEyebrow,
-          value: recommendedCoverage ? formatEnergyFromMwh(recommendedCoverage.servedDeficitEnergyMwh) : "—",
-          hint:
-            recommendedCoverage && recommendedCoverage.totalDeficitEnergyMwh > 1e-9
-              ? `${pctFormatter.format(recommendedCoverage.servedDeficitShare * 100)}% · ${language === "de" ? "Brutto-Defizit" : "gross deficit"}`
-              : undefined,
-          subtitle: t.kpiDeficitCoveredSubtitle,
-        },
-        {
-          accent: "teal" as const,
-          eyebrow: t.kpiNewSelfConsumptionEyebrow,
-          value:
-            selfConsumptionSimulatedPct !== null
-              ? `${integerFormatter.format(Math.round(selfConsumptionSimulatedPct))}%`
-              : "—",
-          hint: language === "de" ? "Erzeugung lokal wirksam (Modell)" : "Generation paired locally (model)",
-          subtitle: t.kpiNewSelfConsumptionSubtitle,
-        },
-        {
-          accent: "fuchsia" as const,
-          eyebrow: t.kpiGridImpactEyebrow,
-          value:
-            gridImpactReductionPct !== null ? `${integerFormatter.format(Math.round(gridImpactReductionPct))}%` : "—",
-          hint:
-            gridImpactReductionPct !== null ? t.kpiGridImpactValue(pctFormatter.format(gridImpactReductionPct)) : undefined,
-          subtitle: t.kpiGridImpactSubtitle,
-        },
-      ];
-    }
 
     const missedOk =
       fleetEnergyCapacityMwh !== null &&
@@ -1808,11 +1673,6 @@ export default function GermanyDayEnergyFlow({
     chartRows.length,
     windowNetStructuralBalanceGwh,
     language,
-    showSimulatedNet,
-    recommendedCoverage,
-    selfConsumptionSimulatedPct,
-    gridImpactReductionPct,
-    effectivePracticalCapacityMwh,
     fleetEnergyCapacityMwh,
     absorption,
     curtailmentStatusLabel,
@@ -1857,7 +1717,6 @@ export default function GermanyDayEnergyFlow({
     }
     const last = chartRows[chartRows.length - 1];
     const prev = chartRows.length > 1 ? chartRows[chartRows.length - 2] : null;
-    const socPct = showSimulatedNet ? last.simulatedPracticalSocPct : last.estimatedFleetSocPct;
     const toTail = (row: ChartRow): ChartRowTailForFleetMode => ({
       estimatedFleetSocPct: row.estimatedFleetSocPct,
       simulatedPracticalSocPct: row.simulatedPracticalSocPct,
@@ -1868,36 +1727,23 @@ export default function GermanyDayEnergyFlow({
       fleetDischargeMw: row.fleetDischargeMw,
     });
     const fleetMode = inferFleetModeFromChartTail({
-      showSimulatedNet,
+      showSimulatedNet: false,
       last: toTail(last),
       previous: prev ? toTail(prev) : null,
     });
     publish({
-      socPct,
-      mode: showSimulatedNet ? "practical" : "fleet",
+      socPct: last.estimatedFleetSocPct,
+      mode: "fleet",
       lastSlotTimestampIso: last.timestampIso,
       fleetMode,
     });
     return () => {
       publish(null);
     };
-  }, [chartRows, showSimulatedNet, onChartFleetSocSnapshot]);
+  }, [chartRows, onChartFleetSocSnapshot]);
 
-  const activeNetLegend = showSimulatedNet ? t.legendNetSimulated : t.legendNet;
-  const activeNetDataKey = showSimulatedNet ? "netAfterPracticalBessMw" : "netBalanceMw";
-  const activeSocLegend = showSimulatedNet ? t.legendPracticalSoc : t.legendFleetSoc;
-  const activeSocDataKey = showSimulatedNet ? "simulatedPracticalSocPct" : "estimatedFleetSocPct";
-  const showObservedCurtailmentSeries =
-    !showSimulatedNet && chartRows.some((row) => row.curtailmentDisplayMw > 1e-6);
+  const showObservedCurtailmentSeries = chartRows.some((row) => row.curtailmentDisplayMw > 1e-6);
   const showCrossBorderSeries = chartRows.some((row) => row.observedCrossBorderMw !== null);
-  const activeImportDataKey = showSimulatedNet ? "simulatedImportMw" : "observedImportMw";
-  const activeExportDataKey =
-    showSimulatedNet ? "simulatedExportSignedMw" : "observedExportSignedMw";
-  const activeImportLegend = showSimulatedNet ? t.legendSimulatedImport : t.legendObservedImport;
-  const activeExportLegend = showSimulatedNet ? t.legendSimulatedExport : t.legendObservedExport;
-  const activeSocCapacityMwh = showSimulatedNet
-    ? (effectivePracticalCapacityMwh > 0 ? effectivePracticalCapacityMwh : null)
-    : fleetEnergyCapacityMwh;
 
   const eveningBounds = useMemo(() => {
     if (isMultiDayFlow || chartRows.length === 0) {
@@ -2031,13 +1877,12 @@ export default function GermanyDayEnergyFlow({
     ? t.simulatedCapacityBadgeLabel(simulatedCapacityGwhLabel)
     : t.capacityBadgeUnavailable;
 
-  const netLineColor = showSimulatedNet ? SIM_CHART_NET_STROKE : "rgb(51,104,247)";
   const coverageSummaryLine = t.coverage(flow.samplePoints, coveragePct, flow.dateBerlin, isMultiDayFlow);
 
   const resolvedLlmInsightText = String(simulationAiInsight ?? "").trim();
   const heuristicInsightParagraph = deriveGermanyFlowRuleBasedInsightText({
     language,
-    modeSimulated: showSimulatedNet,
+    modeSimulated: true,
     scopeLabel: insightScopeLabel,
     conservativeRecommendedMwh:
       selectedWindowRecommendation?.conservative?.recommendedEnergyMwh ?? null,
@@ -2077,56 +1922,337 @@ export default function GermanyDayEnergyFlow({
   const exportDeltaLabel =
     borderTradeTotals !== null ? formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh) : "—";
 
+  const renderFlowChartSection = (mode: "observed" | "simulated") => {
+    const isSimulated = mode === "simulated";
+    const activeNetLegend = isSimulated ? t.legendNetSimulated : t.legendNet;
+    const activeNetDataKey = isSimulated ? "netAfterPracticalBessMw" : "netBalanceMw";
+    const activeSocLegend = isSimulated ? t.legendPracticalSoc : t.legendFleetSoc;
+    const activeSocDataKey = isSimulated ? "simulatedPracticalSocPct" : "estimatedFleetSocPct";
+    const activeImportDataKey = isSimulated ? "simulatedImportMw" : "observedImportMw";
+    const activeExportDataKey = isSimulated ? "simulatedExportSignedMw" : "observedExportSignedMw";
+    const activeImportLegend = isSimulated ? t.legendSimulatedImport : t.legendObservedImport;
+    const activeExportLegend = isSimulated ? t.legendSimulatedExport : t.legendObservedExport;
+    const activeSocCapacityMwh = isSimulated
+      ? (effectivePracticalCapacityMwh > 0 ? effectivePracticalCapacityMwh : null)
+      : fleetEnergyCapacityMwh;
+    const netLineColor = isSimulated ? SIM_CHART_NET_STROKE : "rgb(51,104,247)";
+
+    return (
+      <div
+        className={`rounded-xl border px-3 py-2.5 shadow-inner md:px-4 md:py-3 ${
+          isSimulated
+            ? "border-border/90 bg-card shadow-[inset_0_0_0_1px_rgb(34_193_115_/_0.05)] dark:border-slate-600/50 dark:bg-slate-950/78 dark:shadow-[inset_0_0_0_1px_rgba(52,211,153,0.08)]"
+            : "border-border/80 bg-card/95 dark:border-slate-600/55 dark:bg-slate-950/70"
+        }`}
+      >
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="lg:max-w-[min(680px,calc(100%-10rem))]">
+            {isSimulated ? (
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase leading-none tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
+                  {t.modeSimulated}
+                </p>
+                <p className="text-[13px] font-semibold leading-snug text-slate-600 dark:text-slate-300 md:text-[0.875rem]">
+                  {t.chartSimulatedPanelTitle}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                      simulatedCapacityGwhLabel
+                        ? "border-emerald-300/80 bg-emerald-50 text-emerald-800 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-200"
+                        : "border-amber-300/80 bg-amber-50 text-amber-900 dark:border-amber-400/35 dark:bg-amber-500/10 dark:text-amber-100"
+                    }`}
+                  >
+                    {simulatedCapacityBadgeText}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-slate-200/85 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/55 dark:bg-slate-950/70 dark:text-slate-200">
+                    {hasCustomSimulatedCapacity
+                      ? t.simulatedCapacityModeCustom
+                      : t.simulatedCapacityModeAuto}
+                  </span>
+                  {selectedWindowBalancedPowerMw !== null ? (
+                    <span className="inline-flex items-center rounded-full border border-slate-200/85 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/55 dark:bg-slate-950/70 dark:text-slate-200">
+                      {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                <p className="text-[10px] font-semibold uppercase leading-none tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                  {language === "de" ? "Beobachtung" : "Observed"}
+                </p>
+                <p className="text-base font-semibold leading-snug text-slate-950 md:text-lg dark:text-white [font-family:var(--font-heading)]">
+                  {t.observedChartTitle}
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-x-4 sm:gap-y-2 lg:justify-end">
+            <LegendDot color={netLineColor} label={activeNetLegend} />
+            <LegendDot
+              color={isSimulated ? SIM_CHART_SOC_STROKE : "rgb(129,119,239)"}
+              label={activeSocLegend}
+            />
+            <LegendDot
+              color={SIM_CHART_CHARGE_FILL}
+              label={isSimulated ? t.legendPracticalCharge : t.legendEstimatedCharge}
+            />
+            <LegendDot
+              color={SIM_CHART_DISCHARGE_FILL}
+              label={isSimulated ? t.legendPracticalDischarge : t.legendEstimatedDischarge}
+            />
+            {showCrossBorderSeries ? (
+              <>
+                <LegendDot color={CROSS_BORDER_IMPORT_FILL} label={activeImportLegend} />
+                <LegendDot color={CROSS_BORDER_EXPORT_FILL} label={activeExportLegend} />
+              </>
+            ) : null}
+            {!isSimulated && showObservedCurtailmentSeries ? (
+              <LegendDot color={OBSERVED_CURTAILMENT_FILL} label={t.legendCurtailment} />
+            ) : null}
+            <LegendDot color="rgba(251,191,36,0.95)" label={t.legendEvening} />
+          </div>
+        </div>
+        <div
+          className={`h-[min(68vh,600px)] min-h-[260px] w-full min-w-0 sm:min-h-[300px] md:h-[540px] ${
+            isSimulated ? "mt-3" : "mt-4"
+          }`}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={chartRows} margin={chartMargin}>
+              <CartesianGrid
+                stroke={isSimulated ? "rgba(148,163,184,0.13)" : "rgba(148,163,184,0.18)"}
+                strokeDasharray="3 3"
+              />
+              <XAxis
+                dataKey="timeLabel"
+                tick={{
+                  fontSize: xAxisTickFont,
+                  fill: "rgb(100,116,139)",
+                }}
+                angle={xAxisAngle}
+                textAnchor={isMultiDayFlow ? "end" : "middle"}
+                height={isMultiDayFlow ? (chartLayoutCompact ? 54 : 48) : chartLayoutCompact ? 28 : undefined}
+                interval={xAxisInterval}
+                minTickGap={chartLayoutCompact ? (isMultiDayFlow ? 24 : 6) : isMultiDayFlow ? 18 : 8}
+              />
+              <YAxis
+                yAxisId="net"
+                tick={{ fontSize: chartLayoutCompact ? 9 : 10, fill: "rgb(100,116,139)" }}
+                width={yNetWidth}
+                tickFormatter={(v) => integerFormatter.format(typeof v === "number" ? v : 0)}
+                label={{
+                  value: t.axisMw,
+                  angle: -90,
+                  position: "insideLeft",
+                  fontSize: 9,
+                  fill: "rgb(100,116,139)",
+                }}
+              />
+              <YAxis
+                yAxisId="soc"
+                orientation="right"
+                domain={[0, 100]}
+                tick={{ fontSize: chartLayoutCompact ? 8 : 9, fill: "rgb(100,116,139)" }}
+                width={ySocWidth}
+                tickFormatter={(v) => `${typeof v === "number" ? v : Number(v ?? 0)}%`}
+                label={{
+                  value: t.axisSoc,
+                  angle: 90,
+                  position: "insideRight",
+                  fontSize: 9,
+                  fill: "rgb(100,116,139)",
+                }}
+              />
+              {xEveningStart !== undefined && xEveningEnd !== undefined ? (
+                <ReferenceArea
+                  x1={xEveningStart}
+                  x2={xEveningEnd}
+                  yAxisId="net"
+                  fill="rgba(251,191,36,0.16)"
+                  stroke="rgba(245,158,11,0.28)"
+                />
+              ) : null}
+              <ReferenceLine
+                yAxisId="net"
+                y={0}
+                stroke="rgba(148,163,184,0.55)"
+                strokeDasharray="4 4"
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "var(--popover)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  fontSize: 12,
+                  color: "var(--popover-foreground)",
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
+                }}
+                labelStyle={{ color: "var(--muted-foreground)", fontWeight: 600, marginBottom: 4 }}
+                formatter={(value, name) => {
+                  const n = typeof value === "number" ? value : Number(value ?? 0);
+                  const label = typeof name === "string" ? name : String(name ?? "");
+                  if (label === activeSocLegend) {
+                    if (activeSocCapacityMwh !== null && activeSocCapacityMwh > 0) {
+                      const socMwh = (n / 100) * activeSocCapacityMwh;
+                      return [`${pctFormatter.format(n)}% (${formatEnergyFromMwh(socMwh)})`, label];
+                    }
+                    return [`${pctFormatter.format(n)}%`, label];
+                  }
+                  if (label === t.legendCurtailment) {
+                    return [formatPowerFromMw(Math.max(0, n)), label];
+                  }
+                  return [formatSignedMw(n), label];
+                }}
+              />
+              <Line
+                yAxisId="net"
+                type="monotone"
+                dataKey={activeNetDataKey}
+                name={activeNetLegend}
+                stroke={netLineColor}
+                strokeWidth={isSimulated ? 1.65 : 2.25}
+                dot={false}
+                isAnimationActive={!chartLayoutCompact}
+                animationDuration={chartLayoutCompact ? 0 : 180}
+              />
+              {isSimulated ? (
+                <>
+                  <Bar
+                    yAxisId="net"
+                    dataKey="practicalChargeSignedMw"
+                    name={t.legendPracticalCharge}
+                    fill={SIM_CHART_CHARGE_FILL}
+                    radius={[3, 3, 0, 0]}
+                    maxBarSize={8}
+                  />
+                  <Bar
+                    yAxisId="net"
+                    dataKey="practicalDischargeMw"
+                    name={t.legendPracticalDischarge}
+                    fill={SIM_CHART_DISCHARGE_FILL}
+                    radius={[3, 3, 0, 0]}
+                    maxBarSize={8}
+                  />
+                  {showCrossBorderSeries ? (
+                    <>
+                      <Bar
+                        yAxisId="net"
+                        dataKey={activeImportDataKey}
+                        name={activeImportLegend}
+                        fill={CROSS_BORDER_IMPORT_FILL}
+                        fillOpacity={0.32}
+                        maxBarSize={5}
+                      />
+                      <Bar
+                        yAxisId="net"
+                        dataKey={activeExportDataKey}
+                        name={activeExportLegend}
+                        fill={CROSS_BORDER_EXPORT_FILL}
+                        fillOpacity={0.32}
+                        maxBarSize={5}
+                      />
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {showObservedCurtailmentSeries ? (
+                    <Bar
+                      yAxisId="net"
+                      dataKey="curtailmentDisplayMw"
+                      name={t.legendCurtailment}
+                      fill={OBSERVED_CURTAILMENT_FILL}
+                      fillOpacity={0.55}
+                      radius={[3, 3, 0, 0]}
+                      maxBarSize={5}
+                    />
+                  ) : null}
+                  {fleetEnergyCapacityMwh !== null && fleetEnergyCapacityMwh > 0 ? (
+                    <>
+                      <Bar
+                        yAxisId="net"
+                        dataKey="fleetChargeSignedMw"
+                        name={t.legendEstimatedCharge}
+                        fill={SIM_CHART_CHARGE_FILL}
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={8}
+                      />
+                      <Bar
+                        yAxisId="net"
+                        dataKey="fleetDischargeMw"
+                        name={t.legendEstimatedDischarge}
+                        fill={SIM_CHART_DISCHARGE_FILL}
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={8}
+                      />
+                    </>
+                  ) : null}
+                  {showCrossBorderSeries ? (
+                    <>
+                      <Bar
+                        yAxisId="net"
+                        dataKey={activeImportDataKey}
+                        name={activeImportLegend}
+                        fill={CROSS_BORDER_IMPORT_FILL}
+                        fillOpacity={0.32}
+                        maxBarSize={5}
+                      />
+                      <Bar
+                        yAxisId="net"
+                        dataKey={activeExportDataKey}
+                        name={activeExportLegend}
+                        fill={CROSS_BORDER_EXPORT_FILL}
+                        fillOpacity={0.32}
+                        maxBarSize={5}
+                      />
+                    </>
+                  ) : null}
+                </>
+              )}
+              <Line
+                yAxisId="soc"
+                type="monotone"
+                dataKey={activeSocDataKey}
+                name={activeSocLegend}
+                stroke={isSimulated ? SIM_CHART_SOC_STROKE : "rgb(133,117,239)"}
+                strokeWidth={isSimulated ? 2 : 1.55}
+                strokeLinecap={isSimulated ? "round" : undefined}
+                strokeLinejoin={isSimulated ? "round" : undefined}
+                strokeDasharray={isSimulated ? undefined : "5 4"}
+                dot={false}
+                isAnimationActive={!chartLayoutCompact}
+                animationDuration={chartLayoutCompact ? 0 : 180}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="mt-4 text-[11px] leading-snug tracking-wide text-slate-400 dark:text-slate-500">
+          {isSimulated ? t.netFootnoteSimulated : t.netFootnote} {t.socFootnote}
+          {!isSimulated && fleetEnergyCapacityMwh !== null && fleetEnergyCapacityMwh > 0 ? (
+            <> {t.observedChargeDischargeFootnote}</>
+          ) : null}
+          {showCrossBorderSeries ? <> {t.crossBorderFootnote}</> : null}
+          {!isSimulated && showObservedCurtailmentSeries ? <> {t.curtailmentFootnote}</> : null}
+        </p>
+      </div>
+    );
+  };
+
   return (
     <article
       id="germany-day-energy-flow"
       className="scroll-mt-8 space-y-4 rounded-2xl border border-border/80 bg-card p-5 shadow-[0_1px_0_rgb(255_255_255_/_0.7)_inset,0_12px_36px_rgb(15_23_42_/_0.06)] md:space-y-5 md:p-6 lg:p-8 dark:border-slate-600/35 dark:bg-[linear-gradient(180deg,rgb(13_19_33_/_0.98),rgb(15_23_42_/_0.94))] dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_16px_44px_rgb(0_0_0_/_0.38)]"
     >
       <header className="flex flex-col gap-3 md:gap-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-          <div className="min-w-0 space-y-1 lg:max-w-xl">
-            <h2 className="text-2xl font-bold leading-tight tracking-tight text-slate-950 md:text-3xl dark:text-white [font-family:var(--font-heading)]">
-              {t.profileTitle}
-            </h2>
-            <p className="max-w-xl text-xs leading-relaxed text-slate-500 md:text-[0.8125rem] dark:text-slate-400">
-              {t.profileSubtitle}
-            </p>
-          </div>
-
-          <div
-            role="radiogroup"
-            aria-label={language === "de" ? "Anzeige-Modus" : "Presentation mode"}
-            className="w-full min-w-0 shrink-0 lg:max-w-[min(100%,28rem)] xl:max-w-[32rem]"
-          >
-            <div className="flex rounded-[0.88rem] border border-slate-200/95 bg-slate-100/95 p-1 shadow-[inset_0_2px_4px_rgba(15,23,42,0.06)] dark:border-slate-600/60 dark:bg-slate-800/95 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={!showSimulatedNet}
-                onClick={() => commitSimulatedMode(false)}
-                className={`relative min-h-[3rem] flex-1 rounded-[0.65rem] px-3 py-2.5 text-center text-sm font-semibold leading-snug outline-none transition duration-150 focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 sm:min-h-[3.35rem] sm:px-4 sm:text-[0.9375rem] dark:focus-visible:ring-offset-slate-900 ${
-                  !showSimulatedNet
-                    ? "bg-white text-slate-900 shadow-[0_2px_8px_rgba(15,23,42,0.12),0_1px_2px_rgba(15,23,42,0.06)] dark:bg-slate-950 dark:text-white dark:shadow-[0_4px_14px_rgba(0,0,0,0.4)]"
-                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                }`}
-              >
-                {t.modeObserved}
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={showSimulatedNet}
-                onClick={() => commitSimulatedMode(true)}
-                className={`relative min-h-[3rem] flex-1 rounded-[0.65rem] px-3 py-2.5 text-center text-sm font-semibold leading-snug outline-none transition duration-150 focus-visible:ring-2 focus-visible:ring-emerald-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 sm:min-h-[3.35rem] sm:px-4 sm:text-[0.9375rem] dark:focus-visible:ring-offset-slate-900 ${
-                  showSimulatedNet
-                    ? "bg-gradient-to-b from-emerald-500 to-emerald-600 text-white shadow-[0_4px_20px_rgba(16,185,129,0.45),0_2px_6px_rgba(5,150,105,0.35),inset_0_1px_0_rgba(255,255,255,0.2)] ring-2 ring-emerald-400/35 ring-offset-2 ring-offset-slate-100 dark:from-emerald-500 dark:to-emerald-600 dark:shadow-[0_6px_28px_rgba(16,185,129,0.5)] dark:ring-emerald-300/35 dark:ring-offset-2 dark:ring-offset-slate-950"
-                    : "text-slate-500 hover:text-emerald-800 dark:text-slate-400 dark:hover:text-emerald-200/95"
-                }`}
-              >
-                {t.modeSimulated}
-              </button>
-            </div>
-          </div>
+        <div className="min-w-0 space-y-1 lg:max-w-xl">
+          <h2 className="text-2xl font-bold leading-tight tracking-tight text-slate-950 md:text-3xl dark:text-white [font-family:var(--font-heading)]">
+            {t.profileTitle}
+          </h2>
+          <p className="max-w-xl text-xs leading-relaxed text-slate-500 md:text-[0.8125rem] dark:text-slate-400">
+            {t.profileSubtitle}
+          </p>
         </div>
 
         <div className="relative border-t border-border/60 pt-3 dark:border-slate-600/35">
@@ -2321,317 +2447,17 @@ export default function GermanyDayEnergyFlow({
                 <span>{flow.dateBerlin}</span>
               </>
             )}
-            {showSimulatedNet
-              ? language === "de"
-                ? " · Simulation"
-                : " · Simulation"
-              : language === "de"
-                ? " · Beobachtung"
-                : " · Observed"}
+            {" · "}
+            {language === "de" ? "Beobachtung + Simulation" : "Observed + simulation"}
           </p>
         </div>
 
-        {posterKpiItems ? <FlowPosterKpiStrip items={posterKpiItems} /> : null}
+        {observedPosterKpiItems ? <FlowPosterKpiStrip items={observedPosterKpiItems} /> : null}
 
-      <div
-        id="bessforge-germany-flow-capture"
-        className={`rounded-xl border px-3 py-2.5 shadow-inner md:px-4 md:py-3 ${
-          showSimulatedNet
-            ? "border-border/90 bg-card shadow-[inset_0_0_0_1px_rgb(34_193_115_/_0.05)] dark:border-slate-600/50 dark:bg-slate-950/78 dark:shadow-[inset_0_0_0_1px_rgba(52,211,153,0.08)]"
-            : "border-border/80 bg-card/95 dark:border-slate-600/55 dark:bg-slate-950/70"
-        }`}
-      >
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div className="lg:max-w-[min(680px,calc(100%-10rem))]">
-            {showSimulatedNet ? (
-              <div className="space-y-2">
-                <p className="text-[13px] font-semibold leading-snug text-slate-600 dark:text-slate-300 md:text-[0.875rem]">
-                  {t.chartSimulatedPanelTitle}
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                      simulatedCapacityGwhLabel
-                        ? "border-emerald-300/80 bg-emerald-50 text-emerald-800 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-200"
-                        : "border-amber-300/80 bg-amber-50 text-amber-900 dark:border-amber-400/35 dark:bg-amber-500/10 dark:text-amber-100"
-                    }`}
-                  >
-                    {simulatedCapacityBadgeText}
-                  </span>
-                  <span className="inline-flex items-center rounded-full border border-slate-200/85 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/55 dark:bg-slate-950/70 dark:text-slate-200">
-                    {hasCustomSimulatedCapacity
-                      ? t.simulatedCapacityModeCustom
-                      : t.simulatedCapacityModeAuto}
-                  </span>
-                  {selectedWindowBalancedPowerMw !== null ? (
-                    <span className="inline-flex items-center rounded-full border border-slate-200/85 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/55 dark:bg-slate-950/70 dark:text-slate-200">
-                      {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-0.5">
-                <p className="text-[10px] font-semibold uppercase leading-none tracking-[0.22em] text-slate-500 dark:text-slate-400">
-                  {language === "de" ? "Beobachtung" : "Observed focus"}
-                </p>
-                <p className="text-base font-semibold leading-snug text-slate-950 md:text-lg dark:text-white [font-family:var(--font-heading)]">
-                  {t.observedChartTitle}
-                </p>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-x-4 sm:gap-y-2 lg:justify-end">
-            <LegendDot color={netLineColor} label={activeNetLegend} />
-            <LegendDot
-              color={showSimulatedNet ? SIM_CHART_SOC_STROKE : "rgb(129,119,239)"}
-              label={activeSocLegend}
-            />
-            <LegendDot
-              color={SIM_CHART_CHARGE_FILL}
-              label={showSimulatedNet ? t.legendPracticalCharge : t.legendEstimatedCharge}
-            />
-            <LegendDot
-              color={SIM_CHART_DISCHARGE_FILL}
-              label={showSimulatedNet ? t.legendPracticalDischarge : t.legendEstimatedDischarge}
-            />
-            {showCrossBorderSeries ? (
-              <>
-                <LegendDot color={CROSS_BORDER_IMPORT_FILL} label={activeImportLegend} />
-                <LegendDot color={CROSS_BORDER_EXPORT_FILL} label={activeExportLegend} />
-              </>
-            ) : null}
-            {showObservedCurtailmentSeries ? (
-              <LegendDot color={OBSERVED_CURTAILMENT_FILL} label={t.legendCurtailment} />
-            ) : null}
-            <LegendDot color="rgba(251,191,36,0.95)" label={t.legendEvening} />
-          </div>
+        <div id="bessforge-germany-flow-capture" className="space-y-4">
+          {renderFlowChartSection("observed")}
+          {renderFlowChartSection("simulated")}
         </div>
-        <div
-          className={`h-[min(68vh,600px)] min-h-[260px] w-full min-w-0 sm:min-h-[300px] md:h-[540px] ${showSimulatedNet ? "mt-3" : "mt-4"}`}
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartRows} margin={chartMargin}>
-              <CartesianGrid
-                stroke={
-                  showSimulatedNet ? "rgba(148,163,184,0.13)" : "rgba(148,163,184,0.18)"
-                }
-                strokeDasharray="3 3"
-              />
-              <XAxis
-                dataKey="timeLabel"
-                tick={{
-                  fontSize: xAxisTickFont,
-                  fill: "rgb(100,116,139)",
-                }}
-                angle={xAxisAngle}
-                textAnchor={isMultiDayFlow ? "end" : "middle"}
-                height={isMultiDayFlow ? (chartLayoutCompact ? 54 : 48) : chartLayoutCompact ? 28 : undefined}
-                interval={xAxisInterval}
-                minTickGap={chartLayoutCompact ? (isMultiDayFlow ? 24 : 6) : isMultiDayFlow ? 18 : 8}
-              />
-              <YAxis
-                yAxisId="net"
-                tick={{ fontSize: chartLayoutCompact ? 9 : 10, fill: "rgb(100,116,139)" }}
-                width={yNetWidth}
-                tickFormatter={(v) => integerFormatter.format(typeof v === "number" ? v : 0)}
-                label={{
-                  value: t.axisMw,
-                  angle: -90,
-                  position: "insideLeft",
-                  fontSize: 9,
-                  fill: "rgb(100,116,139)",
-                }}
-              />
-              <YAxis
-                yAxisId="soc"
-                orientation="right"
-                domain={[0, 100]}
-                tick={{ fontSize: chartLayoutCompact ? 8 : 9, fill: "rgb(100,116,139)" }}
-                width={ySocWidth}
-                tickFormatter={(v) => `${typeof v === "number" ? v : Number(v ?? 0)}%`}
-                label={{
-                  value: t.axisSoc,
-                  angle: 90,
-                  position: "insideRight",
-                  fontSize: 9,
-                  fill: "rgb(100,116,139)",
-                }}
-              />
-              {xEveningStart !== undefined && xEveningEnd !== undefined ? (
-                <ReferenceArea
-                  x1={xEveningStart}
-                  x2={xEveningEnd}
-                  yAxisId="net"
-                  fill="rgba(251,191,36,0.16)"
-                  stroke="rgba(245,158,11,0.28)"
-                />
-              ) : null}
-              <ReferenceLine
-                yAxisId="net"
-                y={0}
-                stroke="rgba(148,163,184,0.55)"
-                strokeDasharray="4 4"
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "var(--popover)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  fontSize: 12,
-                  color: "var(--popover-foreground)",
-                  boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
-                }}
-                labelStyle={{ color: "var(--muted-foreground)", fontWeight: 600, marginBottom: 4 }}
-                formatter={(value, name) => {
-                  const n = typeof value === "number" ? value : Number(value ?? 0);
-                  const label = typeof name === "string" ? name : String(name ?? "");
-                  if (label === activeSocLegend) {
-                    if (activeSocCapacityMwh !== null && activeSocCapacityMwh > 0) {
-                      const socMwh = (n / 100) * activeSocCapacityMwh;
-                      return [`${pctFormatter.format(n)}% (${formatEnergyFromMwh(socMwh)})`, label];
-                    }
-                    return [`${pctFormatter.format(n)}%`, label];
-                  }
-                  if (label === t.legendCurtailment) {
-                    return [formatPowerFromMw(Math.max(0, n)), label];
-                  }
-                  return [formatSignedMw(n), label];
-                }}
-              />
-              <Line
-                yAxisId="net"
-                type="monotone"
-                dataKey={activeNetDataKey}
-                name={activeNetLegend}
-                stroke={netLineColor}
-                strokeWidth={showSimulatedNet ? 1.65 : 2.25}
-                dot={false}
-                isAnimationActive={!chartLayoutCompact}
-                animationDuration={chartLayoutCompact ? 0 : 180}
-              />
-              {showSimulatedNet ? (
-                <>
-                  <Bar
-                    yAxisId="net"
-                    dataKey="practicalChargeSignedMw"
-                    name={t.legendPracticalCharge}
-                    fill={SIM_CHART_CHARGE_FILL}
-                    radius={[3, 3, 0, 0]}
-                    maxBarSize={8}
-                  />
-                  <Bar
-                    yAxisId="net"
-                    dataKey="practicalDischargeMw"
-                    name={t.legendPracticalDischarge}
-                    fill={SIM_CHART_DISCHARGE_FILL}
-                    radius={[3, 3, 0, 0]}
-                    maxBarSize={8}
-                  />
-                  {showCrossBorderSeries ? (
-                    <>
-                      <Bar
-                        yAxisId="net"
-                        dataKey={activeImportDataKey}
-                        name={activeImportLegend}
-                        fill={CROSS_BORDER_IMPORT_FILL}
-                        fillOpacity={0.32}
-                        maxBarSize={5}
-                      />
-                      <Bar
-                        yAxisId="net"
-                        dataKey={activeExportDataKey}
-                        name={activeExportLegend}
-                        fill={CROSS_BORDER_EXPORT_FILL}
-                        fillOpacity={0.32}
-                        maxBarSize={5}
-                      />
-                    </>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  {showObservedCurtailmentSeries ? (
-                    <Bar
-                      yAxisId="net"
-                      dataKey="curtailmentDisplayMw"
-                      name={t.legendCurtailment}
-                      fill={OBSERVED_CURTAILMENT_FILL}
-                      fillOpacity={0.55}
-                      radius={[3, 3, 0, 0]}
-                      maxBarSize={5}
-                    />
-                  ) : null}
-                  {fleetEnergyCapacityMwh !== null && fleetEnergyCapacityMwh > 0 ? (
-                    <>
-                      <Bar
-                        yAxisId="net"
-                        dataKey="fleetChargeSignedMw"
-                        name={t.legendEstimatedCharge}
-                        fill={SIM_CHART_CHARGE_FILL}
-                        radius={[3, 3, 0, 0]}
-                        maxBarSize={8}
-                      />
-                      <Bar
-                        yAxisId="net"
-                        dataKey="fleetDischargeMw"
-                        name={t.legendEstimatedDischarge}
-                        fill={SIM_CHART_DISCHARGE_FILL}
-                        radius={[3, 3, 0, 0]}
-                        maxBarSize={8}
-                      />
-                    </>
-                  ) : null}
-                  {showCrossBorderSeries ? (
-                    <>
-                      <Bar
-                        yAxisId="net"
-                        dataKey={activeImportDataKey}
-                        name={activeImportLegend}
-                        fill={CROSS_BORDER_IMPORT_FILL}
-                        fillOpacity={0.32}
-                        maxBarSize={5}
-                      />
-                      <Bar
-                        yAxisId="net"
-                        dataKey={activeExportDataKey}
-                        name={activeExportLegend}
-                        fill={CROSS_BORDER_EXPORT_FILL}
-                        fillOpacity={0.32}
-                        maxBarSize={5}
-                      />
-                    </>
-                  ) : null}
-                </>
-              )}
-              <Line
-                yAxisId="soc"
-                type="monotone"
-                dataKey={activeSocDataKey}
-                name={activeSocLegend}
-                stroke={showSimulatedNet ? SIM_CHART_SOC_STROKE : "rgb(133,117,239)"}
-                strokeWidth={showSimulatedNet ? 2 : 1.55}
-                strokeLinecap={showSimulatedNet ? "round" : undefined}
-                strokeLinejoin={showSimulatedNet ? "round" : undefined}
-                strokeDasharray={showSimulatedNet ? undefined : "5 4"}
-                dot={false}
-                isAnimationActive={!chartLayoutCompact}
-                animationDuration={chartLayoutCompact ? 0 : 180}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-        <p className="mt-4 text-[11px] leading-snug tracking-wide text-slate-400 dark:text-slate-500">
-          {showSimulatedNet ? t.netFootnoteSimulated : t.netFootnote} {t.socFootnote}
-          {!showSimulatedNet &&
-          fleetEnergyCapacityMwh !== null &&
-          fleetEnergyCapacityMwh > 0 ? (
-            <> {t.observedChargeDischargeFootnote}</>
-          ) : null}
-          {showCrossBorderSeries ? <> {t.crossBorderFootnote}</> : null}
-          {!showSimulatedNet && showObservedCurtailmentSeries ? <> {t.curtailmentFootnote}</> : null}
-        </p>
-      </div>
       </div>
 
       {dailyStoryWrapped}
@@ -2657,10 +2483,10 @@ export default function GermanyDayEnergyFlow({
 
         <div className="grid grid-cols-2 gap-2.5 border-b border-border/70 pb-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 dark:border-slate-600/40">
           <SectionKpiTile
-            eyebrow={showSimulatedNet ? (language === "de" ? "Aktive Sim.-Kapazitaet" : "Active sim. size") : (language === "de" ? "Fenster-BESS" : "Window BESS")}
+            eyebrow={language === "de" ? "Aktive Sim.-Kapazitaet" : "Active sim. size"}
             value={simulatedCapacityGwhLabel ?? "—"}
             subtitle={simulatedCapacitySourceLabel}
-            tone={showSimulatedNet ? "emerald" : "violet"}
+            tone="emerald"
           />
           <SectionKpiTile
             eyebrow={language === "de" ? "Leistungslimit" : "Power cap"}
@@ -2687,27 +2513,15 @@ export default function GermanyDayEnergyFlow({
             tone="slate"
           />
           <SectionKpiTile
-            eyebrow={
-              showSimulatedNet ? t.kpiImportsAfterBessEyebrow : t.kpiObservedImportsEyebrow
-            }
-            value={showSimulatedNet ? simulatedImportLabel : observedImportLabel}
-            subtitle={
-              showSimulatedNet
-                ? t.kpiCrossBorderDeltaSubtitle(observedImportLabel, importDeltaLabel)
-                : t.kpiCrossBorderObservedSubtitle
-            }
+            eyebrow={t.kpiImportsAfterBessEyebrow}
+            value={simulatedImportLabel}
+            subtitle={t.kpiCrossBorderDeltaSubtitle(observedImportLabel, importDeltaLabel)}
             tone="amber"
           />
           <SectionKpiTile
-            eyebrow={
-              showSimulatedNet ? t.kpiExportsAfterBessEyebrow : t.kpiObservedExportsEyebrow
-            }
-            value={showSimulatedNet ? simulatedExportLabel : observedExportLabel}
-            subtitle={
-              showSimulatedNet
-                ? t.kpiCrossBorderDeltaSubtitle(observedExportLabel, exportDeltaLabel)
-                : t.kpiCrossBorderObservedSubtitle
-            }
+            eyebrow={t.kpiExportsAfterBessEyebrow}
+            value={simulatedExportLabel}
+            subtitle={t.kpiCrossBorderDeltaSubtitle(observedExportLabel, exportDeltaLabel)}
             tone="sky"
           />
         </div>
@@ -2819,6 +2633,7 @@ export default function GermanyDayEnergyFlow({
             {t.longTermTitle}
           </h3>
         </div>
+
 
         {isRecommendationLoading ? (
           <Skeleton className="h-14 w-full max-w-5xl rounded-lg" />
