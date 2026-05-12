@@ -382,8 +382,8 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         })
       : null;
 
-  const urlAnchoredBerlinDateKey =
-    seedDateKey ?? initial.berlinDateKey ?? formatBerlinDateKeyFromUtcDate(new Date());
+  const effectiveSeedDateKey =
+    seedDateKey ?? initial.defaultBerlinDateKey ?? formatBerlinDateKeyFromUtcDate(new Date());
 
   return (
     <div
@@ -421,8 +421,8 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
 
       <section id="overview" className="border-t border-border/50 pt-8 md:pt-10">
         <GermanyFlowStoryBridge
-          key={urlAnchoredBerlinDateKey}
-          urlAnchoredBerlinDateKey={urlAnchoredBerlinDateKey}
+          key={effectiveSeedDateKey}
+          urlAnchoredBerlinDateKey={effectiveSeedDateKey}
           storyRefreshNonce={storyRefreshNonce}
         >
           {({ briefingStoryWindow, briefingStoryRefreshNonce, onBriefingStoryWindowChange }) => (
@@ -438,9 +438,9 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
               onShare={handleShare}
               shareBusy={shareBusy}
               onChartFleetSocSnapshot={handleChartFleetSoc}
-              initialEnergyFlow={initial.todayEnergyFlow}
-              initialBerlinDateKey={initial.berlinDateKey}
-              seedDateKey={seedDateKey}
+              initialEnergyFlow={initial.initialEnergyFlow}
+              initialBerlinDateKey={initial.defaultBerlinDateKey}
+              seedDateKey={effectiveSeedDateKey}
               onBerlinDateChange={handleBerlinDateChange}
               onBriefingStoryWindowChange={onBriefingStoryWindowChange}
               briefingStoryWindow={briefingStoryWindow}
