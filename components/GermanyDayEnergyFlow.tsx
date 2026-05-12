@@ -41,7 +41,6 @@ import {
 import {
   computeEconomics,
   defaultEconomicsAssumptions,
-  marketRevenueReferenceSchema,
 } from "@/lib/bessEconomics";
 import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
 import { berlinDateKeySchema } from "@/lib/germanyEnergyFlowPeriod";
@@ -198,8 +197,20 @@ const revenueMarketContextSchema = z.object({
   negativePriceSharePct: z.number().min(0).max(100),
 });
 
+const revenueMarketReferenceSchema = z.object({
+  derivedSpotSpreadEurPerMwh: z.number().nonnegative(),
+  averageDailyCurtailmentOpportunityMwh: z.number().nonnegative(),
+  positiveRedispatchCostEurPerMwh: z.number().nonnegative(),
+  negativeRedispatchCostEurPerMwh: z.number(),
+  sampledDays: z.number().int().nonnegative(),
+  spotPriceStatus: z.enum(["live", "fallback_unavailable"]),
+  curtailmentStatus: z.enum(["loaded", "unavailable_not_configured", "unavailable_upstream"]),
+  priceSourceLabel: z.string().min(1),
+  redispatchSourceLabel: z.string().min(1),
+});
+
 const revenueModelApiSchema = z.object({
-  marketReference: marketRevenueReferenceSchema,
+  marketReference: revenueMarketReferenceSchema,
   marketContext: revenueMarketContextSchema.nullable(),
 });
 
@@ -1559,8 +1570,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         totalEnergyMwh: recommendationByTier.balanced.recommendedEnergyMwh,
         roundTripEfficiency: 90,
       },
-      defaultEconomicsAssumptions,
-      revenueModel.marketReference
+      defaultEconomicsAssumptions
     );
   }, [recommendationByTier, revenueModel]);
 
@@ -2997,8 +3007,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                             : "—"
                         }
                         subtitle={
-                          modeledScenario?.observedImportEnergyMwh !== null &&
-                          modeledScenario?.simulatedImportEnergyMwh !== null
+                          modeledScenario !== null &&
+                          modeledScenario.observedImportEnergyMwh !== null &&
+                          modeledScenario.simulatedImportEnergyMwh !== null
                             ? `${formatEnergyFromMwh(modeledScenario.observedImportEnergyMwh)} -> ${formatEnergyFromMwh(modeledScenario.simulatedImportEnergyMwh)}`
                             : language === "de"
                               ? "Keine Grenzhandelsbasis"
