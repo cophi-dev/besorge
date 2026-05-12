@@ -141,4 +141,41 @@ describe("simulateDispatch", () => {
     expect(output.schedule).toHaveLength(60);
     expect(output.diagnostics.samplePoints).toBe(60);
   });
+
+  it("tracks observed and simulated import/export energy from cross-border flow", () => {
+    const slots: DispatchSlotInput[] = [
+      {
+        timestampIso: "2026-05-07T10:00:00+02:00",
+        hourBerlin: 10,
+        residualLoadMw: -400,
+        loadMw: 1_000,
+        totalGenerationMw: 1_400,
+        crossBorderElectricityTradingMw: -500,
+      },
+      {
+        timestampIso: "2026-05-07T18:00:00+02:00",
+        hourBerlin: 18,
+        residualLoadMw: 400,
+        loadMw: 1_000,
+        totalGenerationMw: 600,
+        crossBorderElectricityTradingMw: 500,
+      },
+    ];
+
+    const output = simulateDispatch(slots, {
+      powerMw: 400,
+      capacityMwh: 100,
+      rteEfficiencyPct: 100,
+      strategy: "auto_policy_v1",
+    });
+
+    expect(output.results.observedImportEnergyMwh).toBeCloseTo(125, 6);
+    expect(output.results.observedExportEnergyMwh).toBeCloseTo(125, 6);
+    expect(output.results.simulatedImportEnergyMwh).toBeCloseTo(25, 6);
+    expect(output.results.simulatedExportEnergyMwh).toBeCloseTo(25, 6);
+    expect(output.results.importDeltaEnergyMwh).toBeCloseTo(-100, 6);
+    expect(output.results.exportDeltaEnergyMwh).toBeCloseTo(-100, 6);
+    expect(output.schedule[0]?.simulatedCrossBorderElectricityTradingMw).toBeCloseTo(-100, 6);
+    expect(output.schedule[1]?.simulatedCrossBorderElectricityTradingMw).toBeCloseTo(100, 6);
+  });
 });

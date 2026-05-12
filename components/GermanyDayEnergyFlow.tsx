@@ -75,6 +75,8 @@ const SIM_CHART_SOC_STROKE = "#22C173";
 const SIM_CHART_CHARGE_FILL = "#6366F1"; // indigo-500 — clearly separate from net + SoC
 const SIM_CHART_DISCHARGE_FILL = "#F97316"; // orange-500
 const OBSERVED_CURTAILMENT_FILL = "#EC4899"; // pink-500 — auxiliary charge opportunity, not net
+const CROSS_BORDER_IMPORT_FILL = "#EF4444"; // red-500
+const CROSS_BORDER_EXPORT_FILL = "#0EA5E9"; // sky-500
 
 const timeFormatterSingleDay = new Intl.DateTimeFormat("de-DE", {
   timeZone: "Europe/Berlin",
@@ -110,6 +112,7 @@ const germanyDispatchSlotSchema = z.object({
   loadMw: z.number(),
   totalGenerationMw: z.number(),
   renewableGenerationMw: z.number().nullable(),
+  crossBorderElectricityTradingMw: z.number().nullable().optional().default(null),
   curtailmentMw: z.number().nullable().optional().default(null),
 });
 
@@ -248,6 +251,12 @@ type ChartRow = GermanyDispatchSlotsResponse["slots"][number] & {
   /** Domestic generation − load (positive = surplus MW, negative = deficit). */
   netBalanceMw: number;
   netAfterPracticalBessMw: number;
+  observedCrossBorderMw: number | null;
+  simulatedCrossBorderMw: number | null;
+  observedImportMw: number;
+  observedExportSignedMw: number;
+  simulatedImportMw: number;
+  simulatedExportSignedMw: number;
   curtailmentDisplayMw: number;
   inferredFleetSocPct: number;
   estimatedFleetSocPct: number;
@@ -363,6 +372,11 @@ function formatPowerFromMw(mw: number): string {
   return `${powerFormatter.format(mw)} MW`;
 }
 
+function formatSignedEnergyFromMwh(mwh: number): string {
+  const sign = mwh > 0 ? "+" : mwh < 0 ? "−" : "";
+  return `${sign}${formatEnergyFromMwh(mwh)}`;
+}
+
 function parseCapacityGwhInput(value: string): number | null {
   const normalized = value.trim().replace(/,/g, ".");
   if (!normalized) {
@@ -392,6 +406,15 @@ type CoverageTotals = Pick<
   | "totalDeficitEnergyMwh"
 >;
 
+type BorderTradeTotals = {
+  observedImportEnergyMwh: number;
+  observedExportEnergyMwh: number;
+  simulatedImportEnergyMwh: number;
+  simulatedExportEnergyMwh: number;
+  importDeltaEnergyMwh: number;
+  exportDeltaEnergyMwh: number;
+};
+
 /**
  * Deterministic prose when `simulationAiInsight` prop is unset — no backend LLM wired yet from the dashboard.
  */
@@ -404,6 +427,7 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
   fleetSizingAvailable: boolean;
   recommendedCoverageSim: CoverageTotals | null;
   gridImpactReductionPct: number | null;
+  borderTradeTotals: BorderTradeTotals | null;
   curtailmentStatus: "loaded" | "unavailable_not_configured" | "unavailable_upstream";
 }): string | null {
   const {
@@ -415,6 +439,7 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
     fleetSizingAvailable,
     recommendedCoverageSim,
     gridImpactReductionPct,
+    borderTradeTotals,
     curtailmentStatus,
   } = options;
   const parts: string[] = [];
@@ -441,6 +466,13 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
           : `At this modeled size ~${as}% of gross charge opportunity (structural surplus plus curtailment when present) is stored and ~${sd}% of gross deficit energy is met from storage (lossless heuristic).`
       );
     }
+    if (borderTradeTotals !== null) {
+      parts.push(
+        language === "de"
+          ? `Unter der 1:1-Annahme fuer verdraengten Grenzhandel laegen Importe bei ${formatEnergyFromMwh(borderTradeTotals.simulatedImportEnergyMwh)} (${formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)}) und Exporte bei ${formatEnergyFromMwh(borderTradeTotals.simulatedExportEnergyMwh)} (${formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh)}).`
+          : `Under a 1:1 displaced-border-flow assumption, imports land at ${formatEnergyFromMwh(borderTradeTotals.simulatedImportEnergyMwh)} (${formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)}) and exports at ${formatEnergyFromMwh(borderTradeTotals.simulatedExportEnergyMwh)} (${formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh)}).`
+      );
+    }
     return parts.length > 0 ? parts.join(" ") : null;
   }
 
@@ -452,6 +484,13 @@ function deriveGermanyFlowRuleBasedInsightText(options: {
     );
   }
   if (absorption !== null) {
+    if (borderTradeTotals !== null) {
+      parts.push(
+        language === "de"
+          ? `- Beobachteter Grenzhandel im Fenster: ${formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh)} Importe und ${formatEnergyFromMwh(borderTradeTotals.observedExportEnergyMwh)} Exporte.`
+          : `- Observed border trading in the window: ${formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh)} of imports and ${formatEnergyFromMwh(borderTradeTotals.observedExportEnergyMwh)} of exports.`
+      );
+    }
     parts.push(
       language === "de"
         ? `- Ladechance im Fenster: ${formatEnergyFromMwh(absorption.grossChargeOpportunityEnergyMwh)}.`
@@ -827,11 +866,17 @@ export default function GermanyDayEnergyFlow({
           legendPracticalDischarge: "Entladen",
           legendEstimatedCharge: "Geschaetzte Ladung",
           legendEstimatedDischarge: "Geschaetzte Entladung",
+          legendObservedImport: "Importe",
+          legendObservedExport: "Exporte",
+          legendSimulatedImport: "Importe (mit BESS)",
+          legendSimulatedExport: "Exporte (mit BESS)",
           legendCurtailment: "Abregelung (MW)",
           observedChargeDischargeFootnote:
             "Laden und Entladen folgen demselben geschaetzten Flottenmodell wie der SoC (keine Echtzeitmesswerte).",
           curtailmentFootnote:
             "Abregelung erscheint als separate Zusatzreihe fuer Ladechance und veraendert die beobachtete Netto-Linie nicht.",
+          crossBorderFootnote:
+            "Import-/Export-Balken zeigen den Energy-Charts-Grenzhandel; in der Simulation als 1:1 verdraengter Grenzfluss aus Lade-/Entladeleistung.",
           legendSimulatedPrefix: "Simuliert:",
           legendEvening: "Abendfenster",
           toggleNetSimulation: "Praktische BESS-Simulation auf Netto anwenden",
@@ -920,6 +965,13 @@ export default function GermanyDayEnergyFlow({
           kpiGridImpactSubtitle: "Vs. Roh-Nettos (Viertelstunden)",
           kpiGridImpactValue: (pct: string) =>
             `Summe der Absolutbeträge ~${pct} % niedriger (nach modelliertem BESS)`,
+          kpiObservedImportsEyebrow: "Beobachtete Importe",
+          kpiObservedExportsEyebrow: "Beobachtete Exporte",
+          kpiImportsAfterBessEyebrow: "Importe nach BESS",
+          kpiExportsAfterBessEyebrow: "Exporte nach BESS",
+          kpiCrossBorderObservedSubtitle: "Energy-Charts Grenzhandel",
+          kpiCrossBorderDeltaSubtitle: (observed: string, delta: string) =>
+            `Beobachtet ${observed} · Δ ${delta} ggü. Ist`,
           observedModeLead:
             "P95 aus diesem Fenster. Simulation zeigt Überschussaufnahme und Netzwirkung.",
           capacityBadgeUnavailable: "Keine berechenbare Simulationskapazitaet",
@@ -967,11 +1019,17 @@ export default function GermanyDayEnergyFlow({
           legendPracticalDischarge: "Discharge",
           legendEstimatedCharge: "Estimated charge",
           legendEstimatedDischarge: "Estimated discharge",
+          legendObservedImport: "Imports",
+          legendObservedExport: "Exports",
+          legendSimulatedImport: "Imports (with BESS)",
+          legendSimulatedExport: "Exports (with BESS)",
           legendCurtailment: "Curtailment (MW)",
           observedChargeDischargeFootnote:
             "Charge/discharge bars use the same estimated fleet model as SoC (not real-time telemetry).",
           curtailmentFootnote:
             "Curtailment is shown as a separate extra charge-opportunity overlay and does not change the observed net line.",
+          crossBorderFootnote:
+            "Import/export bars show Energy-Charts cross-border trading; in simulation they are rendered as a 1:1 displaced border-flow estimate from charge/discharge power.",
           legendSimulatedPrefix: "Simulated:",
           legendEvening: "Evening window",
           toggleNetSimulation: "Apply practical BESS simulation to net line",
@@ -1057,6 +1115,13 @@ export default function GermanyDayEnergyFlow({
           kpiGridImpactSubtitle: "Vs raw structural net per quarter-hour",
           kpiGridImpactValue: (pct: string) =>
             `Summed |structural net| ~${pct}% lower after modeled BESS`,
+          kpiObservedImportsEyebrow: "Observed imports",
+          kpiObservedExportsEyebrow: "Observed exports",
+          kpiImportsAfterBessEyebrow: "Imports after BESS",
+          kpiExportsAfterBessEyebrow: "Exports after BESS",
+          kpiCrossBorderObservedSubtitle: "Energy-Charts cross-border flow",
+          kpiCrossBorderDeltaSubtitle: (observed: string, delta: string) =>
+            `Observed ${observed} · Δ ${delta} vs actual`,
           observedModeLead:
             "P95 for this window. Simulated mode shows surplus capture and grid impact.",
           capacityBadgeUnavailable: "Simulation capacity not computable yet",
@@ -1372,11 +1437,35 @@ export default function GermanyDayEnergyFlow({
     );
     return flow.slots.map((s, i) => {
       const netBalanceMw = s.totalGenerationMw - s.loadMw;
+      const practicalChargeMw = practicalDispatchSeries[i]?.chargeMw ?? 0;
+      const practicalDischargeMw = practicalDispatchSeries[i]?.dischargeMw ?? 0;
+      const observedCrossBorderMw =
+        s.crossBorderElectricityTradingMw !== null &&
+        s.crossBorderElectricityTradingMw !== undefined &&
+        Number.isFinite(s.crossBorderElectricityTradingMw)
+          ? s.crossBorderElectricityTradingMw
+          : null;
       return {
         ...s,
         timeLabel: labeler.format(new Date(s.timestampIso)),
         netBalanceMw,
         netAfterPracticalBessMw: adjustedNetSeries[i] ?? netBalanceMw,
+        observedCrossBorderMw,
+        simulatedCrossBorderMw:
+          observedCrossBorderMw === null
+            ? null
+            : observedCrossBorderMw + practicalChargeMw - practicalDischargeMw,
+        observedImportMw: observedCrossBorderMw !== null ? Math.max(0, observedCrossBorderMw) : 0,
+        observedExportSignedMw:
+          observedCrossBorderMw !== null ? Math.min(0, observedCrossBorderMw) : 0,
+        simulatedImportMw:
+          observedCrossBorderMw !== null
+            ? Math.max(0, observedCrossBorderMw + practicalChargeMw - practicalDischargeMw)
+            : 0,
+        simulatedExportSignedMw:
+          observedCrossBorderMw !== null
+            ? Math.min(0, observedCrossBorderMw + practicalChargeMw - practicalDischargeMw)
+            : 0,
         curtailmentDisplayMw:
           s.curtailmentMw !== null && s.curtailmentMw !== undefined && Number.isFinite(s.curtailmentMw)
             ? Math.max(0, s.curtailmentMw)
@@ -1384,9 +1473,9 @@ export default function GermanyDayEnergyFlow({
         inferredFleetSocPct: absorption.inferredFleetSocPctSeries[i] ?? 0,
         estimatedFleetSocPct: estimatedFleetSocSeries[i] ?? 0,
         simulatedPracticalSocPct: practicalSocSeries[i] ?? 0,
-        practicalChargeSignedMw: -(practicalDispatchSeries[i]?.chargeMw ?? 0),
-        practicalChargeMw: practicalDispatchSeries[i]?.chargeMw ?? 0,
-        practicalDischargeMw: practicalDispatchSeries[i]?.dischargeMw ?? 0,
+        practicalChargeSignedMw: -practicalChargeMw,
+        practicalChargeMw,
+        practicalDischargeMw,
         fleetChargeSignedMw: -(fleetDispatchSeries[i]?.chargeMw ?? 0),
         fleetChargeMw: fleetDispatchSeries[i]?.chargeMw ?? 0,
         fleetDischargeMw: fleetDispatchSeries[i]?.dischargeMw ?? 0,
@@ -1442,6 +1531,39 @@ export default function GermanyDayEnergyFlow({
       mwh += r.netBalanceMw * QUARTER_HOUR_H;
     }
     return mwh / 1000;
+  }, [chartRows]);
+
+  const borderTradeTotals = useMemo((): BorderTradeTotals | null => {
+    if (chartRows.length === 0) {
+      return null;
+    }
+    let hasObservedBorderFlow = false;
+    let observedImportEnergyMwh = 0;
+    let observedExportEnergyMwh = 0;
+    let simulatedImportEnergyMwh = 0;
+    let simulatedExportEnergyMwh = 0;
+    for (const row of chartRows) {
+      if (row.observedCrossBorderMw !== null) {
+        hasObservedBorderFlow = true;
+        observedImportEnergyMwh += Math.max(0, row.observedCrossBorderMw) * QUARTER_HOUR_H;
+        observedExportEnergyMwh += Math.max(0, -row.observedCrossBorderMw) * QUARTER_HOUR_H;
+      }
+      if (row.simulatedCrossBorderMw !== null) {
+        simulatedImportEnergyMwh += Math.max(0, row.simulatedCrossBorderMw) * QUARTER_HOUR_H;
+        simulatedExportEnergyMwh += Math.max(0, -row.simulatedCrossBorderMw) * QUARTER_HOUR_H;
+      }
+    }
+    if (!hasObservedBorderFlow) {
+      return null;
+    }
+    return {
+      observedImportEnergyMwh,
+      observedExportEnergyMwh,
+      simulatedImportEnergyMwh,
+      simulatedExportEnergyMwh,
+      importDeltaEnergyMwh: simulatedImportEnergyMwh - observedImportEnergyMwh,
+      exportDeltaEnergyMwh: simulatedExportEnergyMwh - observedExportEnergyMwh,
+    };
   }, [chartRows]);
 
   const flowSharePayload = useMemo((): FlowSharePayload | null => {
@@ -1767,6 +1889,12 @@ export default function GermanyDayEnergyFlow({
   const activeSocDataKey = showSimulatedNet ? "simulatedPracticalSocPct" : "estimatedFleetSocPct";
   const showObservedCurtailmentSeries =
     !showSimulatedNet && chartRows.some((row) => row.curtailmentDisplayMw > 1e-6);
+  const showCrossBorderSeries = chartRows.some((row) => row.observedCrossBorderMw !== null);
+  const activeImportDataKey = showSimulatedNet ? "simulatedImportMw" : "observedImportMw";
+  const activeExportDataKey =
+    showSimulatedNet ? "simulatedExportSignedMw" : "observedExportSignedMw";
+  const activeImportLegend = showSimulatedNet ? t.legendSimulatedImport : t.legendObservedImport;
+  const activeExportLegend = showSimulatedNet ? t.legendSimulatedExport : t.legendObservedExport;
   const activeSocCapacityMwh = showSimulatedNet
     ? (effectivePracticalCapacityMwh > 0 ? effectivePracticalCapacityMwh : null)
     : fleetEnergyCapacityMwh;
@@ -1917,6 +2045,7 @@ export default function GermanyDayEnergyFlow({
     fleetSizingAvailable: showMissedKpis,
     recommendedCoverageSim: recommendedCoverage,
     gridImpactReductionPct,
+    borderTradeTotals,
     curtailmentStatus: flow?.curtailmentStatus ?? "unavailable_upstream",
   });
   const insightPanelTitle =
@@ -1935,6 +2064,18 @@ export default function GermanyDayEnergyFlow({
       : "—";
   const dampingPctLabel =
     gridImpactReductionPct !== null ? `${pctFormatter.format(gridImpactReductionPct)}%` : "—";
+  const observedImportLabel =
+    borderTradeTotals !== null ? formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh) : "—";
+  const observedExportLabel =
+    borderTradeTotals !== null ? formatEnergyFromMwh(borderTradeTotals.observedExportEnergyMwh) : "—";
+  const simulatedImportLabel =
+    borderTradeTotals !== null ? formatEnergyFromMwh(borderTradeTotals.simulatedImportEnergyMwh) : "—";
+  const simulatedExportLabel =
+    borderTradeTotals !== null ? formatEnergyFromMwh(borderTradeTotals.simulatedExportEnergyMwh) : "—";
+  const importDeltaLabel =
+    borderTradeTotals !== null ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh) : "—";
+  const exportDeltaLabel =
+    borderTradeTotals !== null ? formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh) : "—";
 
   return (
     <article
@@ -2254,6 +2395,12 @@ export default function GermanyDayEnergyFlow({
               color={SIM_CHART_DISCHARGE_FILL}
               label={showSimulatedNet ? t.legendPracticalDischarge : t.legendEstimatedDischarge}
             />
+            {showCrossBorderSeries ? (
+              <>
+                <LegendDot color={CROSS_BORDER_IMPORT_FILL} label={activeImportLegend} />
+                <LegendDot color={CROSS_BORDER_EXPORT_FILL} label={activeExportLegend} />
+              </>
+            ) : null}
             {showObservedCurtailmentSeries ? (
               <LegendDot color={OBSERVED_CURTAILMENT_FILL} label={t.legendCurtailment} />
             ) : null}
@@ -2381,6 +2528,26 @@ export default function GermanyDayEnergyFlow({
                     radius={[3, 3, 0, 0]}
                     maxBarSize={8}
                   />
+                  {showCrossBorderSeries ? (
+                    <>
+                      <Bar
+                        yAxisId="net"
+                        dataKey={activeImportDataKey}
+                        name={activeImportLegend}
+                        fill={CROSS_BORDER_IMPORT_FILL}
+                        fillOpacity={0.32}
+                        maxBarSize={5}
+                      />
+                      <Bar
+                        yAxisId="net"
+                        dataKey={activeExportDataKey}
+                        name={activeExportLegend}
+                        fill={CROSS_BORDER_EXPORT_FILL}
+                        fillOpacity={0.32}
+                        maxBarSize={5}
+                      />
+                    </>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -2415,6 +2582,26 @@ export default function GermanyDayEnergyFlow({
                       />
                     </>
                   ) : null}
+                  {showCrossBorderSeries ? (
+                    <>
+                      <Bar
+                        yAxisId="net"
+                        dataKey={activeImportDataKey}
+                        name={activeImportLegend}
+                        fill={CROSS_BORDER_IMPORT_FILL}
+                        fillOpacity={0.32}
+                        maxBarSize={5}
+                      />
+                      <Bar
+                        yAxisId="net"
+                        dataKey={activeExportDataKey}
+                        name={activeExportLegend}
+                        fill={CROSS_BORDER_EXPORT_FILL}
+                        fillOpacity={0.32}
+                        maxBarSize={5}
+                      />
+                    </>
+                  ) : null}
                 </>
               )}
               <Line
@@ -2441,6 +2628,7 @@ export default function GermanyDayEnergyFlow({
           fleetEnergyCapacityMwh > 0 ? (
             <> {t.observedChargeDischargeFootnote}</>
           ) : null}
+          {showCrossBorderSeries ? <> {t.crossBorderFootnote}</> : null}
           {!showSimulatedNet && showObservedCurtailmentSeries ? <> {t.curtailmentFootnote}</> : null}
         </p>
       </div>
@@ -2467,7 +2655,7 @@ export default function GermanyDayEnergyFlow({
           </p>
         </header>
 
-        <div className="grid grid-cols-2 gap-2.5 border-b border-border/70 pb-4 md:grid-cols-3 xl:grid-cols-5 dark:border-slate-600/40">
+        <div className="grid grid-cols-2 gap-2.5 border-b border-border/70 pb-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 dark:border-slate-600/40">
           <SectionKpiTile
             eyebrow={showSimulatedNet ? (language === "de" ? "Aktive Sim.-Kapazitaet" : "Active sim. size") : (language === "de" ? "Fenster-BESS" : "Window BESS")}
             value={simulatedCapacityGwhLabel ?? "—"}
@@ -2497,6 +2685,30 @@ export default function GermanyDayEnergyFlow({
             value={dampingPctLabel}
             subtitle={t.kpiGridImpactSubtitle}
             tone="slate"
+          />
+          <SectionKpiTile
+            eyebrow={
+              showSimulatedNet ? t.kpiImportsAfterBessEyebrow : t.kpiObservedImportsEyebrow
+            }
+            value={showSimulatedNet ? simulatedImportLabel : observedImportLabel}
+            subtitle={
+              showSimulatedNet
+                ? t.kpiCrossBorderDeltaSubtitle(observedImportLabel, importDeltaLabel)
+                : t.kpiCrossBorderObservedSubtitle
+            }
+            tone="amber"
+          />
+          <SectionKpiTile
+            eyebrow={
+              showSimulatedNet ? t.kpiExportsAfterBessEyebrow : t.kpiObservedExportsEyebrow
+            }
+            value={showSimulatedNet ? simulatedExportLabel : observedExportLabel}
+            subtitle={
+              showSimulatedNet
+                ? t.kpiCrossBorderDeltaSubtitle(observedExportLabel, exportDeltaLabel)
+                : t.kpiCrossBorderObservedSubtitle
+            }
+            tone="sky"
           />
         </div>
 

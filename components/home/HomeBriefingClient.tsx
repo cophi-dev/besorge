@@ -112,6 +112,7 @@ const marketSnapshotSchema = z.object({
           loadMw: z.number(),
           totalGenerationMw: z.number(),
           renewableGenerationMw: z.number().nullable(),
+          crossBorderElectricityTradingMw: z.number().nullable().optional(),
         })
       ),
     })

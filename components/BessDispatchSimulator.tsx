@@ -74,6 +74,8 @@ const responseSchema = z.object({
       loadMw: z.number().nullable(),
       totalGenerationMw: z.number().nullable(),
       renewableGenerationMw: z.number().nullable(),
+      crossBorderElectricityTradingMw: z.number().nullable(),
+      simulatedCrossBorderElectricityTradingMw: z.number().nullable(),
       priceProxyEurPerMwh: z.number(),
       action: z.enum(["charge", "discharge", "idle"]),
       decisionReason: z.string(),
@@ -94,6 +96,12 @@ const responseSchema = z.object({
     cycles: z.number(),
     eveningDeliveredMwh: z.number(),
     eveningCoveragePct: z.number(),
+    observedImportEnergyMwh: z.number(),
+    observedExportEnergyMwh: z.number(),
+    simulatedImportEnergyMwh: z.number(),
+    simulatedExportEnergyMwh: z.number(),
+    importDeltaEnergyMwh: z.number(),
+    exportDeltaEnergyMwh: z.number(),
     averageSpreadEurPerMwh: z.number(),
     roundTripLossPct: z.number(),
     maxReachableSocByEveningPct: z.number(),
@@ -194,6 +202,25 @@ const MWH_DETAIL_FORMATTER = new Intl.NumberFormat("de-DE", {
   maximumFractionDigits: 3,
 });
 
+function formatEnergyFromMwh(mwh: number): string {
+  const magnitudeMwh = Math.abs(mwh);
+  const magnitudeGwh = magnitudeMwh / 1_000;
+  if (magnitudeGwh >= 1) {
+    return `${NUMBER_FORMATTER.format(magnitudeGwh)} GWh`;
+  }
+  return `${NUMBER_FORMATTER.format(magnitudeMwh)} MWh`;
+}
+
+function formatSignedEnergyFromMwh(mwh: number): string {
+  const sign = mwh > 0 ? "+" : mwh < 0 ? "−" : "";
+  return `${sign}${formatEnergyFromMwh(mwh)}`;
+}
+
+function formatSignedMw(mw: number): string {
+  const sign = mw > 0 ? "+" : mw < 0 ? "−" : "";
+  return `${sign}${NUMBER_FORMATTER.format(Math.abs(mw))} MW`;
+}
+
 const copy = {
   en: {
     eyebrow: "Layer incremental capacity on the same day",
@@ -246,6 +273,10 @@ const copy = {
     kpiEveningGapCoverage: "Evening gap coverage",
     kpiCyclesToday: "Cycles today",
     kpiMaxReachableEveningSoc: "Max reachable SoC by 17:00",
+    kpiImportsAfterBess: "Imports after BESS",
+    kpiExportsAfterBess: "Exports after BESS",
+    kpiObservedVsDelta: (observed: string, delta: string) =>
+      `Observed ${observed} · Δ ${delta} vs observed`,
     kpiCurrentMode: "Current BESS mode",
     kpiPriceProxyHint: "Residual-load price proxy (larger deficit → higher assumed price). EPEX later.",
     chartSocTitle: "State of charge",
@@ -359,6 +390,10 @@ const copy = {
     kpiEveningGapCoverage: "Evening-Gap-Abdeckung",
     kpiCyclesToday: "Zyklen heute",
     kpiMaxReachableEveningSoc: "Max. erreichbarer SoC bis 17:00",
+    kpiImportsAfterBess: "Importe nach BESS",
+    kpiExportsAfterBess: "Exporte nach BESS",
+    kpiObservedVsDelta: (observed: string, delta: string) =>
+      `Beobachtet ${observed} · Δ ${delta} ggü. Ist`,
     kpiCurrentMode: "Aktueller BESS-Modus",
     kpiPriceProxyHint:
       "Preis-Proxy aus Restlast (höheres Defizit → höherer angenommener Preis). Später EPEX.",
@@ -445,6 +480,8 @@ type ChartDatum = {
   dischargeHeadroomMwh: number;
   maxReachableSocPct: number;
   residualLoadMw: number;
+  observedCrossBorderMw: number | null;
+  simulatedCrossBorderMw: number | null;
 };
 
 export default function BessDispatchSimulator() {
@@ -544,6 +581,8 @@ export default function BessDispatchSimulator() {
         dischargeHeadroomMwh: entry.dischargeHeadroomMwh,
         maxReachableSocPct: entry.maxReachableSocPct,
         residualLoadMw: entry.residualLoadMw,
+        observedCrossBorderMw: entry.crossBorderElectricityTradingMw,
+        simulatedCrossBorderMw: entry.simulatedCrossBorderElectricityTradingMw,
       };
     });
   }, [response]);
@@ -833,8 +872,8 @@ function ResultsLoadingSkeleton() {
       transition={{ duration: 0.25, ease: "easeOut" }}
       className="space-y-4"
     >
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, index) => (
           <div key={`kpi-skel-${index}`} className="rounded-xl border border-slate-300/40 bg-white/70 p-4 dark:border-slate-500/35 dark:bg-slate-900/55">
             <Skeleton className="h-3 w-1/2" />
             <Skeleton className="mt-3 h-7 w-2/3" />
@@ -1006,6 +1045,8 @@ function ResultsPanel({
   const animCoverage = useAnimatedNumber(eveningGapCoveragePct);
   const animCycles = useAnimatedNumber(results.cycles);
   const animMaxReachableEveningSoc = useAnimatedNumber(results.maxReachableSocByEveningPct);
+  const animSimulatedImports = useAnimatedNumber(results.simulatedImportEnergyMwh);
+  const animSimulatedExports = useAnimatedNumber(results.simulatedExportEnergyMwh);
 
   const powerLim = inputs.powerMw * 1.08;
   const xAxisInterval =
@@ -1122,7 +1163,7 @@ function ResultsPanel({
           hidden: {},
           visible: { transition: { staggerChildren: 0.07, delayChildren: 0.04 } },
         }}
-        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6"
       >
         <motion.article
           variants={{
@@ -1193,6 +1234,48 @@ function ResultsPanel({
           </p>
           <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
             {t.kpiMaxReachableEveningSocHint}
+          </p>
+        </motion.article>
+
+        <motion.article
+          variants={{
+            hidden: { opacity: 0, y: 14 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.34, ease: "easeOut" } },
+          }}
+          className="rounded-2xl border border-amber-400/35 bg-white/90 p-5 shadow-sm dark:border-amber-400/25 dark:bg-slate-900/75"
+        >
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-amber-900/80 uppercase dark:text-amber-200/90">
+            {t.kpiImportsAfterBess}
+          </p>
+          <p className="mt-3 text-2xl font-extrabold tracking-tight text-slate-900 md:text-3xl dark:text-white">
+            {formatEnergyFromMwh(animSimulatedImports)}
+          </p>
+          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+            {t.kpiObservedVsDelta(
+              formatEnergyFromMwh(results.observedImportEnergyMwh),
+              formatSignedEnergyFromMwh(results.importDeltaEnergyMwh)
+            )}
+          </p>
+        </motion.article>
+
+        <motion.article
+          variants={{
+            hidden: { opacity: 0, y: 14 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.34, ease: "easeOut" } },
+          }}
+          className="rounded-2xl border border-emerald-400/35 bg-white/90 p-5 shadow-sm dark:border-emerald-400/25 dark:bg-slate-900/75"
+        >
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-emerald-800 uppercase dark:text-emerald-200/90">
+            {t.kpiExportsAfterBess}
+          </p>
+          <p className="mt-3 text-2xl font-extrabold tracking-tight text-slate-900 md:text-3xl dark:text-white">
+            {formatEnergyFromMwh(animSimulatedExports)}
+          </p>
+          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+            {t.kpiObservedVsDelta(
+              formatEnergyFromMwh(results.observedExportEnergyMwh),
+              formatSignedEnergyFromMwh(results.exportDeltaEnergyMwh)
+            )}
           </p>
         </motion.article>
 
@@ -1458,6 +1541,18 @@ function ResultsPanel({
                         {t.chartLegendResidualOverlay}:{" "}
                         {`${point.residualLoadMw >= 0 ? "+" : ""}${INTEGER_FORMATTER.format(point.residualLoadMw)} MW`}
                       </p>
+                      {point.observedCrossBorderMw !== null ? (
+                        <p>
+                          {language === "de" ? "Grenzhandel beobachtet" : "Observed border flow"}:{" "}
+                          {formatSignedMw(point.observedCrossBorderMw)}
+                        </p>
+                      ) : null}
+                      {point.simulatedCrossBorderMw !== null ? (
+                        <p>
+                          {language === "de" ? "Grenzhandel mit BESS" : "Border flow with BESS"}:{" "}
+                          {formatSignedMw(point.simulatedCrossBorderMw)}
+                        </p>
+                      ) : null}
                       <p>
                         {t.tooltipAction}: {actionLabel(point.action)}
                       </p>

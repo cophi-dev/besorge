@@ -292,6 +292,11 @@ const findBatteryStorageSeries = (
     return /battery/i.test(series.name);
   });
 
+const findCrossBorderTradingSeries = (
+  productionTypes: { name: string; data: Array<number | null> }[]
+): { name: string; data: Array<number | null> } | undefined =>
+  productionTypes.find((series) => /cross border electricity trading/i.test(series.name.trim()));
+
 const RENEWABLE_GENERATION_SERIES_REGEX =
   /(wind|solar|biomass|geothermal|hydro run-of-river|hydro water reservoir)/i;
 
@@ -436,6 +441,8 @@ export type GermanyDispatchSlot = {
   totalGenerationMw: number;
   /** Renewable generation in MW for this slot, null when unavailable. */
   renewableGenerationMw: number | null;
+  /** Signed cross-border trading in MW: positive = net imports, negative = net exports. */
+  crossBorderElectricityTradingMw: number | null;
   /** Optional quarter-hour curtailed renewable power from Netztransparenz, MW. */
   curtailmentMw?: number | null;
 };
@@ -1111,6 +1118,7 @@ const buildGermanyDispatchSlotsForIndices = (
   ctx: TotalPowerSlotBuildContext
 ): GermanyDispatchSlot[] => {
   const { loadSeries, residualSeries, mergedRenewableShareSeries } = ctx;
+  const crossBorderTradingSeries = findCrossBorderTradingSeries(totalPower.production_types);
   const slots: GermanyDispatchSlot[] = [];
   for (const index of indices) {
     const ts = totalPower.unix_seconds[index];
@@ -1170,6 +1178,10 @@ const buildGermanyDispatchSlotsForIndices = (
       loadMw,
       totalGenerationMw: sumDomesticGenerationMw(totalPower.production_types, index),
       renewableGenerationMw: renewableGenerationMwForSlot,
+      crossBorderElectricityTradingMw:
+        crossBorderTradingSeries !== undefined
+          ? valueAtIndexWithFallback(crossBorderTradingSeries.data, index, 0)
+          : null,
       curtailmentMw: null,
     });
   }

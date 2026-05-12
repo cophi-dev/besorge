@@ -160,6 +160,7 @@ describe("getGermanyMarketSnapshot evening + daily aggregates", () => {
     const solarMw = 18_000;
     const windMw = 8_000;
     const coalMw = 12_000;
+    const crossBorderImportMw = 3_000;
     const residualMw = loadMw - solarMw - windMw;
 
     const totalPower = {
@@ -167,6 +168,10 @@ describe("getGermanyMarketSnapshot evening + daily aggregates", () => {
       production_types: [
         { name: "Load (incl. self-consumption)", data: buildConstantSeries(points, loadMw) },
         { name: "Residual load", data: buildConstantSeries(points, residualMw) },
+        {
+          name: "Cross border electricity trading",
+          data: buildConstantSeries(points, crossBorderImportMw),
+        },
         { name: "Solar", data: buildConstantSeries(points, solarMw) },
         { name: "Wind onshore", data: buildConstantSeries(points, windMw) },
         { name: "Fossil hard coal", data: buildConstantSeries(points, coalMw) },
@@ -213,6 +218,10 @@ describe("getGermanyMarketSnapshot evening + daily aggregates", () => {
     expect(snapshot.dayEnergyFlow?.dateBerlin).toBe("2024-06-15");
     expect(snapshot.dayEnergyFlow?.samplePoints).toBe(96);
     expect(snapshot.dayEnergyFlow?.slots[0]?.loadMw).toBeCloseTo(loadMw, 3);
+    expect(snapshot.dayEnergyFlow?.slots[0]?.crossBorderElectricityTradingMw).toBeCloseTo(
+      crossBorderImportMw,
+      3
+    );
 
     expect(snapshot.recentRenewablePatterns.windowDays).toBe(3);
     /** Solar share at midday = 18_000 / 50_000 = 36% which clears the 25% threshold for 1 observed day. */

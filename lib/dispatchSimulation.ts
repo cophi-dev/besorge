@@ -55,6 +55,8 @@ export type DispatchSlotInput = {
   totalGenerationMw?: number;
   /** Renewable generation in MW for this slot (`null` when absent in the feed — same as Energy-Charts Germany slots). */
   renewableGenerationMw?: number | null;
+  /** Signed observed cross-border trading in MW: positive = imports, negative = exports. */
+  crossBorderElectricityTradingMw?: number | null;
 };
 
 export type DispatchAction = "charge" | "discharge" | "idle";
@@ -66,6 +68,8 @@ export type DispatchScheduleEntry = {
   loadMw: number | null;
   totalGenerationMw: number | null;
   renewableGenerationMw: number | null;
+  crossBorderElectricityTradingMw: number | null;
+  simulatedCrossBorderElectricityTradingMw: number | null;
   /** Synthesized DE day-ahead-style price proxy in €/MWh. */
   priceProxyEurPerMwh: number;
   action: DispatchAction;
@@ -104,6 +108,18 @@ export type DispatchResults = {
   eveningDeliveredMwh: number;
   /** Share of total delivered MWh that landed in the evening window. */
   eveningCoveragePct: number;
+  /** Observed cross-border imports from Energy-Charts (positive trading only), integrated over the day. */
+  observedImportEnergyMwh: number;
+  /** Observed cross-border exports from Energy-Charts (negative trading only), integrated over the day. */
+  observedExportEnergyMwh: number;
+  /** Counterfactual imports after applying the modeled BESS dispatch one-for-one to observed border flow. */
+  simulatedImportEnergyMwh: number;
+  /** Counterfactual exports after applying the modeled BESS dispatch one-for-one to observed border flow. */
+  simulatedExportEnergyMwh: number;
+  /** Simulated minus observed imports; negative means the modeled BESS reduces imports. */
+  importDeltaEnergyMwh: number;
+  /** Simulated minus observed exports; negative means the modeled BESS reduces exports. */
+  exportDeltaEnergyMwh: number;
   /** Discharge - charge price spread captured (€/MWh). */
   averageSpreadEurPerMwh: number;
   /** Round-trip energy loss as a percentage of grid input. */
@@ -224,6 +240,10 @@ export const simulateDispatch = (
   let dischargedFromBatteryMwh = 0;
   let eveningDeliveredMwh = 0;
   let uncapturedSurplusMwh = 0;
+  let observedImportEnergyMwh = 0;
+  let observedExportEnergyMwh = 0;
+  let simulatedImportEnergyMwh = 0;
+  let simulatedExportEnergyMwh = 0;
   let actualChargeSlots = 0;
   let actualDischargeSlots = 0;
   let envelopeSocMwh = 0;
@@ -346,6 +366,21 @@ export const simulateDispatch = (
       );
     }
 
+    const observedCrossBorderMw =
+      isFiniteNumber(slot.crossBorderElectricityTradingMw)
+        ? slot.crossBorderElectricityTradingMw
+        : null;
+    const simulatedCrossBorderMw =
+      observedCrossBorderMw === null ? null : observedCrossBorderMw - signedPowerMw;
+    if (observedCrossBorderMw !== null) {
+      observedImportEnergyMwh += Math.max(0, observedCrossBorderMw) * dt;
+      observedExportEnergyMwh += Math.max(0, -observedCrossBorderMw) * dt;
+    }
+    if (simulatedCrossBorderMw !== null) {
+      simulatedImportEnergyMwh += Math.max(0, simulatedCrossBorderMw) * dt;
+      simulatedExportEnergyMwh += Math.max(0, -simulatedCrossBorderMw) * dt;
+    }
+
     return {
       timestampIso: slot.timestampIso,
       hourBerlin: slot.hourBerlin,
@@ -357,6 +392,8 @@ export const simulateDispatch = (
       renewableGenerationMw: isFiniteNumber(slot.renewableGenerationMw)
         ? slot.renewableGenerationMw
         : null,
+      crossBorderElectricityTradingMw: observedCrossBorderMw,
+      simulatedCrossBorderElectricityTradingMw: simulatedCrossBorderMw,
       priceProxyEurPerMwh: slot.priceProxyEurPerMwh,
       action,
       powerMw: signedPowerMw,
@@ -401,6 +438,12 @@ export const simulateDispatch = (
       cycles,
       eveningDeliveredMwh,
       eveningCoveragePct,
+      observedImportEnergyMwh,
+      observedExportEnergyMwh,
+      simulatedImportEnergyMwh,
+      simulatedExportEnergyMwh,
+      importDeltaEnergyMwh: simulatedImportEnergyMwh - observedImportEnergyMwh,
+      exportDeltaEnergyMwh: simulatedExportEnergyMwh - observedExportEnergyMwh,
       averageSpreadEurPerMwh: avgDischargePriceEurPerMwh - avgChargePriceEurPerMwh,
       roundTripLossPct,
       maxReachableSocByEveningPct,

@@ -18,16 +18,22 @@ type FlowExportButtonsProps = {
 
 function slotsToCsv(flow: GermanyDispatchSlotsResponse): string {
   const header =
-    "timestamp_iso,hour_berlin,load_mw,total_generation_mw,renewable_generation_mw,net_balance_mw";
+    "timestamp_iso,hour_berlin,load_mw,total_generation_mw,renewable_generation_mw,cross_border_trading_mw,net_balance_mw";
   const lines = flow.slots.map((s) => {
     const net = s.totalGenerationMw - s.loadMw;
     const ren = s.renewableGenerationMw;
+    const crossBorder =
+      s.crossBorderElectricityTradingMw !== null &&
+      s.crossBorderElectricityTradingMw !== undefined
+        ? String(s.crossBorderElectricityTradingMw)
+        : "";
     return [
       s.timestampIso,
       String(s.hourBerlin),
       String(s.loadMw),
       String(s.totalGenerationMw),
       ren === null ? "" : String(ren),
+      crossBorder,
       String(net),
     ].join(",");
   });
