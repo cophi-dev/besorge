@@ -29,6 +29,20 @@ export const gridRegulatoryScenarioSchema = z.enum([
 
 export type GridRegulatoryScenario = z.infer<typeof gridRegulatoryScenarioSchema>;
 
+export const marketRevenueReferenceSchema = z.object({
+  derivedSpotSpreadEurPerMwh: z.number().nonnegative(),
+  averageDailyCurtailmentOpportunityMwh: z.number().nonnegative(),
+  positiveRedispatchCostEurPerMwh: z.number().nonnegative(),
+  negativeRedispatchCostEurPerMwh: z.number(),
+  sampledDays: z.number().int().nonnegative(),
+  spotPriceStatus: z.enum(["live", "fallback_unavailable"]),
+  curtailmentStatus: z.enum(["loaded", "unavailable_not_configured", "unavailable_upstream"]),
+  priceSourceLabel: z.string().min(1),
+  redispatchSourceLabel: z.string().min(1),
+});
+
+export type MarketRevenueReference = z.infer<typeof marketRevenueReferenceSchema>;
+
 export const economicsAssumptionsSchema = z.object({
   /** Full energy-throughput equivalents per day relative to nameplate MWh (not MW×MWh). */
   fullCycleEquivalentsPerDay: z.number().min(0.1).max(4),
@@ -98,6 +112,7 @@ export type EconomicsResult = {
   annualArbitrageRevenue: number;
   annualPeakShavingRevenue: number;
   annualGridServicesRevenue: number;
+  annualAvoidedRedispatchRevenue: number;
   annualRevenueNominal: number;
   annualRevenue: number;
   capex: number;
@@ -108,6 +123,8 @@ export type EconomicsResult = {
   paybackYears: number;
   grossIrr: number;
   lcoeEurPerMwh: number;
+  effectiveAveragePriceSpreadEurPerMwh: number;
+  revenueModel: "manual_blended" | "live_market_reference";
   /** Human-readable lines for proposals / UI footnotes. */
   assumptionFootnotes: string[];
 };
@@ -128,7 +145,8 @@ export function computeEconomics(
     ProjectMegapackConfig,
     "totalPowerMw" | "totalEnergyMwh" | "roundTripEfficiency"
   >,
-  assumptions: EconomicsAssumptions
+  assumptions: EconomicsAssumptions,
+  marketReference?: MarketRevenueReference | null
 ): EconomicsResult {
   const rte = physical.roundTripEfficiency / 100;
   const annualDischargedMwh =
@@ -138,16 +156,51 @@ export function computeEconomics(
     rte;
 
   const { revenueMultiplier, opexMultiplier } = scenarioFactors[assumptions.gridRegulatoryScenario];
+  const useLiveMarketReference =
+    marketReference !== null &&
+    marketReference !== undefined &&
+    marketReference.sampledDays > 0 &&
+    marketReference.derivedSpotSpreadEurPerMwh > 0;
 
-  const annualArbitrageRevenue =
-    annualDischargedMwh * assumptions.averagePriceSpreadEurPerMwh * REVENUE_SPLIT.arbitrage;
-  const annualPeakShavingRevenue =
-    annualDischargedMwh * assumptions.averagePriceSpreadEurPerMwh * REVENUE_SPLIT.peakShaving;
-  const annualGridServicesRevenue =
-    annualDischargedMwh * assumptions.averagePriceSpreadEurPerMwh * REVENUE_SPLIT.gridServices;
+  const effectiveAveragePriceSpreadEurPerMwh = useLiveMarketReference
+    ? marketReference.derivedSpotSpreadEurPerMwh
+    : assumptions.averagePriceSpreadEurPerMwh;
+
+  const annualArbitrageRevenue = useLiveMarketReference
+    ? annualDischargedMwh * effectiveAveragePriceSpreadEurPerMwh
+    : annualDischargedMwh *
+      assumptions.averagePriceSpreadEurPerMwh *
+      REVENUE_SPLIT.arbitrage;
+
+  const annualPeakShavingRevenue = useLiveMarketReference
+    ? 0
+    : annualDischargedMwh *
+      assumptions.averagePriceSpreadEurPerMwh *
+      REVENUE_SPLIT.peakShaving;
+
+  const annualGridServicesRevenue = useLiveMarketReference
+    ? 0
+    : annualDischargedMwh *
+      assumptions.averagePriceSpreadEurPerMwh *
+      REVENUE_SPLIT.gridServices;
+
+  const dailyBatteryThroughputMwh =
+    physical.totalEnergyMwh * assumptions.fullCycleEquivalentsPerDay * rte;
+  const annualAvoidedRedispatchRevenue =
+    useLiveMarketReference && marketReference !== null && marketReference !== undefined
+      ? Math.min(
+          dailyBatteryThroughputMwh,
+          marketReference.averageDailyCurtailmentOpportunityMwh
+        ) *
+        365 *
+        marketReference.positiveRedispatchCostEurPerMwh
+      : 0;
 
   const annualRevenueNominal =
-    annualArbitrageRevenue + annualPeakShavingRevenue + annualGridServicesRevenue;
+    annualArbitrageRevenue +
+    annualPeakShavingRevenue +
+    annualGridServicesRevenue +
+    annualAvoidedRedispatchRevenue;
   const annualRevenue = annualRevenueNominal * revenueMultiplier;
 
   const capex = physical.totalEnergyMwh * assumptions.capexEurPerMwh;
@@ -183,15 +236,31 @@ export function computeEconomics(
   const assumptionFootnotes = [
     "Indicative pre-sales model — not investment advice.",
     "Throughput: nameplate MWh × full-cycle equivalents/day × 365 × RTE (simplified).",
-    `Revenue split (illustrative): arbitrage ${REVENUE_SPLIT.arbitrage * 100}%, peak shave ${REVENUE_SPLIT.peakShaving * 100}%, grid ${REVENUE_SPLIT.gridServices * 100}%.`,
     `Regulatory scenario: ${regulatoryScenarioDescription(assumptions.gridRegulatoryScenario)}.`,
   ];
+
+  if (useLiveMarketReference && marketReference !== null && marketReference !== undefined) {
+    assumptionFootnotes.push(
+      `Live market reference: spot spread ${marketReference.derivedSpotSpreadEurPerMwh.toFixed(1)} EUR/MWh from ${marketReference.sampledDays} recent day(s) via ${marketReference.priceSourceLabel}.`,
+      `Avoided redispatch uses average daily curtailment opportunity (${marketReference.averageDailyCurtailmentOpportunityMwh.toFixed(1)} MWh/day) and positive redispatch cost ${marketReference.positiveRedispatchCostEurPerMwh.toFixed(2)} EUR/MWh from ${marketReference.redispatchSourceLabel}.`
+    );
+    if (marketReference.curtailmentStatus !== "loaded") {
+      assumptionFootnotes.push(
+        "Curtailment feed unavailable in this run, so avoided redispatch is set conservatively to zero."
+      );
+    }
+  } else {
+    assumptionFootnotes.push(
+      `Revenue split (illustrative): arbitrage ${REVENUE_SPLIT.arbitrage * 100}%, peak shave ${REVENUE_SPLIT.peakShaving * 100}%, grid ${REVENUE_SPLIT.gridServices * 100}%.`
+    );
+  }
 
   return {
     annualDischargedMwh,
     annualArbitrageRevenue: annualArbitrageRevenue * revenueMultiplier,
     annualPeakShavingRevenue: annualPeakShavingRevenue * revenueMultiplier,
     annualGridServicesRevenue: annualGridServicesRevenue * revenueMultiplier,
+    annualAvoidedRedispatchRevenue: annualAvoidedRedispatchRevenue * revenueMultiplier,
     annualRevenueNominal,
     annualRevenue,
     capex,
@@ -202,6 +271,8 @@ export function computeEconomics(
     paybackYears: Number.isFinite(paybackYears) ? paybackYears : 0,
     grossIrr,
     lcoeEurPerMwh,
+    effectiveAveragePriceSpreadEurPerMwh,
+    revenueModel: useLiveMarketReference ? "live_market_reference" : "manual_blended",
     assumptionFootnotes,
   };
 }
