@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Sparkles, Zap } from "lucide-react";
 import { z } from "zod";
 
@@ -71,6 +71,13 @@ type BriefingDailyStoryProps = {
   storyWindow: BriefingStoryWindow;
   /** Bumped to force a refetch (e.g. user pressed "Refresh"). */
   refreshNonce?: number;
+  children?: (sections: BriefingDailyStorySections) => ReactNode;
+};
+
+type BriefingDailyStorySections = {
+  introSection: ReactNode;
+  counterfactualSection: ReactNode;
+  footerSection: ReactNode;
 };
 
 const FETCH_TIMEOUT_MS = 18_000;
@@ -105,6 +112,7 @@ const labels = {
     windowKicker: "Window story · Berlin",
     insightsLabel: "Today's signals",
     windowInsightsLabel: "Window signals",
+    keyInsightsLabel: "Key insights",
     snapshotLabel: "Data snapshot",
     howToReadLabel: "How to read this window",
     analysisLabel: "BESSForge analysis",
@@ -150,6 +158,7 @@ const labels = {
     windowKicker: "Fenster-Story · Berlin",
     insightsLabel: "Heutige Signale",
     windowInsightsLabel: "Signale im Fenster",
+    keyInsightsLabel: "Wichtigste Erkenntnisse",
     snapshotLabel: "Datensnapshot",
     howToReadLabel: "So liest du das Fenster",
     analysisLabel: "BESSForge-Analyse",
@@ -192,7 +201,25 @@ const labels = {
   },
 } as const;
 
-export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: BriefingDailyStoryProps) {
+function summarizeNarrative(text: string, maxSentences = 2): string {
+  const sentences =
+    text
+      .trim()
+      .match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g)
+      ?.map((sentence) => sentence.trim())
+      .filter(Boolean) ?? [];
+  if (sentences.length <= maxSentences) {
+    return text.trim();
+  }
+  return `${sentences.slice(0, maxSentences).join(" ")} …`;
+}
+
+export function BriefingDailyStory({
+  language,
+  storyWindow,
+  refreshNonce = 0,
+  children,
+}: BriefingDailyStoryProps) {
   const [data, setData] = useState<StoryResponse | null>(null);
   /**
    * Initial state is "loading" so the very first paint already renders the
@@ -254,7 +281,6 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
   const t = labels[language];
   const showWindowChrome = isWindowMode || Boolean(data?.context.isMultiDayWindow);
   const kickerText = showWindowChrome ? t.windowKicker : t.kicker;
-  const insightsLabelText = showWindowChrome ? t.windowInsightsLabel : t.insightsLabel;
   const loadingText = showWindowChrome ? t.windowLoading : t.loading;
   const errorText = showWindowChrome ? t.windowError : t.error;
 
@@ -263,11 +289,7 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
     const fmt = new Intl.NumberFormat(language === "de" ? "de-DE" : "en-GB", {
       maximumFractionDigits: 1,
     });
-    const net = data.context.netStructuralBalanceGwh;
     return {
-      netSign: net >= 0 ? "+" : "−",
-      netAbs: fmt.format(Math.abs(net)),
-      gridPct: data.context.simulated.gridImpactReductionPct,
       gridPctText:
         data.context.simulated.gridImpactReductionPct !== null
           ? fmt.format(data.context.simulated.gridImpactReductionPct)
@@ -318,57 +340,76 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
     };
   }, [data, language]);
 
-  return (
-    <section
-      data-state={loadingState}
-      className="group relative overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-emerald-50/30 px-5 py-5 shadow-[0_1px_0_rgb(255_255_255_/_0.6)_inset,0_18px_44px_-22px_rgb(15_23_42_/_0.18)] transition-shadow duration-300 dark:border-white/[0.06] dark:from-[rgba(13,19,36,0.92)] dark:via-[rgba(13,19,36,0.85)] dark:to-emerald-950/20 dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_22px_60px_-28px_rgb(0_0_0_/_0.7)] md:px-7 md:py-6"
-      aria-busy={loadingState === "loading"}
-    >
-      {/* Subtle ambient glow */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-16 -right-16 size-48 rounded-full bg-emerald-400/10 blur-3xl dark:bg-emerald-400/[0.08]"
-      />
+  const condensedNarrative = data ? summarizeNarrative(data.story.narrative, data.context.isMultiDayWindow ? 3 : 2) : null;
 
-      <header className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <Sparkles
-            className="size-3.5 text-emerald-600 dark:text-emerald-300"
-            aria-hidden
-          />
-          <p className="text-[10.5px] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-            {kickerText}
-          </p>
-        </div>
-        {data ? (
-          <p className="text-[10.5px] tracking-[0.16em] text-muted-foreground/80 uppercase tabular-nums">
-            {t.asOfPrefix} · {data.dateBerlin}
-          </p>
-        ) : null}
-      </header>
+  const headerBlock = (
+    <header className="flex items-center justify-between gap-4">
+      <div className="flex items-center gap-2">
+        <Sparkles className="size-3.5 text-emerald-600 dark:text-emerald-300" aria-hidden />
+        <p className="text-[10.5px] font-semibold tracking-[0.2em] text-muted-foreground uppercase">{kickerText}</p>
+      </div>
+      {data ? (
+        <p className="text-[10.5px] tracking-[0.16em] text-muted-foreground/80 uppercase tabular-nums">
+          {t.asOfPrefix} · {data.dateBerlin}
+        </p>
+      ) : null}
+    </header>
+  );
 
-      {loadingState === "loading" && !data ? (
+  const windowNote =
+    data?.context.isMultiDayWindow ? (
+      <div className="rounded-xl border border-border/60 bg-background/55 px-4 py-3 dark:border-slate-600/45 dark:bg-slate-950/35">
+        <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">{t.howToReadLabel}</p>
+        <p className="mt-1.5 max-w-3xl text-[12px] leading-relaxed text-muted-foreground/95 md:text-[12.75px] dark:text-slate-400/95">
+          {language === "de" ? (
+            <>
+              Die Nettobilanz ist die Summe (Erzeugung − Last) über alle veröffentlichten Viertelstunden von{" "}
+              <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> bis{" "}
+              <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. Die drei Signale
+              darunter markieren die Belastungsschwerpunkte im Fenster, nicht drei Anteile eines zweiten Gesamt-Nettos.
+            </>
+          ) : (
+            <>
+              Net balance is generation minus load summed over every published quarter-hour from{" "}
+              <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> through{" "}
+              <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. The three signals
+              below mark where stress clusters inside that window, not three slices of a second total.
+            </>
+          )}
+        </p>
+      </div>
+    ) : null;
+
+  const introSection =
+    loadingState === "loading" && !data ? (
+      <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-emerald-50/30 px-5 py-5 shadow-[0_1px_0_rgb(255_255_255_/_0.6)_inset,0_18px_44px_-22px_rgb(15_23_42_/_0.18)] dark:border-white/[0.06] dark:from-[rgba(13,19,36,0.92)] dark:via-[rgba(13,19,36,0.85)] dark:to-emerald-950/20 dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_22px_60px_-28px_rgb(0_0_0_/_0.7)] md:px-7 md:py-6">
+        {headerBlock}
         <div className="mt-5 space-y-3">
-          <Skeleton className="h-7 w-3/4 max-w-2xl" />
+          <Skeleton className="h-8 w-3/4 max-w-2xl" />
           <div className="space-y-2 pt-2">
             <Skeleton className="h-4 w-[88%] max-w-3xl" />
             <Skeleton className="h-4 w-[82%] max-w-3xl" />
-            <Skeleton className="h-4 w-[90%] max-w-3xl" />
           </div>
-          <Skeleton className="h-4 w-full max-w-3xl" />
-          <Skeleton className="h-4 w-5/6 max-w-2xl" />
-          <div className="mt-5 rounded-xl border border-dashed border-border/60 p-3.5">
-            <Skeleton className="h-3 w-40" />
-            <Skeleton className="mt-2 h-4 w-full max-w-xl" />
+          <div className="mt-5 rounded-2xl border border-dashed border-border/60 p-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Skeleton className="h-20 rounded-xl" />
+              <Skeleton className="h-20 rounded-xl" />
+              <Skeleton className="h-20 rounded-xl" />
+            </div>
+            <div className="mt-4 space-y-2">
+              <Skeleton className="h-4 w-full max-w-3xl" />
+              <Skeleton className="h-4 w-[90%] max-w-3xl" />
+              <Skeleton className="h-4 w-[84%] max-w-3xl" />
+            </div>
           </div>
-          <p className="mt-4 text-[11px] text-muted-foreground/70">{loadingText}</p>
+          <p className="text-[11px] text-muted-foreground/70">{loadingText}</p>
         </div>
-      ) : loadingState === "error" ? (
+      </div>
+    ) : loadingState === "error" ? (
+      <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-emerald-50/30 px-5 py-5 shadow-[0_1px_0_rgb(255_255_255_/_0.6)_inset,0_18px_44px_-22px_rgb(15_23_42_/_0.18)] dark:border-white/[0.06] dark:from-[rgba(13,19,36,0.92)] dark:via-[rgba(13,19,36,0.85)] dark:to-emerald-950/20 dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_22px_60px_-28px_rgb(0_0_0_/_0.7)] md:px-7 md:py-6">
+        {headerBlock}
         <div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-300/40 bg-amber-50/40 p-3.5 dark:border-amber-500/30 dark:bg-amber-950/20">
-          <AlertTriangle
-            className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-300"
-            aria-hidden
-          />
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-300" aria-hidden />
           <div className="flex-1 text-sm">
             <p className="text-amber-900 dark:text-amber-100">{errorText}</p>
             <button
@@ -380,165 +421,189 @@ export function BriefingDailyStory({ language, storyWindow, refreshNonce = 0 }: 
             </button>
           </div>
         </div>
-      ) : data ? (
-        <>
-          <h2 className="mt-3 text-[19px] leading-snug font-medium tracking-tight text-foreground md:text-[22px] [font-family:var(--font-heading)]">
-            {data.story.headline}
-          </h2>
-          <p className="mt-2 max-w-3xl text-[13px] leading-relaxed text-muted-foreground/95 md:text-[13.5px] dark:text-slate-300/90">
-            {data.story.narrative}
-          </p>
-          {data.context.isMultiDayWindow ? (
-            <div className="mt-3 rounded-xl border border-border/60 bg-background/55 px-4 py-3 dark:border-slate-600/45 dark:bg-slate-950/35">
-              <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-                {t.howToReadLabel}
-              </p>
-              <p className="mt-1.5 max-w-3xl text-[12px] leading-relaxed text-muted-foreground/95 md:text-[12.75px] dark:text-slate-400/95">
-                {language === "de" ? (
-                  <>
-                    Die Nettobilanz ist die Summe (Erzeugung \u2212 Last) \u00fcber alle ver\u00f6ffentlichten Viertelstunden von{" "}
-                    <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> bis{" "}
-                    <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. Die drei
-                    Signale darunter markieren die Belastungsschwerpunkte im Fenster, nicht drei Anteile eines zweiten
-                    Gesamt-Nettos.
-                  </>
-                ) : (
-                  <>
-                    Net balance is generation minus load summed over every published quarter-hour from{" "}
-                    <strong className="font-medium text-foreground/90">{data.context.rangeStartBerlin}</strong> through{" "}
-                    <strong className="font-medium text-foreground/90">{data.context.rangeEndBerlin}</strong>. The three
-                    signals below mark where stress clusters inside that window, not three slices of a second total.
-                  </>
-                )}
-              </p>
+      </div>
+    ) : data && storyMetrics && headerNumbers && condensedNarrative ? (
+      <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-emerald-50/30 px-5 py-5 shadow-[0_1px_0_rgb(255_255_255_/_0.6)_inset,0_18px_44px_-22px_rgb(15_23_42_/_0.18)] dark:border-white/[0.06] dark:from-[rgba(13,19,36,0.92)] dark:via-[rgba(13,19,36,0.85)] dark:to-emerald-950/20 dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_22px_60px_-28px_rgb(0_0_0_/_0.7)] md:px-7 md:py-6">
+        {headerBlock}
+        <div className="mt-4 space-y-4">
+          <div className="space-y-2.5">
+            <h2 className="text-[1.55rem] font-semibold leading-tight tracking-tight text-foreground md:text-[2rem] [font-family:var(--font-heading)]">
+              {data.story.headline}
+            </h2>
+            <p className="max-w-4xl text-sm leading-relaxed text-muted-foreground/95 md:text-base dark:text-slate-300/90">
+              {condensedNarrative}
+            </p>
+          </div>
+
+          {windowNote}
+
+          <div
+            className="rounded-2xl border border-emerald-200/70 bg-white/75 px-4 py-4 shadow-sm dark:border-emerald-500/25 dark:bg-slate-950/45"
+            role="group"
+            aria-label={t.keyInsightsLabel}
+          >
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-emerald-800 uppercase dark:text-emerald-200">
+              {t.keyInsightsLabel}
+            </p>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <StoryHeroStat label={t.netBalanceLabel} value={storyMetrics.netBalance} />
+              <StoryHeroStat
+                label={t.modelCapacityLabel}
+                value={`${headerNumbers.capGwh} GWh`}
+                subtitle={t.modelCapacitySubtitle(headerNumbers.pwGw)}
+              />
+              <StoryHeroStat
+                label={t.coverageLabel}
+                value={storyMetrics.coverage}
+                subtitle={`${t.peakHoursLabel}: ${storyMetrics.peakHours}`}
+              />
             </div>
-          ) : null}
-          {storyMetrics ? (
-            <>
-              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                <div
-                  className="rounded-xl border border-border/65 bg-background/45 px-4 py-3 dark:border-slate-600/45 dark:bg-slate-950/35"
-                  role="group"
-                  aria-label={insightsLabelText}
-                >
-                  <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-                    {insightsLabelText}
-                  </p>
-                  <ol className="mt-3 space-y-2.5">
-                    {data.story.insights.map((insight, index) => (
-                      <li key={`${index}-${insight}`} className="flex items-start gap-3">
-                        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/12 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-200">
-                          {index + 1}
-                        </span>
-                        <p className="min-w-0 text-[12.75px] leading-relaxed text-foreground/90 dark:text-slate-200/90">
-                          {insight}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
 
-                <div className="rounded-xl border border-border/65 bg-background/45 px-4 py-3 dark:border-slate-600/45 dark:bg-slate-950/35">
-                  <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-                    {t.snapshotLabel}
+            <ol className="mt-4 space-y-3">
+              {data.story.insights.map((insight, index) => (
+                <li key={`${index}-${insight}`} className="flex items-start gap-3">
+                  <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/12 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-200">
+                    {index + 1}
+                  </span>
+                  <p className="min-w-0 text-[13px] leading-relaxed text-foreground/90 dark:text-slate-200/90">
+                    {insight}
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <StoryMetaPill label={t.netBalanceLabel} value={storyMetrics.netBalance} />
-                    <StoryMetaPill label={t.dayCoreLabel} value={storyMetrics.dayCore} />
-                    {storyMetrics.hasRenewableNet ? (
-                      <StoryMetaPill
-                        label={t.renewableNetLabel}
-                        value={`${storyMetrics.renewableNet} · ${t.renewableCoverageSubtitle(
-                          storyMetrics.renewableCoverage
-                        )}`}
-                      />
-                    ) : null}
-                    <StoryMetaPill label={t.peakHoursLabel} value={storyMetrics.peakHours} />
-                    <StoryMetaPill
-                      label={t.fleetLabel}
-                      value={t.fleetSubtitle(storyMetrics.fleetPower, storyMetrics.fleetCapacity)}
-                    />
-                    {data.context.curtailedEnergyGwh !== null ? (
-                      <StoryMetaPill
-                        label={t.curtailedLabel}
-                        value={`${storyMetrics.curtailedEnergy} · ${t.curtailedSubtitle(
-                          storyMetrics.curtailedCoverage
-                        )}`}
-                      />
-                    ) : data.context.curtailmentStatus !== "loaded" ? (
-                      <StoryMetaPill
-                        label={t.curtailedLabel}
-                        value={
-                          data.context.curtailmentStatus === "unavailable_not_configured"
-                            ? t.curtailedUnavailable
-                            : t.curtailedUpstream
-                        }
-                      />
-                    ) : null}
-                    <StoryMetaPill label={t.coverageLabel} value={storyMetrics.coverage} />
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : null}
+                </li>
+              ))}
+            </ol>
 
-          {headerNumbers ? (
-            <div className="mt-5 rounded-xl border border-emerald-200/65 bg-gradient-to-br from-emerald-50/80 via-background to-background px-4 py-4 dark:border-emerald-500/25 dark:from-emerald-500/10 dark:via-slate-950/40 dark:to-slate-950/35">
-              <div className="flex items-center gap-2">
-                <Zap
-                  className="size-3.5 text-emerald-700 dark:text-emerald-300"
-                  aria-hidden
-                />
-                <p className="text-[10px] font-semibold tracking-[0.18em] text-emerald-800/90 uppercase dark:text-emerald-200/90">
-                  {t.counterfactualLabel}
-                </p>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
+              <StoryMetaPill label={t.dayCoreLabel} value={storyMetrics.dayCore} />
+              <StoryMetaPill
+                label={t.fleetLabel}
+                value={t.fleetSubtitle(storyMetrics.fleetPower, storyMetrics.fleetCapacity)}
+              />
+              {storyMetrics.hasRenewableNet ? (
                 <StoryMetaPill
-                  label={t.modelCapacityLabel}
-                  value={`${headerNumbers.capGwh} GWh · ${t.modelCapacitySubtitle(headerNumbers.pwGw)}`}
+                  label={t.renewableNetLabel}
+                  value={`${storyMetrics.renewableNet} · ${t.renewableCoverageSubtitle(storyMetrics.renewableCoverage)}`}
                 />
-              </div>
-              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-3">
-                <StoryMetricTile
-                  label={t.gridImpactCaption}
-                  value={headerNumbers.gridPctText !== null ? `${headerNumbers.gridPctText}%` : "—"}
-                  subtitle={data.context.isMultiDayWindow ? t.kpiHintGrid : undefined}
-                  tone="accent"
+              ) : null}
+              {data.context.curtailedEnergyGwh !== null ? (
+                <StoryMetaPill
+                  label={t.curtailedLabel}
+                  value={`${storyMetrics.curtailedEnergy} · ${t.curtailedSubtitle(storyMetrics.curtailedCoverage)}`}
                 />
-                <StoryMetricTile
-                  label={t.absorbedSurplusCaption}
-                  value={headerNumbers.absorbedSharePctText !== null ? `${headerNumbers.absorbedSharePctText}%` : "—"}
-                  subtitle={data.context.isMultiDayWindow ? t.kpiHintAbsorbed : undefined}
+              ) : data.context.curtailmentStatus !== "loaded" ? (
+                <StoryMetaPill
+                  label={t.curtailedLabel}
+                  value={
+                    data.context.curtailmentStatus === "unavailable_not_configured"
+                      ? t.curtailedUnavailable
+                      : t.curtailedUpstream
+                  }
                 />
-                <StoryMetricTile
-                  label={t.servedDeficitCaption}
-                  value={headerNumbers.servedSharePctText !== null ? `${headerNumbers.servedSharePctText}%` : "—"}
-                  subtitle={data.context.isMultiDayWindow ? t.kpiHintServed : undefined}
-                />
-              </div>
-              <p className="mt-3 max-w-3xl text-[12.75px] leading-relaxed text-emerald-950/90 md:text-[13px] dark:text-emerald-50/90">
-                {data.story.counterfactual}
-              </p>
-              <p className="mt-2 text-[10px] leading-snug text-muted-foreground/75">
-                {data.context.isMultiDayWindow ? t.windowKpiFootnote : t.kpiFootnote}
-              </p>
+              ) : null}
             </div>
-          ) : null}
+          </div>
+        </div>
+      </div>
+    ) : null;
 
-          <footer className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[10.5px] text-muted-foreground/80">
-            <span>
-              {data.source === "llm" ? t.poweredBy : t.poweredByFallback}
-            </span>
-            {data.story.dataAsOfNote ? (
-              <span className="text-muted-foreground/70">
-                {data.story.dataAsOfNote}
-              </span>
-            ) : null}
-          </footer>
-        </>
-      ) : null}
+  const counterfactualSection =
+    loadingState === "loading" && !data ? (
+      <div className="rounded-2xl border border-emerald-200/65 bg-gradient-to-br from-emerald-50/80 via-background to-background px-4 py-4 dark:border-emerald-500/25 dark:from-emerald-500/10 dark:via-slate-950/40 dark:to-slate-950/35">
+        <Skeleton className="h-4 w-44" />
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <Skeleton className="h-40 rounded-2xl" />
+          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-1">
+            <Skeleton className="h-24 rounded-xl" />
+            <Skeleton className="h-24 rounded-xl" />
+            <Skeleton className="h-24 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    ) : data && headerNumbers ? (
+      <div className="rounded-2xl border border-emerald-200/65 bg-gradient-to-br from-emerald-50/80 via-background to-background px-4 py-4 dark:border-emerald-500/25 dark:from-emerald-500/10 dark:via-slate-950/40 dark:to-slate-950/35">
+        <div className="flex items-center gap-2">
+          <Zap className="size-3.5 text-emerald-700 dark:text-emerald-300" aria-hidden />
+          <p className="text-[10px] font-semibold tracking-[0.18em] text-emerald-800/90 uppercase dark:text-emerald-200/90">
+            {t.counterfactualLabel}
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]">
+          <div className="rounded-2xl border border-emerald-200/70 bg-white/80 px-4 py-4 shadow-sm dark:border-emerald-400/25 dark:bg-slate-950/45">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+              {t.modelCapacityLabel}
+            </p>
+            <p className="mt-2 text-4xl font-black leading-none tabular-nums text-slate-950 dark:text-white md:text-[3.1rem]">
+              {headerNumbers.capGwh} GWh
+            </p>
+            <p className="mt-2 text-base font-semibold text-slate-700 dark:text-slate-200">
+              {t.modelCapacitySubtitle(headerNumbers.pwGw)}
+            </p>
+            <p className="mt-4 text-sm leading-relaxed text-emerald-950/90 dark:text-emerald-50/90">
+              {data.story.counterfactual}
+            </p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-1">
+            <StoryMetricTile
+              label={t.gridImpactCaption}
+              value={headerNumbers.gridPctText !== null ? `${headerNumbers.gridPctText}%` : "—"}
+              subtitle={data.context.isMultiDayWindow ? t.kpiHintGrid : undefined}
+              tone="accent"
+            />
+            <StoryMetricTile
+              label={t.absorbedSurplusCaption}
+              value={headerNumbers.absorbedSharePctText !== null ? `${headerNumbers.absorbedSharePctText}%` : "—"}
+              subtitle={data.context.isMultiDayWindow ? t.kpiHintAbsorbed : undefined}
+            />
+            <StoryMetricTile
+              label={t.servedDeficitCaption}
+              value={headerNumbers.servedSharePctText !== null ? `${headerNumbers.servedSharePctText}%` : "—"}
+              subtitle={data.context.isMultiDayWindow ? t.kpiHintServed : undefined}
+            />
+          </div>
+        </div>
+
+        <p className="mt-3 text-[10px] leading-snug text-muted-foreground/75">
+          {data.context.isMultiDayWindow ? t.windowKpiFootnote : t.kpiFootnote}
+        </p>
+      </div>
+    ) : null;
+
+  const footerSection =
+    data ? (
+      <footer className="flex flex-wrap items-center justify-between gap-2 text-[10.5px] text-muted-foreground/80">
+        <span>{data.source === "llm" ? t.poweredBy : t.poweredByFallback}</span>
+        {data.story.dataAsOfNote ? <span className="text-muted-foreground/70">{data.story.dataAsOfNote}</span> : null}
+      </footer>
+    ) : null;
+
+  if (children) {
+    return <>{children({ introSection, counterfactualSection, footerSection })}</>;
+  }
+
+  return (
+    <section data-state={loadingState} className="space-y-5" aria-busy={loadingState === "loading"}>
+      {introSection}
+      {counterfactualSection}
+      {footerSection}
     </section>
+  );
+}
+
+function StoryHeroStat({ label, value, subtitle }: StoryMetricTileProps) {
+  return (
+    <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/55 px-3.5 py-3 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10">
+      <p className="text-[9px] font-semibold tracking-[0.16em] text-emerald-900/80 uppercase dark:text-emerald-200/80">
+        {label}
+      </p>
+      <p className="mt-1.5 text-[1.45rem] font-black leading-tight tabular-nums text-slate-950 dark:text-white md:text-[1.75rem]">
+        {value}
+      </p>
+      {subtitle ? (
+        <p className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-300">{subtitle}</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -563,7 +628,7 @@ function StoryMetricTile({ label, value, subtitle, tone = "neutral" }: StoryMetr
       <p className="text-[9px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
         {label}
       </p>
-      <p className={`mt-1 text-[1.05rem] font-extrabold leading-tight tabular-nums md:text-[1.15rem] ${toneClass}`}>
+      <p className={`mt-1.5 text-[1.3rem] font-extrabold leading-tight tabular-nums md:text-[1.55rem] ${toneClass}`}>
         {value}
       </p>
       {subtitle ? (

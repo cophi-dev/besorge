@@ -90,7 +90,7 @@ describe("BriefingDailyStory", () => {
     await waitFor(() =>
       expect(screen.getByText(goodPayload.story.headline)).toBeInTheDocument()
     );
-    expect(screen.getByRole("group", { name: /today's signals/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /key insights/i })).toBeInTheDocument();
     expect(screen.getByText(/Day core \(10–16\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Renewables minus load/i)).toBeInTheDocument();
     expect(screen.getByText(/Peak hours/i)).toBeInTheDocument();
@@ -101,9 +101,9 @@ describe("BriefingDailyStory", () => {
     expect(screen.getByText(/BESSForge analyst \(LLM\)/i)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.dataAsOfNote!)).toBeInTheDocument();
     expect(screen.getByText(/Net balance/i)).toBeInTheDocument();
-    expect(screen.getByText(/Data snapshot/i)).toBeInTheDocument();
-    expect(screen.getByText(/Modeled BESS/i)).toBeInTheDocument();
-    expect(screen.getByText(/9\.2 GW balanced/)).toBeInTheDocument();
+    expect(screen.getByText(/Key insights/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Modeled BESS/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/9\.2 GW balanced/).length).toBeGreaterThan(0);
     expect(container.textContent ?? "").toMatch(/absorbed \(charge opportunity\)/i);
     expect(container.textContent ?? "").toMatch(/served \(gross deficit\)/i);
     expect(container.textContent ?? "").toMatch(/imbalance smoothing/i);
