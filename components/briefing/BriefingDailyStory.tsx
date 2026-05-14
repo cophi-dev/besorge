@@ -79,10 +79,18 @@ type BriefingDailyStoryProps = {
   children?: (sections: BriefingDailyStorySections) => ReactNode;
 };
 
+export type BriefingStoryDayOptimalContext = {
+  dateBerlin: string;
+  dayCapacityGwh: number;
+  dayPowerGw: number;
+};
+
 type BriefingDailyStorySections = {
   introSection: ReactNode;
   counterfactualSection: ReactNode;
   footerSection: ReactNode;
+  /** Present for a single-calendar-day story once data is loaded — matches counterfactual headline numbers. */
+  dayOptimalContext: BriefingStoryDayOptimalContext | null;
 };
 
 const FETCH_TIMEOUT_MS = 18_000;
@@ -122,6 +130,12 @@ const labels = {
     howToReadLabel: "How to read this window",
     analysisLabel: "BESSForge analysis",
     counterfactualLabel: "What an optimal BESS would have done",
+    counterfactualDayTitle: (date: string) => `Optimal BESS for this day (${date})`,
+    counterfactualWindowTitle: "Optimal BESS for this window",
+    counterfactualModelLine: (capGwh: string, powerGw: string) =>
+      `Model BESS: ${capGwh} GWh / ${powerGw} GW balanced`,
+    counterfactualDayExplainer: (gridPct: string, absorbedPct: string, servedPct: string) =>
+      `A BESS sized optimally for this single day would have smoothed ${gridPct}% of net structural swings, captured ${absorbedPct}% of charge opportunity, and covered ${servedPct}% of gross deficit energy.`,
     poweredBy: "BESSForge analyst (LLM)",
     poweredByFallback: "BESSForge analyst (deterministic — model offline)",
     loading: "Drafting today's analyst note…",
@@ -168,6 +182,12 @@ const labels = {
     howToReadLabel: "So liest du das Fenster",
     analysisLabel: "BESSForge-Analyse",
     counterfactualLabel: "Was ein optimaler BESS bewirkt hätte",
+    counterfactualDayTitle: (date: string) => `Optimaler BESS für diesen Tag (${date})`,
+    counterfactualWindowTitle: "Optimaler BESS für dieses Fenster",
+    counterfactualModelLine: (capGwh: string, powerGw: string) =>
+      `Modell-BESS: ${capGwh} GWh / ${powerGw} GW balanced`,
+    counterfactualDayExplainer: (gridPct: string, absorbedPct: string, servedPct: string) =>
+      `Ein für diesen einzelnen Tag optimal dimensionierter BESS hätte ${gridPct}% der Netto-Schwankungen geglättet, ${absorbedPct}% der Ladechance genutzt und ${servedPct}% des Defizits gedeckt.`,
     poweredBy: "BESSForge-Analyst (LLM)",
     poweredByFallback: "BESSForge-Analyst (deterministisch — Modell offline)",
     loading: "Analystennotiz wird erstellt…",
@@ -514,6 +534,15 @@ export function BriefingDailyStory({
       </div>
     ) : null;
 
+  const dayOptimalContextForChildren: BriefingStoryDayOptimalContext | null =
+    data && !data.context.isMultiDayWindow
+      ? {
+          dateBerlin: data.dateBerlin,
+          dayCapacityGwh: data.context.simulated.practicalCapacityGwh,
+          dayPowerGw: data.context.simulated.balancedPowerMw / 1000,
+        }
+      : null;
+
   const counterfactualSection =
     loadingState === "loading" && !data ? (
       <div className="rounded-2xl border border-emerald-200/65 bg-gradient-to-br from-emerald-50/80 via-background to-background px-4 py-4 dark:border-emerald-500/25 dark:from-emerald-500/10 dark:via-slate-950/40 dark:to-slate-950/35">
@@ -529,52 +558,84 @@ export function BriefingDailyStory({
       </div>
     ) : data && headerNumbers ? (
       <div className="rounded-2xl border border-emerald-200/65 bg-gradient-to-br from-emerald-50/80 via-background to-background px-4 py-4 dark:border-emerald-500/25 dark:from-emerald-500/10 dark:via-slate-950/40 dark:to-slate-950/35">
-        <div className="flex items-center gap-2">
-          <Zap className="size-3.5 text-emerald-700 dark:text-emerald-300" aria-hidden />
-          <p className="text-[10px] font-semibold tracking-[0.18em] text-emerald-800/90 uppercase dark:text-emerald-200/90">
-            {t.counterfactualLabel}
-          </p>
-        </div>
+        {data.context.isMultiDayWindow ? (
+          <>
+            <div className="flex items-center gap-2">
+              <Zap className="size-3.5 text-emerald-700 dark:text-emerald-300" aria-hidden />
+              <p className="text-[10px] font-semibold tracking-[0.18em] text-emerald-800/90 uppercase dark:text-emerald-200/90">
+                {t.counterfactualLabel}
+              </p>
+            </div>
+            <h3 className="mt-3 text-lg font-semibold leading-snug text-slate-950 dark:text-white md:text-xl [font-family:var(--font-heading)]">
+              {t.counterfactualWindowTitle}
+            </h3>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]">
-          <div className="rounded-2xl border border-emerald-200/70 bg-white/80 px-4 py-4 shadow-sm dark:border-emerald-400/25 dark:bg-slate-950/45">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-              {t.modelCapacityLabel}
-            </p>
-            <p className="mt-2 text-4xl font-black leading-none tabular-nums text-slate-950 dark:text-white md:text-[3.1rem]">
-              {headerNumbers.capGwh} GWh
-            </p>
-            <p className="mt-2 text-base font-semibold text-slate-700 dark:text-slate-200">
-              {t.modelCapacitySubtitle(headerNumbers.pwGw)}
-            </p>
-            <p className="mt-4 text-sm leading-relaxed text-emerald-950/90 dark:text-emerald-50/90">
-              {data.story.counterfactual}
-            </p>
-          </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]">
+              <div className="rounded-2xl border border-emerald-200/70 bg-white/80 px-4 py-4 shadow-sm dark:border-emerald-400/25 dark:bg-slate-950/45">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                  {t.modelCapacityLabel}
+                </p>
+                <p className="mt-2 text-4xl font-black leading-none tabular-nums text-slate-950 dark:text-white md:text-[3.1rem]">
+                  {headerNumbers.capGwh} GWh
+                </p>
+                <p className="mt-2 text-base font-semibold text-slate-700 dark:text-slate-200">
+                  {t.modelCapacitySubtitle(headerNumbers.pwGw)}
+                </p>
+                <p className="mt-4 text-sm leading-relaxed text-emerald-950/90 dark:text-emerald-50/90">
+                  {data.story.counterfactual}
+                </p>
+              </div>
 
-          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-1">
-            <StoryMetricTile
-              label={t.gridImpactCaption}
-              value={headerNumbers.gridPctText !== null ? `${headerNumbers.gridPctText}%` : "—"}
-              subtitle={data.context.isMultiDayWindow ? t.kpiHintGrid : undefined}
-              tone="accent"
-            />
-            <StoryMetricTile
-              label={t.absorbedSurplusCaption}
-              value={headerNumbers.absorbedSharePctText !== null ? `${headerNumbers.absorbedSharePctText}%` : "—"}
-              subtitle={data.context.isMultiDayWindow ? t.kpiHintAbsorbed : undefined}
-            />
-            <StoryMetricTile
-              label={t.servedDeficitCaption}
-              value={headerNumbers.servedSharePctText !== null ? `${headerNumbers.servedSharePctText}%` : "—"}
-              subtitle={data.context.isMultiDayWindow ? t.kpiHintServed : undefined}
-            />
-          </div>
-        </div>
+              <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-1">
+                <StoryMetricTile
+                  label={t.gridImpactCaption}
+                  value={headerNumbers.gridPctText !== null ? `${headerNumbers.gridPctText}%` : "—"}
+                  subtitle={t.kpiHintGrid}
+                  tone="accent"
+                />
+                <StoryMetricTile
+                  label={t.absorbedSurplusCaption}
+                  value={headerNumbers.absorbedSharePctText !== null ? `${headerNumbers.absorbedSharePctText}%` : "—"}
+                  subtitle={t.kpiHintAbsorbed}
+                />
+                <StoryMetricTile
+                  label={t.servedDeficitCaption}
+                  value={headerNumbers.servedSharePctText !== null ? `${headerNumbers.servedSharePctText}%` : "—"}
+                  subtitle={t.kpiHintServed}
+                />
+              </div>
+            </div>
 
-        <p className="mt-3 text-[10px] leading-snug text-muted-foreground/75">
-          {data.context.isMultiDayWindow ? t.windowKpiFootnote : t.kpiFootnote}
-        </p>
+            <p className="mt-3 text-[10px] leading-snug text-muted-foreground/75">{t.windowKpiFootnote}</p>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <Zap className="size-3.5 text-emerald-700 dark:text-emerald-300" aria-hidden />
+              <p className="text-[10px] font-semibold tracking-[0.18em] text-emerald-800/90 uppercase dark:text-emerald-200/90">
+                {t.analysisLabel}
+              </p>
+            </div>
+            <h3 className="mt-3 text-lg font-semibold leading-snug text-slate-950 dark:text-white md:text-xl [font-family:var(--font-heading)]">
+              {t.counterfactualDayTitle(data.dateBerlin)}
+            </h3>
+
+            <div className="mt-4 rounded-2xl border border-emerald-200/70 bg-white/80 px-4 py-4 shadow-sm dark:border-emerald-400/25 dark:bg-slate-950/45">
+              <p className="text-[11px] font-semibold leading-snug text-slate-800 dark:text-slate-100">
+                {t.counterfactualModelLine(headerNumbers.capGwh, headerNumbers.pwGw)}
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-emerald-950/90 dark:text-emerald-50/90">
+                {t.counterfactualDayExplainer(
+                  headerNumbers.gridPctText ?? "—",
+                  headerNumbers.absorbedSharePctText ?? "—",
+                  headerNumbers.servedSharePctText ?? "—"
+                )}
+              </p>
+            </div>
+
+            <p className="mt-3 text-[10px] leading-snug text-muted-foreground/75">{t.kpiFootnote}</p>
+          </>
+        )}
       </div>
     ) : null;
 
@@ -587,7 +648,7 @@ export function BriefingDailyStory({
     ) : null;
 
   if (children) {
-    return <>{children({ introSection, counterfactualSection, footerSection })}</>;
+    return <>{children({ introSection, counterfactualSection, footerSection, dayOptimalContext: dayOptimalContextForChildren })}</>;
   }
 
   return (
@@ -598,6 +659,13 @@ export function BriefingDailyStory({
     </section>
   );
 }
+
+type StoryMetricTileProps = {
+  label: string;
+  value: string;
+  subtitle?: string;
+  tone?: "positive" | "negative" | "accent" | "neutral";
+};
 
 function StoryHeroStat({ label, value, subtitle }: StoryMetricTileProps) {
   return (
@@ -614,13 +682,6 @@ function StoryHeroStat({ label, value, subtitle }: StoryMetricTileProps) {
     </div>
   );
 }
-
-type StoryMetricTileProps = {
-  label: string;
-  value: string;
-  subtitle?: string;
-  tone?: "positive" | "negative" | "accent" | "neutral";
-};
 
 function StoryMetricTile({ label, value, subtitle, tone = "neutral" }: StoryMetricTileProps) {
   const toneClass =

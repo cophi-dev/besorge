@@ -97,16 +97,19 @@ describe("BriefingDailyStory", () => {
     expect(screen.getByText(/Fleet context/i)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.insights[0])).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.narrative)).toBeInTheDocument();
-    expect(screen.getByText(goodPayload.story.counterfactual)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /A BESS sized optimally for this single day would have smoothed 31\.2% of net structural swings, captured 47% of charge opportunity, and covered 22% of gross deficit energy\./i
+      )
+    ).toBeInTheDocument();
     expect(screen.getByText(/BESSForge analyst \(LLM\)/i)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.dataAsOfNote!)).toBeInTheDocument();
     expect(screen.getByText(/Net balance/i)).toBeInTheDocument();
     expect(screen.getByText(/Key insights/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Modeled BESS/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/9\.2 GW balanced/).length).toBeGreaterThan(0);
-    expect(container.textContent ?? "").toMatch(/absorbed \(charge opportunity\)/i);
-    expect(container.textContent ?? "").toMatch(/served \(gross deficit\)/i);
-    expect(container.textContent ?? "").toMatch(/imbalance smoothing/i);
+    expect(screen.getByText(/Optimal BESS for this day \(2026-05-09\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Model BESS: 18\.4 GWh \/ 9\.2 GW balanced/i)).toBeInTheDocument();
     expect(container.textContent ?? "").toMatch(/curtailment/i);
     expect(container.textContent ?? "").toMatch(/3\.4 GWh/i);
     expect(screen.getByText(/same published quarter-hours as the signals above/i)).toBeInTheDocument();
@@ -157,9 +160,7 @@ describe("BriefingDailyStory", () => {
     // Wait for a label that only renders post-load (the kicker is always
     // visible, so it's not a reliable load-completion signal).
     await waitFor(() =>
-      expect(
-        screen.getByText(/Was ein optimaler BESS bewirkt hätte/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Optimaler BESS für diesen Tag \(2026-05-09\)/i)).toBeInTheDocument()
     );
     expect(screen.getByText(/Story des Tages/i)).toBeInTheDocument();
   });

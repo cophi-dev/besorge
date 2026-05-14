@@ -66,7 +66,7 @@ import {
   type ChartRowTailForFleetMode,
 } from "@/lib/chartFleetSocSnapshot";
 import { BerlinDayCalendarButton } from "@/components/briefing/BerlinDayCalendarButton";
-import { BriefingDailyStory } from "@/components/briefing/BriefingDailyStory";
+import { BriefingDailyStory, type BriefingStoryDayOptimalContext } from "@/components/briefing/BriefingDailyStory";
 import { FlowExportButtons } from "@/components/briefing/FlowExportButtons";
 import { Button } from "@/components/ui/button";
 
@@ -1266,7 +1266,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           kpiRecommendedSelected: "Empfehlung (Auswahl, Balanced)",
           kpiRecommendationUnavailable:
             "12-Monats-Empfehlung aktuell nicht verfuegbar (Upstream-Daten fehlen).",
-          trailingKpiCapacity: "Tages-Energie (balanced)",
+          trailingKpiCapacity: "Empfohlene durchschnittliche Tagesgröße",
           trailingKpiDailyPercentileCaption: "P90 der modellierten Kalendertage",
           trailingKpiPayback: "Payback (Indikation)",
           trailingKpiImpact: "Abdeckung %",
@@ -1397,7 +1397,28 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           onePagerNetPeakPeakLine: (peak: string) => `Peak-Reduktion ${peak}`,
           onePagerFinalActionHint:
             "Kurz: verbleibende Ladechance sinkt mit mehr Energie oder Leistungskopf; die Kurven unten zeigen slotweise, wo die Flotte und die Simulation greifen.",
-          onePagerDetailsSummary: "Markt-Snapshot, 12M-Empfehlung & Skalierung",
+          onePagerDetailsSummary: "Markt-Snapshot & Szenarien",
+          twelveMonthSectionEyebrow: "Langfristige Balanced-Empfehlung",
+          twelveMonthSectionTitle: "Empfohlene BESS-Größe für die letzten 12 Monate",
+          twelveMonthBalancedTag: "(Balanced)",
+          twelveMonthExplainerSmallerThanDay:
+            "Dies ist die empfohlene durchschnittliche Tagesgröße über die letzten 12 Monate (P90 der modellierten Kalendertage). Sie liegt etwas unter der optimalen Ein-Tages-Größe oben, weil sie über viele Tage gemittelt ist.",
+          twelveMonthExplainerLargerThanDay:
+            "Dies ist die empfohlene durchschnittliche Tagesgröße über die letzten 12 Monate (P90 der modellierten Kalendertage). Sie liegt etwas über der optimalen Ein-Tages-Größe oben, weil ein einzelner ruhiger Tag weniger strukturelle Speicherarbeit verlangt als der Jahres-P90.",
+          twelveMonthExplainerNeutral:
+            "Dies ist die empfohlene durchschnittliche Tagesgröße über die letzten 12 Monate (P90 der modellierten Kalendertage). Sie liegt in derselben Größenordnung wie die Ein-Tages-Optimallösung.",
+          twelveMonthKpiPayback: "Payback",
+          twelveMonthKpiCoverage: "Abdeckung",
+          twelveMonthKpiRevenue: "12M Balanced · Erlös",
+          twelveMonthKpiPeakSoc: "Peak SoC über das Jahr",
+          bridgeDayOptimalAboveYear: (day: string, year: string) =>
+            `Die optimale Größe für den heutigen Tag (${day}) liegt etwas über der langfristig empfohlenen Balanced-Größe (${year}), weil heute ein besonders hoher struktureller Überschuss herrscht.`,
+          bridgeDayOptimalBelowYear: (day: string, year: string) =>
+            `Die optimale Größe für den heutigen Tag (${day}) liegt etwas unter der langfristig empfohlenen Balanced-Größe (${year}), weil das heutige Tagesprofil weniger strukturelle Speicherarbeit verlangt als der P90 über die Beobachtungsmonate.`,
+          bridgeDayOptimalNearYear: (day: string, year: string) =>
+            `Die Ein-Tages-Optimallösung (${day}) liegt nahe der empfohlenen 12-Monats-Balanced-Größe (${year}) — das heutige Tagesprofil entspricht dem Jahres-P90 gut.`,
+          twelveMonthHeuristicNote: (window: string) =>
+            `${window} · Balanced-Tier aus täglichem Energie- und Leistungsbedarf (Perzentil je Kalendertag).`,
           onePagerExportHint: "Exporte erfassen die beiden Diagrammfelder unten.",
           kpiStoredEndEyebrow: "Energie im Speicher (Ende Fenster)",
           aiInsightPlaceholder:
@@ -1445,7 +1466,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           kpiRecommendedSelected: "Recommendation (selection, balanced)",
           kpiRecommendationUnavailable:
             "Trailing-12-month recommendation unavailable right now (upstream data gap).",
-          trailingKpiCapacity: "Daily energy (balanced)",
+          trailingKpiCapacity: "Recommended average daily size",
           trailingKpiDailyPercentileCaption: "P90 across modelled Berlin days",
           trailingKpiPayback: "Payback (indic.)",
           trailingKpiImpact: "Coverage %",
@@ -1573,7 +1594,28 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           onePagerNetPeakPeakLine: (peak: string) => `Peak reduction ${peak}`,
           onePagerFinalActionHint:
             "In short: add energy or power headroom to capture more of the remaining charge opportunity—the charts below show where the fleet and simulation engage slot by slot.",
-          onePagerDetailsSummary: "Market snapshot, 12M recommendation & scaling",
+          onePagerDetailsSummary: "Market snapshot & scenarios",
+          twelveMonthSectionEyebrow: "Long-term balanced recommendation",
+          twelveMonthSectionTitle: "Recommended BESS size over the last 12 months",
+          twelveMonthBalancedTag: "(Balanced)",
+          twelveMonthExplainerSmallerThanDay:
+            "This is the recommended average daily size over the trailing 12 months (P90 across modeled calendar days). It sits a little below the single-day optimum above because it averages many days.",
+          twelveMonthExplainerLargerThanDay:
+            "This is the recommended average daily size over the trailing 12 months (P90 across modeled calendar days). It can sit above the single-day optimum when today’s profile carries less structural storage work than the annual P90.",
+          twelveMonthExplainerNeutral:
+            "This is the recommended average daily size over the trailing 12 months (P90 across modeled calendar days). It is in the same ballpark as the single-day optimum.",
+          twelveMonthKpiPayback: "Payback",
+          twelveMonthKpiCoverage: "Coverage",
+          twelveMonthKpiRevenue: "12M balanced revenue",
+          twelveMonthKpiPeakSoc: "Peak SoC over the year",
+          bridgeDayOptimalAboveYear: (day: string, year: string) =>
+            `Today’s single-day optimum (${day}) is a little above the long-run balanced recommendation (${year}) because today’s structural surplus is unusually large.`,
+          bridgeDayOptimalBelowYear: (day: string, year: string) =>
+            `Today’s single-day optimum (${day}) is a little below the long-run balanced recommendation (${year}) because today’s profile asks for less structural storage work than the annual P90.`,
+          bridgeDayOptimalNearYear: (day: string, year: string) =>
+            `The single-day optimum (${day}) is close to the 12‑month balanced size (${year})—today’s profile is representative of the annual P90.`,
+          twelveMonthHeuristicNote: (window: string) =>
+            `${window} · Balanced tier from per-day energy and power need (per-day percentile).`,
           onePagerExportHint: "Exports capture the two chart panels below.",
           kpiStoredEndEyebrow: "Energy in store (end of window)",
           aiInsightPlaceholder:
@@ -2928,6 +2970,122 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       </div>
     );
 
+    const renderDayYearBridge = (dayOptimalContext: BriefingStoryDayOptimalContext | null) => {
+      if (!dayOptimalContext || !balancedRecommendation || briefingStoryWindow?.type !== "day") {
+        return null;
+      }
+      const dayLabel = `${energyFormatter.format(dayOptimalContext.dayCapacityGwh)} GWh`;
+      const yearLabel = `${energyFormatter.format(balancedRecommendation.recommendedEnergyMwh / 1_000)} GWh`;
+      const dayv = dayOptimalContext.dayCapacityGwh;
+      const yearv = balancedRecommendation.recommendedEnergyMwh / 1_000;
+      const rel = yearv > 0 ? dayv / yearv : 1;
+      const text =
+        rel > 1.002
+          ? t.bridgeDayOptimalAboveYear(dayLabel, yearLabel)
+          : rel < 0.998
+            ? t.bridgeDayOptimalBelowYear(dayLabel, yearLabel)
+            : t.bridgeDayOptimalNearYear(dayLabel, yearLabel);
+      return (
+        <p className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3 text-sm leading-relaxed text-slate-800 dark:border-slate-600/40 dark:bg-slate-950/45 dark:text-slate-100">
+          {text}
+        </p>
+      );
+    };
+
+    const resolveTwelveMonthExplainer = (dayOptimalContext: BriefingStoryDayOptimalContext | null) => {
+      if (!balancedRecommendation) {
+        return "";
+      }
+      if (!dayOptimalContext || briefingStoryWindow?.type !== "day") {
+        return t.twelveMonthExplainerNeutral;
+      }
+      const dayv = dayOptimalContext.dayCapacityGwh;
+      const yearv = balancedRecommendation.recommendedEnergyMwh / 1_000;
+      if (!(yearv > 0)) {
+        return t.twelveMonthExplainerNeutral;
+      }
+      const rel = dayv / yearv;
+      if (rel > 1.005) {
+        return t.twelveMonthExplainerSmallerThanDay;
+      }
+      if (rel < 0.995) {
+        return t.twelveMonthExplainerLargerThanDay;
+      }
+      return t.twelveMonthExplainerNeutral;
+    };
+
+    const renderTwelveMonthBalancedSection = (dayOptimalContext: BriefingStoryDayOptimalContext | null) => {
+      if (isRecommendationLoading) {
+        return <Skeleton className="h-56 w-full rounded-2xl" />;
+      }
+      if (recommendationLoadError || !recommendation || !balancedRecommendation) {
+        return (
+          <div className="rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-5 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
+            {t.kpiRecommendationUnavailable}
+          </div>
+        );
+      }
+      const explainer = resolveTwelveMonthExplainer(dayOptimalContext);
+      const revenueDisplay =
+        balancedRevenueTileValue !== null
+          ? euroCurrencyFormatter.format(Math.round(balancedRevenueTileValue))
+          : "—";
+      const revenueSubtitle = liveBalancedEconomics
+        ? language === "de"
+          ? "Mit Live-Preisreferenz"
+          : "Using the live price reference"
+        : language === "de"
+          ? "Fallback auf 12M-Heuristik"
+          : "Fallback to the 12M heuristic";
+
+      return (
+        <section
+          className="rounded-2xl border border-emerald-200/75 bg-gradient-to-br from-emerald-50/80 via-white to-sky-50/35 p-4 shadow-sm dark:border-emerald-500/28 dark:from-emerald-500/10 dark:via-slate-950/70 dark:to-slate-950/85 md:p-5"
+          aria-labelledby="twelve-month-balanced-heading"
+        >
+          <div className="space-y-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-800 dark:text-emerald-200">
+              {t.twelveMonthSectionEyebrow}
+            </p>
+            <h3
+              id="twelve-month-balanced-heading"
+              className="text-lg font-semibold text-slate-900 dark:text-white md:text-xl [font-family:var(--font-heading)]"
+            >
+              {t.twelveMonthSectionTitle}
+            </h3>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-emerald-200/75 bg-white/80 px-4 py-4 shadow-sm dark:border-emerald-400/30 dark:bg-slate-950/55">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+              {t.trailingKpiCapacity}
+            </p>
+            <p className="mt-2 text-3xl font-black leading-none tabular-nums text-slate-950 dark:text-white md:text-[2.85rem]">
+              {formatEnergyFromMwh(balancedRecommendation.recommendedEnergyMwh)}
+              <span className="text-slate-400 dark:text-slate-500"> / </span>
+              {formatPowerFromMw(balancedRecommendation.recommendedPowerMw)}
+            </p>
+            <p className="mt-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              {t.twelveMonthBalancedTag}
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{explainer}</p>
+            <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">{t.trailingKpiDailyPercentileCaption}</p>
+          </div>
+
+          <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+            <CompactDetailStat label={t.twelveMonthKpiPayback} value={trailingPaybackLabel} />
+            <CompactDetailStat label={t.twelveMonthKpiCoverage} value={trailingImpactLabel} />
+            <CompactDetailStat label={t.twelveMonthKpiRevenue} value={revenueDisplay} subtitle={revenueSubtitle} />
+            <CompactDetailStat label={t.twelveMonthKpiPeakSoc} value={trailingChainPeakValue} />
+          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+            {t.twelveMonthHeuristicNote(trailingWindowLabel)}
+          </p>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">{t.trailingNotAuditedNote}</p>
+        </section>
+      );
+    };
+
     return (
     <>
       <div className="min-w-0 space-y-4">
@@ -3285,11 +3443,13 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               refreshNonce={briefingStoryRefreshNonce}
               hideIntroHeroStats
             >
-              {({ introSection, counterfactualSection, footerSection }) => (
+              {({ introSection, counterfactualSection, footerSection, dayOptimalContext }) => (
                 <div className="space-y-6 pt-2 md:pt-5">
                   {introSection}
                   {systemImpactSection}
                   {counterfactualSection}
+                  {renderDayYearBridge(dayOptimalContext)}
+                  {renderTwelveMonthBalancedSection(dayOptimalContext)}
                   <p className="rounded-xl border border-emerald-200/70 bg-emerald-50/40 px-4 py-3 text-sm leading-relaxed text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/25 dark:text-emerald-50/95">
                     {t.onePagerFinalActionHint}
                   </p>
@@ -3298,7 +3458,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               )}
             </BriefingDailyStory>
           ) : (
-            <div className="pt-2 md:pt-5">{systemImpactSection}</div>
+            <div className="space-y-6 pt-2 md:pt-5">
+              {systemImpactSection}
+              {renderTwelveMonthBalancedSection(null)}
+            </div>
           )}
 
           <div className="flex flex-col gap-3 border-t border-border/50 pt-4 dark:border-slate-600/35">
@@ -3314,8 +3477,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 </p>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                   {language === "de"
-                    ? "12-Monats-Empfehlung, Marginal-Szenarien und Marktpreis-Snapshot."
-                    : "12‑month recommendation, marginal fleet scenarios, and the live price snapshot."}
+                    ? "Marktpreis-Snapshot und marginale Kapazitäts-Szenarien."
+                    : "Live price snapshot and marginal capacity scenarios."}
                 </p>
               </div>
               <ChevronRight className="size-5 shrink-0 text-slate-400 transition group-open:rotate-90" aria-hidden />
@@ -3344,28 +3507,30 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                       </h3>
                       <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                         {language === "de"
-                          ? "Verdichtet die 12-Monats-Heuristik auf Marktbild, empfohlene Balanced-Groesse und deren grobe Wirkung."
-                          : "Condenses the 12-month heuristic into market context, the balanced recommendation, and its indicative impact."}
+                          ? "Die empfohlene 12-Monats-Balanced-Größe steht im Hauptteil oben; hier folgen Marktbild und Skalierungstabelle."
+                          : "The recommended 12‑month balanced size is summarized in the main section above; this area adds market context and the scaling table."}
                       </p>
                     </div>
 
-                    <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                    <div className="space-y-4">
                       {isRevenueModelLoading ? (
-                        <Skeleton className="h-[25rem] w-full rounded-2xl" />
+                        <Skeleton className="h-52 w-full max-w-3xl rounded-2xl" />
                       ) : revenueModel && revenueModel.marketContext ? (
-                        <div className="rounded-2xl border border-slate-200/90 bg-white/90 p-5 shadow-sm dark:border-slate-600/50 dark:bg-slate-950/70">
-                          <div className="space-y-1">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                              {language === "de" ? "Live-Preissnapshot" : "Live price snapshot"}
-                            </p>
-                            <p className="text-sm text-slate-600 dark:text-slate-300">
-                              {language === "de"
-                                ? "Kompakte Marktansicht aus aktuellen SMARD-Viertelstundenpreisen plus publizierter Redispatch-Basis."
-                                : "Compact market view from recent SMARD quarter-hour prices plus the published redispatch basis."}
-                            </p>
+                        <div className="max-w-3xl rounded-2xl border border-slate-200/90 bg-white/90 p-3.5 shadow-sm dark:border-slate-600/50 dark:bg-slate-950/70">
+                          <div className="flex flex-wrap items-end justify-between gap-2">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                                {language === "de" ? "Live-Preissnapshot" : "Live price snapshot"}
+                              </p>
+                              <p className="mt-0.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
+                                {language === "de"
+                                  ? "SMARD-Viertelstunden + Redispatch-Basis."
+                                  : "SMARD quarter-hours + redispatch basis."}
+                              </p>
+                            </div>
                           </div>
 
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div className="mt-3 grid gap-2 sm:grid-cols-3">
                             <CompactDetailStat
                               label={language === "de" ? "Spread-Basis" : "Spread basis"}
                               value={`${priceFormatter.format(revenueModel.marketReference.derivedSpotSpreadEurPerMwh)} EUR/MWh`}
@@ -3378,52 +3543,35 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                             <CompactDetailStat
                               label={language === "de" ? "Abend-Aufschlag" : "Evening premium"}
                               value={`${priceFormatter.format(revenueModel.marketContext.eveningPeakPremiumEurPerMwh)} EUR/MWh`}
-                              subtitle={language === "de" ? "Ø Abend minus Ø Mittag" : "Avg evening minus avg midday"}
+                              subtitle={language === "de" ? "Ø Abend − Ø Mittag" : "Avg evening − avg midday"}
                             />
                             <CompactDetailStat
                               label={language === "de" ? "Redispatch-Basis" : "Redispatch basis"}
                               value={`${priceFormatter.format(revenueModel.marketReference.positiveRedispatchCostEurPerMwh)} EUR/MWh`}
                               subtitle={
                                 language === "de"
-                                  ? `${formatEnergyFromMwh(revenueModel.marketReference.averageDailyCurtailmentOpportunityMwh)} pro Tag`
-                                  : `${formatEnergyFromMwh(revenueModel.marketReference.averageDailyCurtailmentOpportunityMwh)} per day`
-                              }
-                            />
-                            <CompactDetailStat
-                              label={language === "de" ? "12M Balanced · Erlös" : "12M balanced revenue"}
-                              value={
-                                balancedRevenueTileValue !== null
-                                  ? euroCurrencyFormatter.format(Math.round(balancedRevenueTileValue))
-                                  : "—"
-                              }
-                              subtitle={
-                                liveBalancedEconomics
-                                  ? language === "de"
-                                    ? "Mit Live-Preisreferenz"
-                                    : "Using the live price reference"
-                                  : language === "de"
-                                    ? "Fallback auf 12M-Heuristik"
-                                    : "Fallback to the 12M heuristic"
+                                  ? `${formatEnergyFromMwh(revenueModel.marketReference.averageDailyCurtailmentOpportunityMwh)}/Tag`
+                                  : `${formatEnergyFromMwh(revenueModel.marketReference.averageDailyCurtailmentOpportunityMwh)}/day`
                               }
                             />
                           </div>
 
-                          <div className="mt-4 h-44 w-full">
+                          <div className="mt-3 h-32 w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <ComposedChart data={liveMarketPriceChartData} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+                              <ComposedChart data={liveMarketPriceChartData} margin={{ top: 6, right: 6, bottom: 4, left: 0 }}>
                                 <CartesianGrid stroke="rgba(148,163,184,0.18)" strokeDasharray="3 3" />
                                 <XAxis
                                   dataKey="label"
-                                  tick={{ fontSize: 11, fill: "rgb(100,116,139)" }}
+                                  tick={{ fontSize: 10, fill: "rgb(100,116,139)" }}
                                   axisLine={{ stroke: "rgba(148,163,184,0.35)" }}
                                   tickLine={false}
                                 />
                                 <YAxis
-                                  tick={{ fontSize: 11, fill: "rgb(100,116,139)" }}
+                                  tick={{ fontSize: 10, fill: "rgb(100,116,139)" }}
                                   tickFormatter={(value) =>
                                     `${priceFormatter.format(typeof value === "number" ? value : 0)}`
                                   }
-                                  width={56}
+                                  width={52}
                                 />
                                 <Tooltip
                                   formatter={(value) => [
@@ -3437,15 +3585,15 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                                     fontSize: 12,
                                   }}
                                 />
-                                <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]} maxBarSize={42} />
+                                <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={36} />
                               </ComposedChart>
                             </ResponsiveContainer>
                           </div>
 
-                          <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                          <p className="mt-2 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
                             {language === "de"
-                              ? "Preisprofil: niedrig / Mittag / Abend / hoch. Negative Preisanteile zuletzt "
-                              : "Price profile: low / midday / evening / high. Recent negative-price share "}
+                              ? "Profil: niedrig / Mittag / Abend / hoch. Negativpreis-Anteil "
+                              : "Profile: low / midday / evening / high. Negative-price share "}
                             <span className="font-medium text-slate-700 dark:text-slate-200">
                               {pctFormatter.format(revenueModel.marketContext.negativePriceSharePct)}%
                             </span>
@@ -3453,7 +3601,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                           </p>
                         </div>
                       ) : (
-                        <div className="rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-5 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
+                        <div className="max-w-3xl rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-4 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
                           {revenueModelLoadError
                             ? language === "de"
                               ? "Live-Preissnapshot aktuell nicht verfuegbar."
@@ -3461,69 +3609,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                             : language === "de"
                               ? "Live-Preissnapshot derzeit ohne Daten."
                               : "Live price snapshot currently has no data."}
-                        </div>
-                      )}
-
-                      {isRecommendationLoading ? (
-                        <Skeleton className="h-[25rem] w-full rounded-2xl" />
-                      ) : recommendationLoadError || !recommendation || !balancedRecommendation ? (
-                        <div className="rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-5 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
-                          {t.kpiRecommendationUnavailable}
-                        </div>
-                      ) : (
-                        <div className="rounded-2xl border border-emerald-200/75 bg-gradient-to-br from-emerald-50/80 via-white to-sky-50/35 p-5 shadow-sm dark:border-emerald-500/28 dark:from-emerald-500/10 dark:via-slate-950/70 dark:to-slate-950/85">
-                          <div className="space-y-1">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-800 dark:text-emerald-200">
-                              {language === "de" ? "Balanced-Empfehlung" : "Balanced recommendation"}
-                            </p>
-                            <h4 className="text-lg font-semibold text-slate-900 dark:text-white md:text-xl">
-                              {language === "de"
-                                ? "Empfohlene BESS-Groesse fuer die letzten 12 Monate"
-                                : "Recommended BESS size across the last 12 months"}
-                            </h4>
-                          </div>
-
-                          <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1fr)]">
-                            <div className="rounded-2xl border border-emerald-200/75 bg-white/80 px-4 py-4 shadow-sm dark:border-emerald-400/30 dark:bg-slate-950/55">
-                              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                                {t.trailingKpiCapacity}
-                              </p>
-                              <p className="mt-2 text-4xl font-black leading-none tabular-nums text-slate-950 dark:text-white md:text-[3.35rem]">
-                                {formatEnergyFromMwh(balancedRecommendation.recommendedEnergyMwh)}
-                              </p>
-                              <p className="mt-2 text-base font-semibold text-slate-700 dark:text-slate-200">
-                                {formatPowerFromMw(balancedRecommendation.recommendedPowerMw)}
-                              </p>
-                              <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                                {t.trailingKpiDailyPercentileCaption}
-                              </p>
-                            </div>
-
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <CompactDetailStat label={t.trailingKpiPayback} value={trailingPaybackLabel} />
-                              <CompactDetailStat label={t.trailingKpiImpact} value={trailingImpactLabel} />
-                              <CompactDetailStat label={t.trailingChainPeakLabel} value={trailingChainPeakValue} />
-                              <CompactDetailStat
-                                label={language === "de" ? "Beobachtungsfenster" : "Observed window"}
-                                value={trailingWindowLabel}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="mt-4 space-y-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                            <p>{t.trailingBulletTier}</p>
-                            <p>
-                              {language === "de"
-                                ? "Kann stark von „Tages-Energie“ abweichen — hier läuft dieselbe Bilanz ohne Mitternachts-Reset weiter."
-                                : "Can diverge materially from the daily-energy row—the same heuristic here without nightly SOC resets."}
-                            </p>
-                            <p className="text-slate-400 dark:text-slate-500">
-                              {language === "de"
-                                ? "Ökonomie und Deckungsgrade mit idealisierten Annahmen; Marktpreise und Verluste ausgeschlossen."
-                                : "Economics/coverage uses idealised assumptions; excludes market spreads and losses."}{" "}
-                              {t.trailingNotAuditedNote}
-                            </p>
-                          </div>
                         </div>
                       )}
                     </div>
