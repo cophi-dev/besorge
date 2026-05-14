@@ -1283,7 +1283,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           kpiSelfConsumptionSubtitle: "Der erzeugten Energie vor Ort verwendet",
           kpiFleetRequiredShort: "Flotten-Leistung und -Kapazitaet aus dem Snapshot fuer dieses KPI noetig.",
           profileTitle: "Deutschland-Tagesprofil",
-          profileSubtitle: "Energy-Charts · strukturelle Bilanz · Europa/Berlin",
+          profileSubtitle:
+            "Energy-Charts: strukturelle Lage, heutige Flotte, Kurven — dann modellierte Speicherwirkung (Europa/Berlin).",
           modeObserved: "Beobachtet",
           modeSimulated: "Simuliertes BESS",
           timeframeLabelShort: "Zeitraum",
@@ -1355,9 +1356,20 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           chartFullscreenClose: "Schliessen",
           chartFullscreenTitle: "Tagesprofil",
           chartFullscreenEscHint: "Escape schliesst die Ansicht.",
-          onePagerSituationEyebrow: "Fenster · Lage",
-          onePagerChartsIntro: "Beobachtete Reihe und modelliertes BESS im selben Fenster.",
-          onePagerImpactHeading: "Wirkung dieser modellierten Kapazitaet",
+          onePagerStructuralEyebrow: "Struktur & Nachbarsystem",
+          onePagerStructuralLead:
+            "Bilanz und Brutto-Spannungen im gewaehlten Fenster — bevor Speicher eingreift — plus beobachteter Grenzhandel.",
+          onePagerInstalledFleetEyebrow: "Heutige Speicherflotte (Snapshot)",
+          onePagerInstalledFleetLead:
+            "Was die installierte DE-BESS-Schicht in derselben Zeitreihe leistet (Kapazitaet & Leistung aus dem Markt-Snapshot, kein Kapazitaets-Slider).",
+          onePagerStructuralDeficitEyebrow: "Brutto-Defizit",
+          onePagerStructuralDeficitSubtitle: "Energie in strukturellen Minus-Slots",
+          kpiInstalledFleetAbsorbedEyebrow: "Ladechance aufgenommen (Flotte)",
+          kpiInstalledFleetAbsorbedSubtitle: "Greedy-Walk mit installierter Schicht",
+          onePagerChartsIntro: "Kurven: beobachtet vs. modelliertes BESS im selben Fenster.",
+          onePagerImpactHeading: "Modellierte Kapazitaet & Systemwirkung",
+          onePagerImpactLead:
+            "Slider-Kapazitaet: wie viel Ueberschuss genutzt wird, was uebrig bleibt, wie Netzstress und Grenzfluesse sich verschieben.",
           onePagerDetailsSummary: "Markt-Snapshot, 12M-Empfehlung & Skalierung",
           onePagerExportHint: "Exporte erfassen die beiden Diagrammfelder unten.",
           kpiStoredEndEyebrow: "Energie im Speicher (Ende Fenster)",
@@ -1445,7 +1457,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           kpiSelfConsumptionSubtitle: "Of generated energy used locally",
           kpiFleetRequiredShort: "Fleet power and capacity from the snapshot are required for this KPI.",
           profileTitle: "Germany Day Profile",
-          profileSubtitle: "Energy-Charts · structural balance · Europe/Berlin",
+          profileSubtitle:
+            "Energy-Charts: structural setup, today’s fleet, charts — then modeled storage impact (Europe/Berlin).",
           modeObserved: "Observed",
           modeSimulated: "Simulated BESS",
           timeframeLabelShort: "Period",
@@ -1516,9 +1529,20 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           chartFullscreenClose: "Close",
           chartFullscreenTitle: "Day profile",
           chartFullscreenEscHint: "Press Escape to close.",
-          onePagerSituationEyebrow: "Window · facts",
-          onePagerChartsIntro: "Observed series and modeled BESS side by side for the same window.",
-          onePagerImpactHeading: "Impact at this modeled capacity",
+          onePagerStructuralEyebrow: "Structure & neighbors",
+          onePagerStructuralLead:
+            "Where the window sits structurally—balance, gross surplus and deficit, and observed cross-border trade—before storage acts.",
+          onePagerInstalledFleetEyebrow: "Installed fleet (snapshot)",
+          onePagerInstalledFleetLead:
+            "What today’s installed German BESS layer can do on the same series (market snapshot power & energy—not the capacity slider).",
+          onePagerStructuralDeficitEyebrow: "Gross structural deficit",
+          onePagerStructuralDeficitSubtitle: "Energy in negative structural slots",
+          kpiInstalledFleetAbsorbedEyebrow: "Charge opportunity absorbed (fleet)",
+          kpiInstalledFleetAbsorbedSubtitle: "Greedy walk at installed layer",
+          onePagerChartsIntro: "Charts: observed vs modeled BESS in the same window.",
+          onePagerImpactHeading: "Modeled capacity & system impact",
+          onePagerImpactLead:
+            "At the slider capacity: surplus use, what’s left on the table, and how grid stress and border flows shift.",
           onePagerDetailsSummary: "Market snapshot, 12M recommendation & scaling",
           onePagerExportHint: "Exports capture the two chart panels below.",
           kpiStoredEndEyebrow: "Energy in store (end of window)",
@@ -2245,6 +2269,20 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         })
       : null;
 
+  const slotStructuralTotalsForKpis = computeCoverageAtCapacityMwh(flow.slots, 0, {
+    maxPowerMw: 1,
+    initialSocMwh: 0,
+    resetDailyByBerlin: visualizationResetDailyByBerlin,
+  });
+  const grossStructuralDeficitMwh =
+    modeledScenario?.coverage.totalDeficitEnergyMwh ??
+    currentFleetScenario?.coverage.totalDeficitEnergyMwh ??
+    slotStructuralTotalsForKpis.totalDeficitEnergyMwh;
+  const grossStructuralSurplusMwh =
+    modeledScenario?.coverage.totalSurplusEnergyMwh ??
+    currentFleetScenario?.coverage.totalSurplusEnergyMwh ??
+    slotStructuralTotalsForKpis.totalSurplusEnergyMwh;
+
   const scalingScenarioColumns =
     flow?.slots.length &&
     fleetEnergyCapacityMwh !== null &&
@@ -2920,97 +2958,117 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             </div>
           </div>
 
-          <div className="space-y-2 pt-6">
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-              {t.onePagerSituationEyebrow}
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <SectionKpiTile
-                eyebrow={language === "de" ? "Nettoposition" : "Net position"}
-                value={formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}
-                subtitle={language === "de" ? "Σ Erzeugung − Last" : "Σ generation − load"}
-                tone="sky"
-              />
-              <SectionKpiTile
-                eyebrow={language === "de" ? "Struktureller Ueberschuss" : "Structural surplus"}
-                value={
-                  currentFleetScenario !== null
-                    ? formatEnergyFromMwh(currentFleetScenario.coverage.totalSurplusEnergyMwh)
-                    : "—"
-                }
-                subtitle={language === "de" ? "Brutto in Plus-Slots" : "Gross in positive slots"}
-                tone="emerald"
-              />
-              <SectionKpiTile
-                eyebrow={t.kpiObservedImportsEyebrow}
-                value={
-                  borderTradeTotals !== null
-                    ? formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh)
-                    : "—"
-                }
-                subtitle={
-                  borderTradeTotals !== null
-                    ? language === "de"
-                      ? "Grenzhandel im Fenster"
-                      : "Border trade in window"
-                    : language === "de"
-                      ? "Keine Grenzdaten"
-                      : "No border data"
-                }
-                tone="amber"
-              />
-              <SectionKpiTile
-                eyebrow={t.kpiObservedExportsEyebrow}
-                value={
-                  borderTradeTotals !== null
-                    ? formatEnergyFromMwh(borderTradeTotals.observedExportEnergyMwh)
-                    : "—"
-                }
-                subtitle={
-                  borderTradeTotals !== null
-                    ? language === "de"
-                      ? "Exportrichtung positiv"
-                      : "Export direction positive"
-                    : language === "de"
-                      ? "Keine Grenzdaten"
-                      : "No border data"
-                }
-                tone="slate"
-              />
+          <div className="space-y-8 pt-6">
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                {t.onePagerStructuralEyebrow}
+              </p>
+              <p className="max-w-3xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                {t.onePagerStructuralLead}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <SectionKpiTile
+                  eyebrow={language === "de" ? "Nettobilanz" : "Net balance"}
+                  value={formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}
+                  subtitle={language === "de" ? "Σ Erzeugung − Last" : "Σ generation − load"}
+                  tone="sky"
+                />
+                <SectionKpiTile
+                  eyebrow={language === "de" ? "Struktureller Ueberschuss" : "Structural surplus"}
+                  value={formatEnergyFromMwh(grossStructuralSurplusMwh)}
+                  subtitle={language === "de" ? "Brutto in Plus-Slots" : "Gross energy in positive slots"}
+                  tone="emerald"
+                />
+                <SectionKpiTile
+                  eyebrow={t.onePagerStructuralDeficitEyebrow}
+                  value={formatEnergyFromMwh(grossStructuralDeficitMwh)}
+                  subtitle={t.onePagerStructuralDeficitSubtitle}
+                  tone="amber"
+                />
+                <SectionKpiTile
+                  eyebrow={t.kpiObservedImportsEyebrow}
+                  value={
+                    borderTradeTotals !== null
+                      ? formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh)
+                      : "—"
+                  }
+                  subtitle={
+                    borderTradeTotals !== null
+                      ? language === "de"
+                        ? "Grenzhandel im Fenster"
+                        : "Border trade in window"
+                      : language === "de"
+                        ? "Keine Grenzdaten"
+                        : "No border data"
+                  }
+                  tone="amber"
+                />
+                <SectionKpiTile
+                  eyebrow={t.kpiObservedExportsEyebrow}
+                  value={
+                    borderTradeTotals !== null
+                      ? formatEnergyFromMwh(borderTradeTotals.observedExportEnergyMwh)
+                      : "—"
+                  }
+                  subtitle={
+                    borderTradeTotals !== null
+                      ? language === "de"
+                        ? "Exportrichtung positiv"
+                        : "Export direction positive"
+                      : language === "de"
+                        ? "Keine Grenzdaten"
+                        : "No border data"
+                  }
+                  tone="slate"
+                />
+              </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <SectionKpiTile
-                eyebrow={language === "de" ? "Flotte SoC" : "Fleet SoC"}
-                value={currentFleetSocStatusValue}
-                subtitle={language === "de" ? "Schaetzung aus Chart" : "Estimate from chart"}
-                tone="violet"
-              />
-              <SectionKpiTile
-                eyebrow={language === "de" ? "Verpasste Ladechance (modell)" : "Missed opportunity (modeled)"}
-                value={formatEnergyFromMwh(
-                  Math.max(
-                    0,
-                    (modeledScenario?.coverage.totalChargeOpportunityEnergyMwh ?? 0) -
-                      (modeledScenario?.coverage.absorbedSurplusEnergyMwh ?? 0)
-                  )
-                )}
-                subtitle={formatCurrencyCompact(modeledScenario?.missedOpportunityEur ?? null)}
-                tone="amber"
-              />
-              <SectionKpiTile
-                eyebrow={language === "de" ? "Flotten-Defizitdeckung" : "Fleet deficit served"}
-                value={
-                  currentFleetScenario !== null
-                    ? `${formatEnergyFromMwh(currentFleetScenario.coverage.servedDeficitEnergyMwh)} · ${
-                        currentFleetScenario.coverage.totalDeficitEnergyMwh > 1e-9
-                          ? `${pctFormatter.format(currentFleetScenario.coverage.servedDeficitShare * 100)}%`
-                          : "0%"
-                      }`
-                    : "—"
-                }
-                subtitle={language === "de" ? "Heutige installierte Schicht" : "Today’s installed layer"}
-                tone="emerald"
-              />
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                {t.onePagerInstalledFleetEyebrow}
+              </p>
+              <p className="max-w-3xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                {t.onePagerInstalledFleetLead}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <SectionKpiTile
+                  eyebrow={language === "de" ? "Flotten-SoC" : "Fleet SoC"}
+                  value={currentFleetSocStatusValue}
+                  subtitle={language === "de" ? "Schaetzung aus Chart" : "Estimate from chart"}
+                  tone="violet"
+                />
+                <SectionKpiTile
+                  eyebrow={t.kpiInstalledFleetAbsorbedEyebrow}
+                  value={
+                    currentFleetScenario !== null
+                      ? `${formatEnergyFromMwh(currentFleetScenario.coverage.absorbedSurplusEnergyMwh)} · ${pctFormatter.format(
+                          currentFleetScenario.coverage.absorbedSurplusShare * 100
+                        )}%`
+                      : "—"
+                  }
+                  subtitle={
+                    currentFleetScenario !== null
+                      ? t.kpiInstalledFleetAbsorbedSubtitle
+                      : t.kpiFleetRequiredShort
+                  }
+                  tone="emerald"
+                />
+                <SectionKpiTile
+                  eyebrow={language === "de" ? "Defizit gedeckt (Flotte)" : "Deficit served (fleet)"}
+                  value={
+                    currentFleetScenario !== null
+                      ? `${formatEnergyFromMwh(currentFleetScenario.coverage.servedDeficitEnergyMwh)} · ${
+                          currentFleetScenario.coverage.totalDeficitEnergyMwh > 1e-9
+                            ? `${pctFormatter.format(currentFleetScenario.coverage.servedDeficitShare * 100)}%`
+                            : "0%"
+                        }`
+                      : "—"
+                  }
+                  subtitle={language === "de" ? "Installierte Schicht" : "Installed layer"}
+                  tone="sky"
+                />
+              </div>
             </div>
           </div>
 
@@ -3026,7 +3084,52 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                     <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
                       {t.onePagerImpactHeading}
                     </p>
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+                    <p className="max-w-3xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                      {t.onePagerImpactLead}
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Ladechance genutzt (Modell)" : "Charge opportunity captured"}
+                        value={
+                          modeledScenario !== null
+                            ? `${pctFormatter.format(modeledScenario.coverage.absorbedSurplusShare * 100)}%`
+                            : "—"
+                        }
+                        subtitle={
+                          modeledScenario !== null
+                            ? formatEnergyFromMwh(modeledScenario.coverage.absorbedSurplusEnergyMwh)
+                            : language === "de"
+                              ? "Kapazitaet-Slider + Leistungslimit"
+                              : "Capacity slider + power cap"
+                        }
+                        tone="emerald"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Verpasste Ladechance" : "Missed charge opportunity"}
+                        value={formatEnergyFromMwh(
+                          Math.max(
+                            0,
+                            (modeledScenario?.coverage.totalChargeOpportunityEnergyMwh ?? 0) -
+                              (modeledScenario?.coverage.absorbedSurplusEnergyMwh ?? 0)
+                          )
+                        )}
+                        subtitle={formatCurrencyCompact(modeledScenario?.missedOpportunityEur ?? null)}
+                        tone="amber"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Defizit gedeckt (Modell)" : "Deficit served (modeled)"}
+                        value={
+                          modeledScenario !== null
+                            ? `${formatEnergyFromMwh(modeledScenario.coverage.servedDeficitEnergyMwh)} · ${
+                                modeledScenario.coverage.totalDeficitEnergyMwh > 1e-9
+                                  ? `${pctFormatter.format(modeledScenario.coverage.servedDeficitShare * 100)}%`
+                                  : "0%"
+                              }`
+                            : "—"
+                        }
+                        subtitle={t.kpiDeficitCoveredSubtitle}
+                        tone="violet"
+                      />
                       <SectionKpiTile
                         eyebrow={language === "de" ? "Netzentlastung (Modell)" : "Grid stress relief"}
                         value={
@@ -3038,6 +3141,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                         subtitle={language === "de" ? "Σ|Netto| vs Rohspur" : "Σ|net| vs raw trace"}
                         tone="sky"
                       />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                       <SectionKpiTile
                         eyebrow={language === "de" ? "Peak-Shaving" : "Peak shaving"}
                         value={modeledScenario !== null ? formatPowerFromMw(modeledScenario.peakReductionMw) : "—"}

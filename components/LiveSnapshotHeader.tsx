@@ -222,8 +222,8 @@ export function LiveSnapshotHeader({
           </p>
           <p className="text-sm font-medium text-slate-900 dark:text-white md:text-base">
             {language === "de"
-              ? "Operativer Echtzeitblick auf das deutsche Stromsystem und den modellierten BESS-Zustand."
-              : "Operational real-time view of the German power system and the modeled BESS state."}
+              ? "Echtzeit-Spannung zwischen Erzeugung und Last — darunter das Fensterprofil zeigt, wie Speicher die Bilanz verschieben kann."
+              : "Live tension between generation and load — the day profile below shows how storage can reshape that balance."}
           </p>
         </div>
         {isLoading ? (
