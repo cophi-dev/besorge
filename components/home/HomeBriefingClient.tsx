@@ -388,7 +388,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
   return (
     <div
       id="bessforge-briefing-root"
-      className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 pb-16 pt-5 md:gap-8 md:px-8 md:pb-20 lg:px-12"
+      className="scroll-mt-20 md:scroll-mt-24 mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 pb-16 pt-5 md:gap-8 md:px-8 md:pb-20 lg:px-12"
     >
       {isLiveDataLoading && initial.market === null ? (
         <div className="pointer-events-none fixed top-16 left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-md">
@@ -455,7 +455,10 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
       <MethodologySection language={language} />
 
       <section className="border-t border-border/50 pt-8 md:pt-10">
-        <details className="group rounded-xl border border-border/60 bg-card/40 p-3 backdrop-blur-sm dark:bg-card/25">
+        <details
+          open
+          className="group rounded-xl border border-border/60 bg-card/40 p-3 backdrop-blur-sm dark:bg-card/25"
+        >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-xl px-2 py-2 text-left">
             <div>
               <p className="text-xs tracking-[0.14em] text-muted-foreground uppercase">
