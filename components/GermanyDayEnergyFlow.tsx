@@ -4,8 +4,6 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Download,
-  Info,
   Maximize2,
   SlidersHorizontal,
   X,
@@ -71,7 +69,6 @@ import { BerlinDayCalendarButton } from "@/components/briefing/BerlinDayCalendar
 import { BriefingDailyStory } from "@/components/briefing/BriefingDailyStory";
 import { FlowExportButtons } from "@/components/briefing/FlowExportButtons";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const log = createLogger("germany-day-energy-flow");
 
@@ -358,12 +355,6 @@ export type GermanyDayEnergyFlowProps = {
   onSimulatedModeChange?: (simulated: boolean) => void;
 };
 
-type DashboardTabValue =
-  | "daily-briefing"
-  | "structural-power"
-  | "optimal-bess"
-  | "long-term-view";
-
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
@@ -521,8 +512,6 @@ type ScenarioImpactSnapshot = {
   curtailedRecoveredToLoadEnergyMwh: number;
   gridReliefScore: number | null;
 };
-
-type ChartPerspective = "with-bess" | "without-bess";
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -843,6 +832,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     fleetCapacityGwh,
     fleetPowerGw,
     language,
+    isRefreshing = false,
+    lastUpdatedIso = null,
+    onRefresh,
     onChartFleetSocSnapshot,
     simulationAiInsight = null,
     initialEnergyFlow = null,
@@ -856,7 +848,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     onSimulatedModeChange,
   } = props;
   const resolvedSeedKey = resolveSeedDateKey(seedDateKey ?? undefined);
-  const briefingChartMode: "observed" | "simulated" = initialSimulatedNet ? "simulated" : "observed";
   const [selectorMode, setSelectorMode] = useState<SelectorMode>("day");
   const [selectedDate, setSelectedDate] = useState(resolvedSeedKey);
   const [selectedWeek, setSelectedWeek] = useState(dateKeyToIsoWeekKey(resolvedSeedKey));
@@ -898,15 +889,11 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const simulatedCapacityInputId = useId();
   const simulatedCapacityHintId = useId();
   const simulatedCapacityInputRef = useRef<HTMLInputElement | null>(null);
-  const [activeDashboardTab, setActiveDashboardTab] =
-    useState<DashboardTabValue>("daily-briefing");
-  const [chartPerspective, setChartPerspective] = useState<ChartPerspective>("with-bess");
   const [chartLayoutCompact, setChartLayoutCompact] = useState(false);
   const [flowChartFullscreenOpen, setFlowChartFullscreenOpen] = useState(false);
-  const [flowChartFullscreenMode, setFlowChartFullscreenMode] = useState<"observed" | "simulated">(
-    "observed"
+  const [flowChartFullscreenMode, setFlowChartFullscreenMode] = useState<"observed" | "simulated">(() =>
+    initialSimulatedNet ? "simulated" : "observed"
   );
-  const [structuralMobileMode, setStructuralMobileMode] = useState<"observed" | "simulated">("simulated");
 
   useEffect(() => {
     if (!flowChartFullscreenOpen) {
@@ -1368,6 +1355,12 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           chartFullscreenClose: "Schliessen",
           chartFullscreenTitle: "Tagesprofil",
           chartFullscreenEscHint: "Escape schliesst die Ansicht.",
+          onePagerSituationEyebrow: "Fenster · Lage",
+          onePagerChartsIntro: "Beobachtete Reihe und modelliertes BESS im selben Fenster.",
+          onePagerImpactHeading: "Wirkung dieser modellierten Kapazitaet",
+          onePagerDetailsSummary: "Markt-Snapshot, 12M-Empfehlung & Skalierung",
+          onePagerExportHint: "Exporte erfassen die beiden Diagrammfelder unten.",
+          kpiStoredEndEyebrow: "Energie im Speicher (Ende Fenster)",
           aiInsightPlaceholder:
             "Keine Zahlenbasis fuer diese Kurzfassung. Nach Anbindung eines LLM kann zusätzlicher Text uber die Prop simulationAiInsight kommen.",
           observedCtaSimulated: "Zu Simulation wechseln",
@@ -1523,6 +1516,12 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           chartFullscreenClose: "Close",
           chartFullscreenTitle: "Day profile",
           chartFullscreenEscHint: "Press Escape to close.",
+          onePagerSituationEyebrow: "Window · facts",
+          onePagerChartsIntro: "Observed series and modeled BESS side by side for the same window.",
+          onePagerImpactHeading: "Impact at this modeled capacity",
+          onePagerDetailsSummary: "Market snapshot, 12M recommendation & scaling",
+          onePagerExportHint: "Exports capture the two chart panels below.",
+          kpiStoredEndEyebrow: "Energy in store (end of window)",
           aiInsightPlaceholder:
             "Not enough KPI context to summarise. Pass narrative text via the simulationAiInsight prop once an LLM route exists.",
           observedCtaSimulated: "Switch to Simulated mode to see impact at this size.",
@@ -1895,15 +1894,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     return Math.min(100, Math.max(0, reduction * 100));
   }, [chartRows, effectivePracticalCapacityMwh]);
 
-  const totalGenerationEnergyMwh = useMemo(
-    () => flow?.slots.reduce((sum, slot) => sum + slot.totalGenerationMw * QUARTER_HOUR_H, 0) ?? 0,
-    [flow]
-  );
-  const totalDemandEnergyMwh = useMemo(
-    () => flow?.slots.reduce((sum, slot) => sum + slot.loadMw * QUARTER_HOUR_H, 0) ?? 0,
-    [flow]
-  );
-
   const currentFleetMode = useMemo(() => {
     if (chartRows.length === 0) {
       return null;
@@ -1980,12 +1970,13 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     };
   }, [chartRows]);
 
-  const curtailmentStatusLabel =
-    flow?.curtailmentStatus === "loaded"
-      ? t.curtailmentStatusConfigured
-      : flow?.curtailmentStatus === "unavailable_not_configured"
-        ? t.curtailmentStatusMissingConfig
-        : t.curtailmentStatusUpstream;
+  const storedPracticalEndMwh = useMemo(() => {
+    if (!chartRows.length || effectivePracticalCapacityMwh <= 0) {
+      return null;
+    }
+    const last = chartRows[chartRows.length - 1]!;
+    return (Math.max(0, Math.min(100, last.simulatedPracticalSocPct)) / 100) * effectivePracticalCapacityMwh;
+  }, [chartRows, effectivePracticalCapacityMwh]);
 
   useEffect(() => {
     if (selectorMode !== "day" || chartRows.length === 0) {
@@ -2199,8 +2190,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     resolvedLlmInsightText.length > 0 ? t.aiInsightTitle : t.insightRuleBasedTitle;
   const insightPanelBody =
     resolvedLlmInsightText || heuristicInsightParagraph || t.aiInsightPlaceholder;
-  const powerCapLabel =
-    selectedWindowBalancedPowerMw !== null ? formatPowerFromMw(selectedWindowBalancedPowerMw) : "—";
   const balancedRecommendation = recommendationByTier?.balanced ?? null;
   const trailingPaybackLabel =
     recommendation?.indicativeEconomicsAtBalancedTier
@@ -2285,27 +2274,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           };
         })
       : [];
-
-  const realitySummary =
-    currentFleetScenario === null
-      ? language === "de"
-        ? `Im Fenster ${selectorLabel} liegt die Nettobilanz bei ${formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}.`
-        : `Across ${selectorLabel}, net position sits at ${formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}.`
-      : (() => {
-          const netLabel = formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000);
-          const structuralSurplusLabel = formatEnergyFromMwh(
-            currentFleetScenario.coverage.totalSurplusEnergyMwh
-          );
-          const servedLabel = formatEnergyFromMwh(currentFleetScenario.coverage.servedDeficitEnergyMwh);
-          const servedPctLabel =
-            currentFleetScenario.coverage.totalDeficitEnergyMwh > 1e-9
-              ? `${pctFormatter.format(currentFleetScenario.coverage.servedDeficitShare * 100)}%`
-              : "0%";
-
-          return language === "de"
-            ? `${selectorLabel}: Nettoposition ${netLabel}, struktureller Ueberschuss ${structuralSurplusLabel}; die heutige DE-Flotte deckt ${servedLabel} bzw. ${servedPctLabel} des Defizits.`
-            : `${selectorLabel}: net position ${netLabel}, structural surplus ${structuralSurplusLabel}; the current German fleet serves ${servedLabel}, or ${servedPctLabel} of deficit energy.`;
-        })();
 
   const currentFleetStatusLabel =
     currentFleetMode === "charging"
@@ -2699,11 +2667,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
 
   const renderDashboard = () => (
     <>
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="min-w-0">
+      <div className="min-w-0 space-y-6">
         <div className="rounded-[30px] border border-border/75 bg-card/70 p-5 shadow-[0_22px_52px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl md:p-6 lg:p-7 dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_28px_64px_-30px_rgba(0,0,0,0.78)]">
           <div className="flex flex-col gap-4 border-b border-border/55 pb-5 dark:border-slate-600/35">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-2">
                 <p className="text-[10px] font-semibold tracking-[0.22em] text-slate-500 uppercase dark:text-slate-400">
                   {language === "de" ? "Analyst Workspace" : "Analyst workspace"}
@@ -2717,502 +2684,408 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                  <CalendarDays className="size-3.5" aria-hidden />
-                  {selectorLabel}
-                </span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                  {coveragePct}% {language === "de" ? "Abdeckung" : "coverage"}
-                </span>
+              <div className="flex w-full flex-col gap-3 lg:max-w-xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                    <CalendarDays className="size-3.5" aria-hidden />
+                    {selectorLabel}
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                    {coveragePct}% {language === "de" ? "Abdeckung" : "coverage"}
+                  </span>
+                  {lastUpdatedIso ? (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                      {language === "de" ? "Live" : "Live"} ·{" "}
+                      {timeFormatterSingleDay.format(new Date(lastUpdatedIso))}
+                    </span>
+                  ) : null}
+                  {onRefresh ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 rounded-full px-3 text-[11px]"
+                      disabled={isRefreshing}
+                      onClick={onRefresh}
+                    >
+                      {language === "de" ? "Aktualisieren" : "Refresh"}
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="rounded-2xl border border-border/70 bg-background/45 p-3 dark:border-slate-600/40 dark:bg-slate-950/25">
+                  <div
+                    className="inline-flex min-h-8 w-full overflow-x-auto rounded-full border border-slate-200/90 bg-slate-100/95 p-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/55 dark:bg-slate-900/80 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] [&::-webkit-scrollbar]:hidden"
+                    role="tablist"
+                    aria-label={t.timeframeLabelShort}
+                  >
+                    {(
+                      [
+                        { mode: "day", label: t.dayMode },
+                        { mode: "week", label: t.weekMode },
+                        { mode: "month", label: t.monthMode },
+                      ] as const
+                    ).map((option) => (
+                      <button
+                        key={option.mode}
+                        type="button"
+                        role="tab"
+                        aria-selected={selectorMode === option.mode}
+                        onClick={() => setSelectorMode(option.mode)}
+                        className={`min-h-8 flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-tight transition ${
+                          selectorMode === option.mode
+                            ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90 dark:bg-slate-950 dark:text-white dark:ring-slate-600/70"
+                            : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3 inline-flex w-full items-center gap-1 rounded-2xl border border-slate-200/90 bg-white/95 p-1 shadow-sm dark:border-slate-600/60 dark:bg-slate-950/95">
+                    <button
+                      type="button"
+                      onClick={handlePreviousWindow}
+                      className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      aria-label={t.previousRange}
+                    >
+                      <ChevronLeft className="size-4" aria-hidden />
+                    </button>
+                    {selectorMode === "day" ? (
+                      <BerlinDayCalendarButton
+                        value={selectedDate}
+                        max={todayKey}
+                        onChange={setSelectedDate}
+                        language={language}
+                        className="min-w-0 flex-1 border-0 bg-transparent shadow-none dark:bg-transparent"
+                      />
+                    ) : null}
+                    {selectorMode === "week" ? (
+                      <input
+                        type="week"
+                        value={selectedWeek}
+                        max={currentWeekKey}
+                        onChange={(event) => setSelectedWeek(event.target.value)}
+                        className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
+                      />
+                    ) : null}
+                    {selectorMode === "month" ? (
+                      <input
+                        type="month"
+                        value={selectedMonth}
+                        max={currentMonthKey}
+                        onChange={(event) => setSelectedMonth(event.target.value)}
+                        className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={nextDisabled}
+                      onClick={handleNextWindow}
+                      className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      aria-label={t.nextRange}
+                    >
+                      <ChevronRight className="size-4" aria-hidden />
+                    </button>
+                  </div>
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    {coverageSummaryLine}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-border/70 bg-background/45 p-3 dark:border-slate-600/40 dark:bg-slate-950/25">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
+                    <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                      {t.simulatedCapacityControlEyebrow}
+                    </p>
+                  </div>
+                  <label htmlFor={simulatedCapacityInputId} className="mt-3 block space-y-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200">
+                      {t.simulatedCapacityInputLabel}
+                    </span>
+                    <input
+                      id={simulatedCapacityInputId}
+                      ref={simulatedCapacityInputRef}
+                      type="text"
+                      inputMode="decimal"
+                      value={customSimulatedCapacityGwhInput}
+                      onChange={(event) => setCustomSimulatedCapacityGwhInput(event.target.value)}
+                      placeholder={autoSimulatedCapacityInputPlaceholder}
+                      aria-describedby={simulatedCapacityHintId}
+                      aria-invalid={customSimulatedCapacityInvalid}
+                      className={`h-11 w-full rounded-xl border bg-white px-3 text-sm font-semibold tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-400/70 dark:bg-slate-950/75 dark:text-white dark:placeholder:text-slate-500 ${
+                        customSimulatedCapacityInvalid
+                          ? "border-rose-300/90 focus-visible:border-rose-300 dark:border-rose-400/45"
+                          : "border-emerald-300/80 dark:border-emerald-400/30"
+                      }`}
+                    />
+                  </label>
+                  <p id={simulatedCapacityHintId} className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                    {hasCustomSimulatedCapacity
+                      ? language === "de"
+                        ? `Manuelle Schicht aktiv. Automatik: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
+                        : `Manual layer active. Auto size: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
+                      : autoSimulatedCapacityGwhLabel
+                        ? language === "de"
+                          ? `Automatik aktiv: ${autoSimulatedCapacityGwhLabel}.`
+                          : `Auto sizing active: ${autoSimulatedCapacityGwhLabel}.`
+                        : t.simulatedCapacityInputHintUnavailable}
+                    {selectedWindowBalancedPowerMw !== null ? (
+                      <>
+                        {" "}
+                        {language === "de"
+                          ? `Leistung: ${formatPowerFromMw(selectedWindowBalancedPowerMw)}.`
+                          : `Power cap: ${formatPowerFromMw(selectedWindowBalancedPowerMw)}.`}
+                      </>
+                    ) : null}
+                  </p>
+                  {customSimulatedCapacityInvalid ? (
+                    <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-200">
+                      {t.simulatedCapacityInputInvalid}
+                    </p>
+                  ) : null}
+                  {hasCustomSimulatedCapacity ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => setCustomSimulatedCapacityGwhInput("")}
+                    >
+                      {t.simulatedCapacityReset}
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </div>
+          </div>
 
-            <Tabs
-              value={activeDashboardTab}
-              onValueChange={(value) => setActiveDashboardTab(value as DashboardTabValue)}
-              className="gap-0"
-            >
-              <TabsList
-                variant="line"
-                className="w-full justify-start overflow-x-auto rounded-2xl border border-border/70 bg-background/45 p-1.5 dark:border-slate-600/40 dark:bg-slate-950/30"
-              >
-                <TabsTrigger value="daily-briefing" className="min-w-fit px-4 py-2 text-sm">
-                  {language === "de" ? "Today’s Reality" : "Today’s Reality"}
-                </TabsTrigger>
-                <TabsTrigger value="structural-power" className="min-w-fit px-4 py-2 text-sm">
-                  {language === "de" ? "Grid Stress & Relief" : "Grid Stress & Relief"}
-                </TabsTrigger>
-                <TabsTrigger value="optimal-bess" className="min-w-fit px-4 py-2 text-sm">
-                  {language === "de" ? "Value Created" : "Value Created"}
-                </TabsTrigger>
-                <TabsTrigger value="long-term-view" className="min-w-fit px-4 py-2 text-sm">
-                  {language === "de" ? "Scaling & Long-term" : "Scaling & Long-term"}
-                </TabsTrigger>
-              </TabsList>
+          <div className="space-y-2 pt-6">
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+              {t.onePagerSituationEyebrow}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <SectionKpiTile
+                eyebrow={language === "de" ? "Nettoposition" : "Net position"}
+                value={formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}
+                subtitle={language === "de" ? "Σ Erzeugung − Last" : "Σ generation − load"}
+                tone="sky"
+              />
+              <SectionKpiTile
+                eyebrow={language === "de" ? "Struktureller Ueberschuss" : "Structural surplus"}
+                value={
+                  currentFleetScenario !== null
+                    ? formatEnergyFromMwh(currentFleetScenario.coverage.totalSurplusEnergyMwh)
+                    : "—"
+                }
+                subtitle={language === "de" ? "Brutto in Plus-Slots" : "Gross in positive slots"}
+                tone="emerald"
+              />
+              <SectionKpiTile
+                eyebrow={t.kpiObservedImportsEyebrow}
+                value={
+                  borderTradeTotals !== null
+                    ? formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh)
+                    : "—"
+                }
+                subtitle={
+                  borderTradeTotals !== null
+                    ? language === "de"
+                      ? "Grenzhandel im Fenster"
+                      : "Border trade in window"
+                    : language === "de"
+                      ? "Keine Grenzdaten"
+                      : "No border data"
+                }
+                tone="amber"
+              />
+              <SectionKpiTile
+                eyebrow={t.kpiObservedExportsEyebrow}
+                value={
+                  borderTradeTotals !== null
+                    ? formatEnergyFromMwh(borderTradeTotals.observedExportEnergyMwh)
+                    : "—"
+                }
+                subtitle={
+                  borderTradeTotals !== null
+                    ? language === "de"
+                      ? "Exportrichtung positiv"
+                      : "Export direction positive"
+                    : language === "de"
+                      ? "Keine Grenzdaten"
+                      : "No border data"
+                }
+                tone="slate"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <SectionKpiTile
+                eyebrow={language === "de" ? "Flotte SoC" : "Fleet SoC"}
+                value={currentFleetSocStatusValue}
+                subtitle={language === "de" ? "Schaetzung aus Chart" : "Estimate from chart"}
+                tone="violet"
+              />
+              <SectionKpiTile
+                eyebrow={language === "de" ? "Verpasste Ladechance (modell)" : "Missed opportunity (modeled)"}
+                value={formatEnergyFromMwh(
+                  Math.max(
+                    0,
+                    (modeledScenario?.coverage.totalChargeOpportunityEnergyMwh ?? 0) -
+                      (modeledScenario?.coverage.absorbedSurplusEnergyMwh ?? 0)
+                  )
+                )}
+                subtitle={formatCurrencyCompact(modeledScenario?.missedOpportunityEur ?? null)}
+                tone="amber"
+              />
+              <SectionKpiTile
+                eyebrow={language === "de" ? "Flotten-Defizitdeckung" : "Fleet deficit served"}
+                value={
+                  currentFleetScenario !== null
+                    ? `${formatEnergyFromMwh(currentFleetScenario.coverage.servedDeficitEnergyMwh)} · ${
+                        currentFleetScenario.coverage.totalDeficitEnergyMwh > 1e-9
+                          ? `${pctFormatter.format(currentFleetScenario.coverage.servedDeficitShare * 100)}%`
+                          : "0%"
+                      }`
+                    : "—"
+                }
+                subtitle={language === "de" ? "Heutige installierte Schicht" : "Today’s installed layer"}
+                tone="emerald"
+              />
+            </div>
+          </div>
 
-              <TabsContent value="daily-briefing" className="mt-0 pt-5">
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.28, ease: "easeOut" }}
-                  className="space-y-5"
-                >
-                  <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-3 text-sm leading-relaxed text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-50">
-                    {realitySummary}
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    <SectionKpiTile
-                      eyebrow={language === "de" ? "Generation" : "Generation"}
-                      value={formatEnergyFromMwh(totalGenerationEnergyMwh)}
-                      subtitle={coverageSummaryLine}
-                      tone="emerald"
-                    />
-                    <SectionKpiTile
-                      eyebrow={language === "de" ? "Demand" : "Demand"}
-                      value={formatEnergyFromMwh(totalDemandEnergyMwh)}
-                      subtitle={selectorLabel}
-                      tone="slate"
-                    />
-                    <SectionKpiTile
-                      eyebrow={language === "de" ? "Net Position" : "Net Position"}
-                      value={formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}
-                      subtitle={language === "de" ? "Σ Erzeugung minus Last" : "Σ generation minus demand"}
-                      tone="sky"
-                    />
-                    <SectionKpiTile
-                      eyebrow={language === "de" ? "Structural Surplus" : "Structural Surplus"}
-                      value={
-                        currentFleetScenario !== null
-                          ? formatEnergyFromMwh(currentFleetScenario.coverage.totalSurplusEnergyMwh)
-                          : "—"
-                      }
-                      subtitle={
-                        language === "de"
-                          ? "Positive strukturelle Viertelstunden"
-                          : "Positive structural quarter-hours"
-                      }
-                      tone="emerald"
-                    />
-                    <SectionKpiTile
-                      eyebrow={language === "de" ? "Fleet SoC + Status" : "Fleet SoC + Status"}
-                      value={currentFleetSocStatusValue}
-                      subtitle={language === "de" ? "Aktuelle DE-Flotte" : "Current German fleet"}
-                      tone="violet"
-                    />
-                    <SectionKpiTile
-                      eyebrow={language === "de" ? "BESS Contribution today" : "BESS Contribution today"}
-                      value={
-                        currentFleetScenario !== null
-                          ? `${formatEnergyFromMwh(currentFleetScenario.coverage.servedDeficitEnergyMwh)} · ${
-                              currentFleetScenario.coverage.totalDeficitEnergyMwh > 1e-9
-                                ? `${pctFormatter.format(currentFleetScenario.coverage.servedDeficitShare * 100)}%`
-                                : "0%"
-                            }`
-                          : "—"
-                      }
-                      subtitle={
-                        language === "de"
-                          ? "Geliefert / Defizit gedeckt"
-                          : "Delivered / deficit covered"
-                      }
-                      tone="amber"
-                    />
-                  </div>
-
-                  {chartLayoutCompact ? (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <div
-                          role="tablist"
-                          aria-label={language === "de" ? "Kurvenmodus" : "Chart mode"}
-                          className="inline-flex min-w-0 flex-1 rounded-full border border-border/70 bg-background/55 p-1 dark:border-slate-600/40 dark:bg-slate-950/35"
-                        >
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={briefingChartMode === "observed"}
-                            className={`min-w-0 flex-1 rounded-full px-3 py-2 text-center text-[11px] font-semibold transition ${
-                              briefingChartMode === "observed"
-                                ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
-                                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                            }`}
-                            onClick={() => {
-                              onSimulatedModeChange?.(false);
-                            }}
-                          >
-                            {t.modeObserved}
-                          </button>
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={briefingChartMode === "simulated"}
-                            className={`min-w-0 flex-1 rounded-full px-3 py-2 text-center text-[11px] font-semibold transition ${
-                              briefingChartMode === "simulated"
-                                ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
-                                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                            }`}
-                            onClick={() => {
-                              onSimulatedModeChange?.(true);
-                            }}
-                          >
-                            {t.modeSimulated}
-                          </button>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-                          aria-label={t.chartFullscreenExpand}
-                          onClick={() => {
-                            setFlowChartFullscreenMode(briefingChartMode);
-                            setFlowChartFullscreenOpen(true);
-                          }}
-                        >
-                          <Maximize2 className="size-4" aria-hidden />
-                        </Button>
+          {briefingStoryWindow ? (
+            <BriefingDailyStory language={language} storyWindow={briefingStoryWindow} refreshNonce={briefingStoryRefreshNonce}>
+              {({ introSection, counterfactualSection, footerSection }) => (
+                <div className="space-y-6 pt-6">
+                  {introSection}
+                  <div>
+                    <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                      {t.onePagerChartsIntro}
+                    </p>
+                    <div
+                      id="bessforge-germany-flow-capture"
+                      className="mt-3 space-y-4 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 shadow-[0_24px_56px_-30px_rgb(15_23_42_/_0.26)] md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                          {simulatedCapacityBadgeText}
+                        </span>
+                        {selectedWindowBalancedPowerMw !== null ? (
+                          <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                            {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
+                          </span>
+                        ) : null}
                       </div>
-                      {renderFlowChartSection(briefingChartMode)}
-                    </>
-                  ) : (
-                    renderFlowChartSection("observed", {
-                      chartActions: (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-                          aria-label={t.chartFullscreenExpand}
-                          onClick={() => {
-                            setFlowChartFullscreenMode("observed");
-                            setFlowChartFullscreenOpen(true);
-                          }}
-                        >
-                          <Maximize2 className="size-4" aria-hidden />
-                        </Button>
-                      ),
-                    })
-                  )}
-                  {briefingStoryWindow ? (
-                    <BriefingDailyStory
-                      language={language}
-                      storyWindow={briefingStoryWindow}
-                      refreshNonce={briefingStoryRefreshNonce}
-                    />
-                  ) : null}
-                </motion.div>
-              </TabsContent>
-
-              <TabsContent value="structural-power" className="mt-0 pt-5">
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.28, ease: "easeOut" }}
-                  className="space-y-5"
-                >
-                  <section
-                    id="bessforge-germany-poster-capture"
-                    className="space-y-5 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 shadow-[0_24px_56px_-30px_rgb(15_23_42_/_0.26)] md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
-                  >
-                    <div className="space-y-3 border-b border-slate-200/75 pb-4 dark:border-slate-600/50">
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400/95">
-                          {language === "de" ? "Grid Stress & Relief" : "Grid Stress & Relief"}
-                        </p>
-                        <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                          {modeledScenario !== null
-                            ? language === "de"
-                              ? `Bei ${simulatedCapacityGwhLabel ?? "—"} sinken strukturelle Schwankungen um ${modeledScenario.gridImpactReductionPct !== null ? `${pctFormatter.format(modeledScenario.gridImpactReductionPct)}%` : "—"}; ${formatEnergyFromMwh(modeledScenario.absorbedCurtailmentEnergyMwh)} Curtailment koennen aufgenommen werden.`
-                              : `At ${simulatedCapacityGwhLabel ?? "—"}, structural swings fall by ${modeledScenario.gridImpactReductionPct !== null ? `${pctFormatter.format(modeledScenario.gridImpactReductionPct)}%` : "—"} and ${formatEnergyFromMwh(modeledScenario.absorbedCurtailmentEnergyMwh)} of curtailment can be absorbed.`
-                            : language === "de"
-                              ? "Zeigt, wie die gewählte BESS-Schicht Curtailment, Importe und strukturelle Lastspitzen dämpft."
-                              : "Shows how the selected BESS layer reduces curtailment, imports, and structural stress."}
-                        </p>
+                      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                        {renderFlowChartSection("observed", {
+                          chartActions: (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                              aria-label={t.chartFullscreenExpand}
+                              onClick={() => {
+                                setFlowChartFullscreenMode("observed");
+                                onSimulatedModeChange?.(false);
+                                setFlowChartFullscreenOpen(true);
+                              }}
+                            >
+                              <Maximize2 className="size-4" aria-hidden />
+                            </Button>
+                          ),
+                        })}
+                        {renderFlowChartSection("simulated", {
+                          chartActions: (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                              aria-label={t.chartFullscreenExpand}
+                              onClick={() => {
+                                setFlowChartFullscreenMode("simulated");
+                                onSimulatedModeChange?.(true);
+                                setFlowChartFullscreenOpen(true);
+                              }}
+                            >
+                              <Maximize2 className="size-4" aria-hidden />
+                            </Button>
+                          ),
+                        })}
                       </div>
                     </div>
+                  </div>
 
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                      {t.onePagerImpactHeading}
+                    </p>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
                       <SectionKpiTile
-                        eyebrow={language === "de" ? "Curtailment Avoided" : "Curtailment Avoided"}
-                        value={
-                          modeledScenario !== null
-                            ? formatEnergyFromMwh(modeledScenario.absorbedCurtailmentEnergyMwh)
-                            : "—"
-                        }
-                        subtitle={
-                          modeledScenario !== null && modeledScenario.coverage.totalCurtailmentEnergyMwh > 1e-9
-                            ? `${pctFormatter.format(
-                                (modeledScenario.absorbedCurtailmentEnergyMwh /
-                                  modeledScenario.coverage.totalCurtailmentEnergyMwh) *
-                                  100
-                              )}%`
-                            : curtailmentStatusLabel
-                        }
-                        tone="emerald"
-                      />
-                      <SectionKpiTile
-                        eyebrow={language === "de" ? "Remaining Curtailment" : "Remaining Curtailment"}
-                        value={
-                          modeledScenario !== null
-                            ? formatEnergyFromMwh(modeledScenario.remainingCurtailmentEnergyMwh)
-                            : "—"
-                        }
-                        subtitle={
-                          language === "de"
-                            ? "Nicht absorbiert"
-                            : "Not absorbed"
-                        }
-                        tone="amber"
-                      />
-                      <SectionKpiTile
-                        eyebrow={language === "de" ? "Imbalance Damping" : "Imbalance Damping"}
+                        eyebrow={language === "de" ? "Netzentlastung (Modell)" : "Grid stress relief"}
                         value={
                           modeledScenario?.gridImpactReductionPct !== null &&
                           modeledScenario?.gridImpactReductionPct !== undefined
                             ? `${pctFormatter.format(modeledScenario.gridImpactReductionPct)}%`
                             : "—"
                         }
-                        subtitle={
-                          language === "de"
-                            ? "Σ|Netto| gegen Rohspur"
-                            : "Σ|net| vs raw trace"
-                        }
+                        subtitle={language === "de" ? "Σ|Netto| vs Rohspur" : "Σ|net| vs raw trace"}
                         tone="sky"
                       />
                       <SectionKpiTile
-                        eyebrow={language === "de" ? "Peak Reduction" : "Peak Reduction"}
-                        value={
-                          modeledScenario !== null
-                            ? formatPowerFromMw(modeledScenario.peakReductionMw)
-                            : "—"
-                        }
-                        subtitle={
-                          language === "de"
-                            ? "Max. Abbau der Slot-Spitze"
-                            : "Maximum slot-peak reduction"
-                        }
+                        eyebrow={language === "de" ? "Peak-Shaving" : "Peak shaving"}
+                        value={modeledScenario !== null ? formatPowerFromMw(modeledScenario.peakReductionMw) : "—"}
+                        subtitle={language === "de" ? "Max. Slot-Reduktion" : "Max slot reduction"}
                         tone="violet"
                       />
                       <SectionKpiTile
-                        eyebrow={language === "de" ? "Grid Relief Score" : "Grid Relief Score"}
+                        eyebrow={language === "de" ? "Import-Aenderung" : "Import change"}
                         value={
-                          modeledScenario?.gridReliefScore !== null &&
-                          modeledScenario?.gridReliefScore !== undefined
-                            ? `${modeledScenario.gridReliefScore}/100`
+                          borderTradeTotals !== null
+                            ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)
                             : "—"
                         }
-                        subtitle={
-                          language === "de"
-                            ? "Curtailment, Dämpfung, Peak, Importe"
-                            : "Curtailment, damping, peak, imports"
+                        subtitle={language === "de" ? "Modell 1:1 Grenzfluss" : "Modeled 1:1 border proxy"}
+                        tone="amber"
+                      />
+                      <SectionKpiTile
+                        eyebrow={language === "de" ? "Export-Aenderung" : "Export change"}
+                        value={
+                          borderTradeTotals !== null
+                            ? formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh)
+                            : "—"
                         }
+                        subtitle={language === "de" ? "vs. beobachtet" : "vs observed"}
                         tone="slate"
                       />
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                        {simulatedCapacityBadgeText}
-                      </span>
-                      {selectedWindowBalancedPowerMw !== null ? (
-                        <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                          {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
-                        </span>
-                      ) : null}
-                      <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                        {chartPerspective === "with-bess"
-                          ? language === "de"
-                            ? "Primäransicht: mit BESS"
-                            : "Primary view: with BESS"
-                          : language === "de"
-                            ? "Primäransicht: ohne BESS"
-                            : "Primary view: without BESS"}
-                      </span>
-                    </div>
-
-                    <div id="bessforge-germany-flow-capture" className="space-y-4 md:space-y-5">
-                      <div className="hidden space-y-4 md:space-y-5 lg:block">
-                        {chartPerspective === "with-bess" ? (
-                          <>
-                            {renderFlowChartSection("simulated")}
-                            {renderFlowChartSection("observed")}
-                          </>
-                        ) : (
-                          <>
-                            {renderFlowChartSection("observed")}
-                            {renderFlowChartSection("simulated")}
-                          </>
-                        )}
-                      </div>
-
-                      <div className="space-y-3 lg:hidden">
-                        <div className="flex items-center gap-2">
-                          <div
-                            role="tablist"
-                            aria-label={language === "de" ? "Vergleichskurve" : "Comparison curve"}
-                            className="inline-flex min-w-0 flex-1 rounded-full border border-border/70 bg-background/55 p-1 dark:border-slate-600/40 dark:bg-slate-950/35"
-                          >
-                            <button
-                              type="button"
-                              role="tab"
-                              aria-selected={structuralMobileMode === "observed"}
-                              className={`min-w-0 flex-1 rounded-full px-3 py-2 text-center text-[11px] font-semibold transition ${
-                                structuralMobileMode === "observed"
-                                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
-                                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                              }`}
-                              onClick={() => setStructuralMobileMode("observed")}
-                            >
-                              {t.modeObserved}
-                            </button>
-                            <button
-                              type="button"
-                              role="tab"
-                              aria-selected={structuralMobileMode === "simulated"}
-                              className={`min-w-0 flex-1 rounded-full px-3 py-2 text-center text-[11px] font-semibold transition ${
-                                structuralMobileMode === "simulated"
-                                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
-                                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                              }`}
-                              onClick={() => setStructuralMobileMode("simulated")}
-                            >
-                              {t.modeSimulated}
-                            </button>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-                            aria-label={t.chartFullscreenExpand}
-                            onClick={() => {
-                              setFlowChartFullscreenMode(structuralMobileMode);
-                              setFlowChartFullscreenOpen(true);
-                            }}
-                          >
-                            <Maximize2 className="size-4" aria-hidden />
-                          </Button>
-                        </div>
-                        {renderFlowChartSection(structuralMobileMode)}
-                      </div>
-                    </div>
-                  </section>
-                </motion.div>
-              </TabsContent>
-
-              <TabsContent value="optimal-bess" className="mt-0 pt-5">
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.28, ease: "easeOut" }}
-                  className="space-y-5"
-                >
-                  <section
-                    className="space-y-5 rounded-[28px] border border-border/80 bg-muted/30 px-4 py-5 md:space-y-6 md:px-6 md:py-7 dark:border-slate-600/45 dark:bg-slate-950/45"
-                  >
-                    <header className="space-y-0.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        {language === "de" ? "Value Created" : "Value Created"}
-                      </p>
-                      <h3 className="text-xl font-semibold text-slate-900 md:text-2xl dark:text-white [font-family:var(--font-heading)]">
-                        {language === "de" ? "Monetärer Effekt der gewählten BESS-Schicht" : "Monetary effect of the selected BESS layer"}
-                      </h3>
-                      <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                        {language === "de"
-                          ? "Verdichtet den Tageseffekt auf Energieverschiebung, vermiedene Redispatch-Kosten, Curtailment-Verwertung und Importreduktion."
-                          : "Condenses the daily effect into shifted-energy revenue, avoided redispatch costs, curtailed-energy recovery, and import reduction."}
-                      </p>
-                    </header>
-
-                    <div className="rounded-[28px] border border-emerald-200/75 bg-gradient-to-br from-emerald-50/80 via-white to-sky-50/40 p-5 shadow-sm dark:border-emerald-500/28 dark:from-emerald-500/10 dark:via-slate-950/70 dark:to-slate-950/85">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-800 dark:text-emerald-200">
-                        {language === "de" ? "Total Value Created" : "Total Value Created"}
-                      </p>
-                      <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                        <div>
-                          <p className="text-4xl font-black leading-none tracking-tight text-slate-950 dark:text-white md:text-[3.4rem]">
-                            {formatCurrencyCompact(modeledScenario?.totalValueCreatedEur ?? null)}
-                          </p>
-                          <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                            {language === "de"
-                              ? "Energieverschiebung plus Curtailment-Verwertung und vermiedene Redispatch-Kosten."
-                              : "Energy-shift value plus curtailed-energy recovery and avoided redispatch costs."}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                            {simulatedCapacityBadgeText}
-                          </span>
-                          <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                            {powerCapLabel}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                       <SectionKpiTile
-                        eyebrow={language === "de" ? "BESS Revenue today" : "BESS Revenue today"}
-                        value={formatCurrencyCompact(modeledScenario?.bessRevenueTodayEur ?? null)}
+                        eyebrow={t.kpiStoredEndEyebrow}
+                        value={storedPracticalEndMwh !== null ? formatEnergyFromMwh(storedPracticalEndMwh) : "—"}
                         subtitle={
-                          language === "de"
-                            ? "Shift-Wert exkl. Curtailment"
-                            : "Shift value excluding curtailed recovery"
+                          simulatedCapacityGwhLabel
+                            ? language === "de"
+                              ? `Bei ${simulatedCapacityGwhLabel}`
+                              : `At ${simulatedCapacityGwhLabel}`
+                            : undefined
                         }
                         tone="emerald"
                       />
                       <SectionKpiTile
-                        eyebrow={language === "de" ? "Avoided Redispatch Costs" : "Avoided Redispatch Costs"}
-                        value={formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null)}
+                        eyebrow={language === "de" ? "Wert heute (indik.)" : "Value today (indic.)"}
+                        value={formatCurrencyCompact(modeledScenario?.totalValueCreatedEur ?? null)}
                         subtitle={
-                          marketReference !== null
-                            ? `${priceFormatter.format(marketReference.positiveRedispatchCostEurPerMwh)} EUR/MWh`
-                            : "—"
+                          language === "de" ? "Shift + Curtailment + Redispatch" : "Shift + curtailment + redispatch"
                         }
-                        tone="sky"
-                      />
-                      <SectionKpiTile
-                        eyebrow={language === "de" ? "Avoided Curtailment Value" : "Avoided Curtailment Value"}
-                        value={formatCurrencyCompact(modeledScenario?.avoidedCurtailmentValueEur ?? null)}
-                        subtitle={
-                          modeledScenario !== null
-                            ? formatEnergyFromMwh(modeledScenario.curtailedRecoveredToLoadEnergyMwh)
-                            : "—"
-                        }
-                        tone="violet"
-                      />
-                      <SectionKpiTile
-                        eyebrow={language === "de" ? "Import Reduction" : "Import Reduction"}
-                        value={
-                          modeledScenario?.importReductionEnergyMwh !== null &&
-                          modeledScenario?.importReductionEnergyMwh !== undefined
-                            ? formatEnergyFromMwh(modeledScenario.importReductionEnergyMwh)
-                            : "—"
-                        }
-                        subtitle={
-                          modeledScenario !== null &&
-                          modeledScenario.observedImportEnergyMwh !== null &&
-                          modeledScenario.simulatedImportEnergyMwh !== null
-                            ? `${formatEnergyFromMwh(modeledScenario.observedImportEnergyMwh)} -> ${formatEnergyFromMwh(modeledScenario.simulatedImportEnergyMwh)}`
-                            : language === "de"
-                              ? "Keine Grenzhandelsbasis"
-                              : "No border-flow baseline"
-                        }
-                        tone="amber"
-                      />
-                      <SectionKpiTile
-                        eyebrow={language === "de" ? "Missed Opportunity" : "Missed Opportunity"}
-                        value={formatEnergyFromMwh(Math.max(0, (modeledScenario?.coverage.totalChargeOpportunityEnergyMwh ?? 0) - (modeledScenario?.coverage.absorbedSurplusEnergyMwh ?? 0)))}
-                        subtitle={formatCurrencyCompact(modeledScenario?.missedOpportunityEur ?? null)}
-                        tone="slate"
+                        tone="emerald"
                       />
                     </div>
-
                     <div className="rounded-2xl border border-indigo-200/60 bg-card px-4 py-4 shadow-sm dark:border-indigo-500/35 dark:bg-indigo-950/35">
                       <div className="flex items-center gap-2">
-                        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.65)]" aria-hidden />
+                        <span
+                          className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.65)]"
+                          aria-hidden
+                        />
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-800 dark:text-indigo-200">
                           {insightPanelTitle}
                         </p>
@@ -3221,11 +3094,82 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                         {insightPanelBody}
                       </p>
                     </div>
-                  </section>
-                </motion.div>
-              </TabsContent>
+                  </div>
 
-              <TabsContent value="long-term-view" className="mt-0 pt-5">
+                  {counterfactualSection}
+                  {footerSection}
+                </div>
+              )}
+            </BriefingDailyStory>
+          ) : (
+            <div className="space-y-6 pt-6">
+              <div
+                id="bessforge-germany-flow-capture"
+                className="space-y-4 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622]"
+              >
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {renderFlowChartSection("observed", {
+                    chartActions: (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                        aria-label={t.chartFullscreenExpand}
+                        onClick={() => {
+                          setFlowChartFullscreenMode("observed");
+                          onSimulatedModeChange?.(false);
+                          setFlowChartFullscreenOpen(true);
+                        }}
+                      >
+                        <Maximize2 className="size-4" aria-hidden />
+                      </Button>
+                    ),
+                  })}
+                  {renderFlowChartSection("simulated", {
+                    chartActions: (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                        aria-label={t.chartFullscreenExpand}
+                        onClick={() => {
+                          setFlowChartFullscreenMode("simulated");
+                          onSimulatedModeChange?.(true);
+                          setFlowChartFullscreenOpen(true);
+                        }}
+                      >
+                        <Maximize2 className="size-4" aria-hidden />
+                      </Button>
+                    ),
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 border-t border-border/50 pt-6 dark:border-slate-600/35">
+            <FlowExportButtons language={language} flow={flow} captureElementId="bessforge-germany-flow-capture" />
+            <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{t.onePagerExportHint}</p>
+          </div>
+
+          <details className="group rounded-2xl border border-border/70 bg-background/40 p-4 dark:border-slate-600/40 dark:bg-slate-950/30">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-left">
+              <div>
+                <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                  {t.onePagerDetailsSummary}
+                </p>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  {language === "de"
+                    ? "12-Monats-Empfehlung, Marginal-Szenarien und Marktpreis-Snapshot."
+                    : "12‑month recommendation, marginal fleet scenarios, and the live price snapshot."}
+                </p>
+              </div>
+              <ChevronRight className="size-5 shrink-0 text-slate-400 transition group-open:rotate-90" aria-hidden />
+            </summary>
+            <div className="mt-4 border-t border-border/50 pt-4 dark:border-slate-600/35">
+
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -3527,241 +3471,15 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                     )}
                   </section>
 
-                  <p className="text-[10px] text-slate-400 dark:text-slate-600">{t.technicalDisclaimer}</p>
                 </motion.div>
-              </TabsContent>
-            </Tabs>
-          </div>
+              
+            </div>
+          </details>
+
+          <p className="text-[10px] text-slate-400 dark:text-slate-600">{t.technicalDisclaimer}</p>
         </div>
       </div>
 
-      <motion.aside
-        initial={{ opacity: 0, x: 10 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
-        className="space-y-4 xl:sticky xl:top-24"
-      >
-        <section className="rounded-[28px] border border-border/75 bg-card/70 p-4 shadow-[0_20px_46px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_24px_56px_-30px_rgba(0,0,0,0.78)]">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-              {language === "de" ? "Date" : "Date"}
-            </p>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            <div className="rounded-2xl border border-border/70 bg-background/45 p-3 dark:border-slate-600/40 dark:bg-slate-950/25">
-              <div
-                className="inline-flex min-h-8 w-full overflow-x-auto rounded-full border border-slate-200/90 bg-slate-100/95 p-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/55 dark:bg-slate-900/80 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] [&::-webkit-scrollbar]:hidden"
-                role="tablist"
-                aria-label={t.timeframeLabelShort}
-              >
-                {([
-                  { mode: "day", label: t.dayMode },
-                  { mode: "week", label: t.weekMode },
-                  { mode: "month", label: t.monthMode },
-                ] as const).map((option) => (
-                  <button
-                    key={option.mode}
-                    type="button"
-                    role="tab"
-                    aria-selected={selectorMode === option.mode}
-                    onClick={() => setSelectorMode(option.mode)}
-                    className={`min-h-8 flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-tight transition ${
-                      selectorMode === option.mode
-                        ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90 dark:bg-slate-950 dark:text-white dark:ring-slate-600/70"
-                        : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-3 inline-flex w-full items-center gap-1 rounded-2xl border border-slate-200/90 bg-white/95 p-1 shadow-sm dark:border-slate-600/60 dark:bg-slate-950/95">
-                <button
-                  type="button"
-                  onClick={handlePreviousWindow}
-                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                  aria-label={t.previousRange}
-                >
-                  <ChevronLeft className="size-4" aria-hidden />
-                </button>
-                {selectorMode === "day" ? (
-                  <BerlinDayCalendarButton
-                    value={selectedDate}
-                    max={todayKey}
-                    onChange={setSelectedDate}
-                    language={language}
-                    className="min-w-0 flex-1 border-0 bg-transparent shadow-none dark:bg-transparent"
-                  />
-                ) : null}
-                {selectorMode === "week" ? (
-                  <input
-                    type="week"
-                    value={selectedWeek}
-                    max={currentWeekKey}
-                    onChange={(event) => setSelectedWeek(event.target.value)}
-                    className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
-                  />
-                ) : null}
-                {selectorMode === "month" ? (
-                  <input
-                    type="month"
-                    value={selectedMonth}
-                    max={currentMonthKey}
-                    onChange={(event) => setSelectedMonth(event.target.value)}
-                    className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
-                  />
-                ) : null}
-                <button
-                  type="button"
-                  disabled={nextDisabled}
-                  onClick={handleNextWindow}
-                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                  aria-label={t.nextRange}
-                >
-                  <ChevronRight className="size-4" aria-hidden />
-                </button>
-              </div>
-
-              <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                {coverageSummaryLine}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-[28px] border border-border/75 bg-card/70 p-4 shadow-[0_20px_46px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_24px_56px_-30px_rgba(0,0,0,0.78)]">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-              {language === "de" ? "Capacity Override" : "Capacity Override"}
-            </p>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            <label htmlFor={simulatedCapacityInputId} className="space-y-1.5">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200">
-                {t.simulatedCapacityInputLabel}
-              </span>
-              <input
-                id={simulatedCapacityInputId}
-                ref={simulatedCapacityInputRef}
-                type="text"
-                inputMode="decimal"
-                value={customSimulatedCapacityGwhInput}
-                onChange={(event) => setCustomSimulatedCapacityGwhInput(event.target.value)}
-                placeholder={autoSimulatedCapacityInputPlaceholder}
-                aria-describedby={simulatedCapacityHintId}
-                aria-invalid={customSimulatedCapacityInvalid}
-                className={`h-11 w-full rounded-xl border bg-white px-3 text-sm font-semibold tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-400/70 dark:bg-slate-950/75 dark:text-white dark:placeholder:text-slate-500 ${
-                  customSimulatedCapacityInvalid
-                    ? "border-rose-300/90 focus-visible:border-rose-300 dark:border-rose-400/45"
-                    : "border-emerald-300/80 dark:border-emerald-400/30"
-                }`}
-              />
-            </label>
-            <p id={simulatedCapacityHintId} className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-              {hasCustomSimulatedCapacity
-                ? language === "de"
-                  ? `Manuelle Schicht aktiv. Automatik: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
-                  : `Manual layer active. Auto size: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
-                : autoSimulatedCapacityGwhLabel
-                  ? language === "de"
-                    ? `Automatik aktiv: ${autoSimulatedCapacityGwhLabel}.`
-                    : `Auto sizing active: ${autoSimulatedCapacityGwhLabel}.`
-                  : t.simulatedCapacityInputHintUnavailable}
-              {selectedWindowBalancedPowerMw !== null ? (
-                <>
-                  {" "}
-                  {language === "de"
-                    ? `Leistung: ${formatPowerFromMw(selectedWindowBalancedPowerMw)}.`
-                    : `Power cap: ${formatPowerFromMw(selectedWindowBalancedPowerMw)}.`}
-                </>
-              ) : null}
-            </p>
-            {customSimulatedCapacityInvalid ? (
-              <p className="text-xs font-medium text-rose-700 dark:text-rose-200">
-                {t.simulatedCapacityInputInvalid}
-              </p>
-            ) : null}
-            {hasCustomSimulatedCapacity ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => setCustomSimulatedCapacityGwhInput("")}>
-                {t.simulatedCapacityReset}
-              </Button>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="rounded-[28px] border border-border/75 bg-card/70 p-4 shadow-[0_20px_46px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_24px_56px_-30px_rgba(0,0,0,0.78)]">
-          <div className="flex items-center gap-2">
-            <Info className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-              {language === "de" ? "View Toggle" : "View Toggle"}
-            </p>
-          </div>
-
-          <div className="mt-4 inline-flex w-full rounded-full border border-border/70 bg-background/55 p-1 dark:border-slate-600/40 dark:bg-slate-950/35">
-            <button
-              type="button"
-              onClick={() => {
-                setChartPerspective("without-bess");
-                setStructuralMobileMode("observed");
-              }}
-              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-semibold transition ${
-                chartPerspective === "without-bess"
-                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-              }`}
-            >
-              {language === "de" ? "Ohne BESS" : "Without BESS"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setChartPerspective("with-bess");
-                setStructuralMobileMode("simulated");
-              }}
-              className={`flex-1 rounded-full px-3 py-2 text-[11px] font-semibold transition ${
-                chartPerspective === "with-bess"
-                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-              }`}
-            >
-              {language === "de" ? "Mit BESS" : "With BESS"}
-            </button>
-          </div>
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-            {language === "de"
-              ? "Steuert, welche Netzansicht in Tab 2 zuerst gezeigt und für Exporte hervorgehoben wird."
-              : "Controls which grid view appears first in Tab 2 and is emphasized for exports."}
-          </p>
-        </section>
-
-        <section className="rounded-[28px] border border-border/75 bg-card/70 p-4 shadow-[0_20px_46px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_24px_56px_-30px_rgba(0,0,0,0.78)]">
-          <div className="flex items-center gap-2">
-            <Download className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-              {language === "de" ? "Export" : "Export"}
-            </p>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            <FlowExportButtons
-              language={language}
-              flow={flow}
-              captureElementId="bessforge-germany-flow-capture"
-            />
-            <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-              {language === "de"
-                ? "Export nutzt die Vergleichsfläche aus Tab 2. Öffne für das sauberste Capture die Grid-Stress-&-Relief-Ansicht."
-                : "Export uses the comparison surface from Tab 2. For the cleanest capture, open Grid Stress & Relief first."}
-            </p>
-          </div>
-        </section>
-      </motion.aside>
-    </div>
     {flowChartFullscreenOpen && typeof document !== "undefined"
       ? createPortal(
           <div
