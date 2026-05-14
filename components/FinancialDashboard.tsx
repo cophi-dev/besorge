@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { z } from "zod";
 import {
   Bar,
   BarChart,
@@ -16,10 +17,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import {
   computeEconomics,
+  marketRevenueReferenceSchema,
   regulatoryScenarioDescription,
   type GridRegulatoryScenario,
+  type MarketRevenueReference,
 } from "@/lib/bessEconomics";
+import { createLogger } from "@/lib/debug";
+import { revenueMarketContextSchema, type RevenueMarketContext } from "@/lib/germanyRevenueModel";
 import { getFinancePhysicalConfig, useProjectStore } from "@/lib/projectStore";
+
+const log = createLogger("financial-dashboard");
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("de-DE", {
   style: "currency",
@@ -94,7 +101,7 @@ function ChartContainer({
   }, []);
 
   return (
-    <div ref={hostRef} className="h-72 w-full">
+    <div ref={hostRef} className="h-[min(52vh,300px)] w-full min-h-[220px] sm:h-72">
       {size.width > 0 && size.height > 0 ? children(size) : null}
     </div>
   );
@@ -106,11 +113,21 @@ const REGULATORY_OPTIONS: { value: GridRegulatoryScenario; label: string }[] = [
   { value: "elevated_regulatory_risk", label: "Higher regulatory pressure" },
 ];
 
+const revenueModelResponseSchema = z.object({
+  marketReference: marketRevenueReferenceSchema,
+  marketContext: revenueMarketContextSchema.nullable(),
+});
+
 export default function FinancialDashboard() {
   const liveConfiguration = useProjectStore((state) => state.liveConfiguration);
   const selectedConfigurations = useProjectStore((state) => state.selectedConfigurations);
   const economicsAssumptions = useProjectStore((state) => state.economicsAssumptions);
   const setEconomicsAssumptions = useProjectStore((state) => state.setEconomicsAssumptions);
+  const [pricingMode, setPricingMode] = useState<"live" | "manual">("live");
+  const [marketReference, setMarketReference] = useState<MarketRevenueReference | null>(null);
+  const [marketContext, setMarketContext] = useState<RevenueMarketContext | null>(null);
+  const [marketReferenceError, setMarketReferenceError] = useState<string | null>(null);
+  const [isLoadingMarketReference, setIsLoadingMarketReference] = useState(false);
 
   const physical = useMemo(
     () =>
@@ -121,22 +138,81 @@ export default function FinancialDashboard() {
     [liveConfiguration, selectedConfigurations]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadMarketReference = async () => {
+      setIsLoadingMarketReference(true);
+      setMarketReferenceError(null);
+      try {
+        const response = await fetch("/api/revenue-model/de", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Revenue model request failed with status ${response.status}`);
+        }
+        const payload = await response.json();
+        const parsed = revenueModelResponseSchema.safeParse(payload);
+        if (!parsed.success) {
+          throw new Error("Unexpected revenue model response shape.");
+        }
+        if (!cancelled) {
+          setMarketReference(parsed.data.marketReference);
+          setMarketContext(parsed.data.marketContext);
+          if (parsed.data.marketReference.spotPriceStatus !== "live") {
+            setMarketReferenceError(
+              "Recent SMARD spot prices are unavailable right now, so the manual model stays active."
+            );
+            setPricingMode("manual");
+          }
+        }
+      } catch (error) {
+        log("failed to load live revenue model %o", { error });
+        if (!cancelled) {
+          setMarketReference(null);
+          setMarketContext(null);
+          setMarketReferenceError(
+            error instanceof Error ? error.message : "Unable to load live revenue reference."
+          );
+          setPricingMode("manual");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingMarketReference(false);
+        }
+      }
+    };
+
+    void loadMarketReference();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const metrics = useMemo(() => {
     if (!physical) {
       return null;
     }
-    return computeEconomics(physical, economicsAssumptions);
-  }, [economicsAssumptions, physical]);
+    return computeEconomics(
+      physical,
+      economicsAssumptions,
+      pricingMode === "live" ? marketReference : null
+    );
+  }, [economicsAssumptions, marketReference, physical, pricingMode]);
 
   const breakdownData = metrics
-    ? [
-        { name: "Arbitrage", value: metrics.annualArbitrageRevenue },
-        { name: "Peak Shaving", value: metrics.annualPeakShavingRevenue },
-        { name: "Grid Services", value: metrics.annualGridServicesRevenue },
-      ]
+    ? metrics.revenueModel === "live_market_reference"
+      ? [
+          { name: "Arbitrage", value: metrics.annualArbitrageRevenue },
+          { name: "Avoided Redispatch", value: metrics.annualAvoidedRedispatchRevenue },
+        ]
+      : [
+          { name: "Arbitrage", value: metrics.annualArbitrageRevenue },
+          { name: "Peak Shaving", value: metrics.annualPeakShavingRevenue },
+          { name: "Grid Services", value: metrics.annualGridServicesRevenue },
+        ]
     : [];
 
   const hasPhysical = Boolean(physical);
+  const liveMarketAvailable = marketReference?.spotPriceStatus === "live";
   const usesAggregatedStack = selectedConfigurations.length > 0;
 
   return (
@@ -170,6 +246,88 @@ export default function FinancialDashboard() {
             Adjust your setup in the configurator to unlock live KPIs and charts.
           </p>
         ) : null}
+
+        <div className="space-y-3 rounded-xl border border-slate-300/60 bg-white/55 p-4 dark:border-slate-500/30 dark:bg-slate-900/45">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
+                Revenue basis
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Keep the old manual model, or switch to live German market reference values for
+                spot spread and avoided redispatch.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPricingMode("live")}
+                disabled={!liveMarketAvailable || isLoadingMarketReference}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                  pricingMode === "live"
+                    ? "border-blue-400 bg-blue-500/20 text-slate-900 dark:text-white"
+                    : "border-slate-300/60 bg-white/70 text-slate-600 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-slate-400"
+                }`}
+              >
+                Live market reference
+              </button>
+              <button
+                type="button"
+                onClick={() => setPricingMode("manual")}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                  pricingMode === "manual"
+                    ? "border-blue-400 bg-blue-500/20 text-slate-900 dark:text-white"
+                    : "border-slate-300/60 bg-white/70 text-slate-600 hover:border-slate-400 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-slate-400"
+                }`}
+              >
+                Manual blended model
+              </button>
+            </div>
+          </div>
+
+          {marketReference ? (
+            <p className="rounded-lg border border-blue-400/45 bg-blue-500/10 px-3 py-2 text-xs text-blue-700 dark:text-blue-200">
+              Live reference: {NUMBER_FORMATTER.format(marketReference.derivedSpotSpreadEurPerMwh)}{" "}
+              EUR/MWh spread via {marketReference.priceSourceLabel}; redispatch{" "}
+              {NUMBER_FORMATTER.format(marketReference.positiveRedispatchCostEurPerMwh)} EUR/MWh;{" "}
+              curtailment opportunity{" "}
+              {NUMBER_FORMATTER.format(marketReference.averageDailyCurtailmentOpportunityMwh)}{" "}
+              MWh/day over {marketReference.sampledDays} recent day(s)
+              {marketContext
+                ? `; negative-price share ${NUMBER_FORMATTER.format(marketContext.negativePriceSharePct)}%.`
+                : "."}
+            </p>
+          ) : null}
+
+          {marketContext ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              <KpiCard
+                title="Recent low-price band"
+                value={`${NUMBER_FORMATTER.format(marketContext.averageLowPriceEurPerMwh)} EUR/MWh`}
+              />
+              <KpiCard
+                title="Recent high-price band"
+                value={`${NUMBER_FORMATTER.format(marketContext.averageHighPriceEurPerMwh)} EUR/MWh`}
+              />
+              <KpiCard
+                title="Negative-price share"
+                value={`${NUMBER_FORMATTER.format(marketContext.negativePriceSharePct)}%`}
+              />
+            </div>
+          ) : null}
+
+          {isLoadingMarketReference ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Loading live German market reference...
+            </p>
+          ) : null}
+
+          {marketReferenceError ? (
+            <p className="text-xs text-amber-700 dark:text-amber-200">
+              Live market reference unavailable: {marketReferenceError}
+            </p>
+          ) : null}
+        </div>
 
         <div className="space-y-2 rounded-xl border border-slate-300/60 bg-white/55 p-4 dark:border-slate-500/30 dark:bg-slate-900/45">
           <p className="text-xs font-medium tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
@@ -236,6 +394,7 @@ export default function FinancialDashboard() {
               value={economicsAssumptions.averagePriceSpreadEurPerMwh}
               min={0}
               step={1}
+              disabled={pricingMode === "live"}
               onChange={(event) =>
                 setEconomicsAssumptions({
                   averagePriceSpreadEurPerMwh: Math.max(0, Number(event.target.value) || 0),
@@ -243,6 +402,11 @@ export default function FinancialDashboard() {
               }
               className="apple-input"
             />
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {pricingMode === "live" && marketReference
+                ? `Live mode currently uses ${NUMBER_FORMATTER.format(marketReference.derivedSpotSpreadEurPerMwh)} EUR/MWh from recent spot prices.`
+                : "Manual fallback spread used when live market reference is off or unavailable."}
+            </p>
           </label>
 
           <label className="space-y-2">
@@ -294,6 +458,18 @@ export default function FinancialDashboard() {
               title="Annual discharged energy"
               value={`${NUMBER_FORMATTER.format(metrics.annualDischargedMwh)} MWh`}
             />
+            <KpiCard
+              title={
+                metrics.revenueModel === "live_market_reference"
+                  ? "Live market spread"
+                  : "Manual blended spread"
+              }
+              value={`${NUMBER_FORMATTER.format(metrics.effectiveAveragePriceSpreadEurPerMwh)} EUR/MWh`}
+            />
+            <KpiCard
+              title="Annual avoided redispatch"
+              value={CURRENCY_FORMATTER.format(metrics.annualAvoidedRedispatchRevenue)}
+            />
             <KpiCard title="Annual revenue" value={CURRENCY_FORMATTER.format(metrics.annualRevenue)} />
             <KpiCard
               title="Lifetime revenue"
@@ -303,8 +479,6 @@ export default function FinancialDashboard() {
               title="Simple payback"
               value={`${NUMBER_FORMATTER.format(metrics.paybackYears)} yrs`}
             />
-            <KpiCard title="IRR (gross)" value={`${NUMBER_FORMATTER.format(metrics.grossIrr)} %`} />
-            <KpiCard title="LCOE" value={`${NUMBER_FORMATTER.format(metrics.lcoeEurPerMwh)} EUR/MWh`} />
           </div>
         ) : null}
 

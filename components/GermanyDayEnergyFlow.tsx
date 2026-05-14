@@ -6,9 +6,12 @@ import {
   ChevronRight,
   Download,
   Info,
+  Maximize2,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import {
+  type ReactNode,
   useEffect,
   useId,
   useLayoutEffect,
@@ -16,6 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import {
   Bar,
@@ -362,7 +366,7 @@ type DashboardTabValue =
 
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+    <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
       {label}
     </span>
@@ -848,8 +852,11 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     onBriefingStoryWindowChange,
     briefingStoryWindow = null,
     briefingStoryRefreshNonce = 0,
+    initialSimulatedNet = false,
+    onSimulatedModeChange,
   } = props;
   const resolvedSeedKey = resolveSeedDateKey(seedDateKey ?? undefined);
+  const briefingChartMode: "observed" | "simulated" = initialSimulatedNet ? "simulated" : "observed";
   const [selectorMode, setSelectorMode] = useState<SelectorMode>("day");
   const [selectedDate, setSelectedDate] = useState(resolvedSeedKey);
   const [selectedWeek, setSelectedWeek] = useState(dateKeyToIsoWeekKey(resolvedSeedKey));
@@ -895,6 +902,35 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     useState<DashboardTabValue>("daily-briefing");
   const [chartPerspective, setChartPerspective] = useState<ChartPerspective>("with-bess");
   const [chartLayoutCompact, setChartLayoutCompact] = useState(false);
+  const [flowChartFullscreenOpen, setFlowChartFullscreenOpen] = useState(false);
+  const [flowChartFullscreenMode, setFlowChartFullscreenMode] = useState<"observed" | "simulated">(
+    "observed"
+  );
+  const [structuralMobileMode, setStructuralMobileMode] = useState<"observed" | "simulated">("simulated");
+
+  useEffect(() => {
+    if (!flowChartFullscreenOpen) {
+      return undefined;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [flowChartFullscreenOpen]);
+
+  useEffect(() => {
+    if (!flowChartFullscreenOpen) {
+      return undefined;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFlowChartFullscreenOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flowChartFullscreenOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) {
@@ -1328,6 +1364,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           insightRuleBasedTitle: "Kurzfazit",
           bottomControlsHint:
             "Beobachtete Daten stehen oben; die modellierte BESS-Simulation mit ihren KPIs folgt direkt darunter.",
+          chartFullscreenExpand: "Diagramm im Vollbild",
+          chartFullscreenClose: "Schliessen",
+          chartFullscreenTitle: "Tagesprofil",
+          chartFullscreenEscHint: "Escape schliesst die Ansicht.",
           aiInsightPlaceholder:
             "Keine Zahlenbasis fuer diese Kurzfassung. Nach Anbindung eines LLM kann zusätzlicher Text uber die Prop simulationAiInsight kommen.",
           observedCtaSimulated: "Zu Simulation wechseln",
@@ -1479,6 +1519,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           insightRuleBasedTitle: "Takeaway",
           bottomControlsHint:
             "Observed data stays on top; the modeled BESS simulation with its KPIs sits directly below.",
+          chartFullscreenExpand: "Fullscreen chart",
+          chartFullscreenClose: "Close",
+          chartFullscreenTitle: "Day profile",
+          chartFullscreenEscHint: "Press Escape to close.",
           aiInsightPlaceholder:
             "Not enough KPI context to summarise. Pass narrative text via the simulationAiInsight prop once an LLM route exists.",
           observedCtaSimulated: "Switch to Simulated mode to see impact at this size.",
@@ -2027,12 +2071,14 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const xEveningStart = eveningBounds ? chartRows[eveningBounds.startIdx]?.timeLabel : undefined;
   const xEveningEnd = eveningBounds ? chartRows[eveningBounds.endIdx]?.timeLabel : undefined;
 
+  const chartRenderCompact = chartLayoutCompact && !flowChartFullscreenOpen;
+
   /** Recharts `interval` = show every (interval+1)-th tick; fewer labels on narrow viewports. */
   const maxVisibleXLabels = (() => {
     if (!isMultiDayFlow) {
-      return chartLayoutCompact ? 8 : 12;
+      return chartRenderCompact ? 8 : 12;
     }
-    if (chartLayoutCompact) {
+    if (chartRenderCompact) {
       if (selectorMode === "month") return 8;
       if (selectorMode === "week") return 7;
       return 8;
@@ -2046,17 +2092,17 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       : Math.max(0, Math.ceil(chartRows.length / maxVisibleXLabels) - 1);
 
   const chartMargin = isMultiDayFlow
-    ? chartLayoutCompact
+    ? chartRenderCompact
       ? { top: 4, right: 4, bottom: 58, left: 2 }
       : { top: 8, right: 8, bottom: 42, left: 4 }
-    : chartLayoutCompact
+    : chartRenderCompact
       ? { top: 4, right: 2, bottom: 18, left: 2 }
       : { top: 8, right: 8, bottom: 8, left: 4 };
 
-  const xAxisAngle = isMultiDayFlow ? (chartLayoutCompact ? -52 : -38) : 0;
-  const xAxisTickFont = isMultiDayFlow ? (chartLayoutCompact ? 7 : 8) : chartLayoutCompact ? 8 : 9;
-  const yNetWidth = chartLayoutCompact ? 40 : 48;
-  const ySocWidth = chartLayoutCompact ? 36 : 44;
+  const xAxisAngle = isMultiDayFlow ? (chartRenderCompact ? -52 : -38) : 0;
+  const xAxisTickFont = isMultiDayFlow ? (chartRenderCompact ? 7 : 8) : chartRenderCompact ? 8 : 9;
+  const yNetWidth = chartRenderCompact ? 40 : 48;
+  const ySocWidth = chartRenderCompact ? 36 : 44;
 
   if (isFlowLoading) {
     return (
@@ -2282,8 +2328,15 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       ? `~${pctFormatter.format(chartRows[chartRows.length - 1]!.estimatedFleetSocPct)}% · ${currentFleetStatusLabel}`
       : currentFleetStatusLabel;
 
-  const renderFlowChartSection = (mode: "observed" | "simulated") => {
+  const renderFlowChartSection = (
+    mode: "observed" | "simulated",
+    opts?: { chartActions?: ReactNode; chartAreaClassName?: string }
+  ) => {
     const isSimulated = mode === "simulated";
+    const chartActions = opts?.chartActions;
+    const chartAreaClass =
+      opts?.chartAreaClassName ??
+      "h-[min(64vh,560px)] min-h-[240px] w-full min-w-0 sm:min-h-[300px] md:h-[540px]";
     const activeNetLegend = isSimulated ? t.legendNetSimulated : t.legendNet;
     const activeNetDataKey = isSimulated ? "netAfterPracticalBessMw" : "netBalanceMw";
     const activeSocLegend = isSimulated ? t.legendPracticalSoc : t.legendFleetSoc;
@@ -2305,8 +2358,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             : "border-border/80 bg-card/95 dark:border-slate-600/55 dark:bg-slate-950/70"
         }`}
       >
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div className="lg:max-w-[min(680px,calc(100%-10rem))]">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between lg:max-w-[min(680px,calc(100%-10rem))]">
+            <div className="min-w-0 flex-1">
             {isSimulated ? (
               <div className="space-y-2">
                 <p className="text-[10px] font-semibold uppercase leading-none tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
@@ -2347,8 +2401,18 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 </p>
               </div>
             )}
+            </div>
+            {chartActions ? (
+              <div className="flex shrink-0 items-start justify-end sm:pt-0">{chartActions}</div>
+            ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-x-4 sm:gap-y-2 lg:justify-end">
+          <div
+            className={
+              chartRenderCompact
+                ? "flex max-w-full flex-nowrap items-center gap-x-3 gap-y-0 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:max-w-none lg:flex-wrap lg:justify-end lg:gap-y-2 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
+                : "flex flex-wrap items-center gap-2 sm:gap-x-4 sm:gap-y-2 lg:justify-end"
+            }
+          >
             <LegendDot color={netLineColor} label={activeNetLegend} />
             <LegendDot
               color={isSimulated ? SIM_CHART_SOC_STROKE : "rgb(129,119,239)"}
@@ -2375,7 +2439,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           </div>
         </div>
         <div
-          className={`h-[min(68vh,600px)] min-h-[260px] w-full min-w-0 sm:min-h-[300px] md:h-[540px] ${
+          className={`${chartAreaClass} ${
             isSimulated ? "mt-3" : "mt-4"
           }`}
         >
@@ -2393,13 +2457,13 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 }}
                 angle={xAxisAngle}
                 textAnchor={isMultiDayFlow ? "end" : "middle"}
-                height={isMultiDayFlow ? (chartLayoutCompact ? 54 : 48) : chartLayoutCompact ? 28 : undefined}
+                height={isMultiDayFlow ? (chartRenderCompact ? 54 : 48) : chartRenderCompact ? 28 : undefined}
                 interval={xAxisInterval}
-                minTickGap={chartLayoutCompact ? (isMultiDayFlow ? 24 : 6) : isMultiDayFlow ? 18 : 8}
+                minTickGap={chartRenderCompact ? (isMultiDayFlow ? 24 : 6) : isMultiDayFlow ? 18 : 8}
               />
               <YAxis
                 yAxisId="net"
-                tick={{ fontSize: chartLayoutCompact ? 9 : 10, fill: "rgb(100,116,139)" }}
+                tick={{ fontSize: chartRenderCompact ? 9 : 10, fill: "rgb(100,116,139)" }}
                 width={yNetWidth}
                 tickFormatter={(v) => integerFormatter.format(typeof v === "number" ? v : 0)}
                 label={{
@@ -2414,7 +2478,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 yAxisId="soc"
                 orientation="right"
                 domain={[0, 100]}
-                tick={{ fontSize: chartLayoutCompact ? 8 : 9, fill: "rgb(100,116,139)" }}
+                tick={{ fontSize: chartRenderCompact ? 8 : 9, fill: "rgb(100,116,139)" }}
                 width={ySocWidth}
                 tickFormatter={(v) => `${typeof v === "number" ? v : Number(v ?? 0)}%`}
                 label={{
@@ -2474,8 +2538,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 stroke={netLineColor}
                 strokeWidth={isSimulated ? 1.65 : 2.25}
                 dot={false}
-                isAnimationActive={!chartLayoutCompact}
-                animationDuration={chartLayoutCompact ? 0 : 180}
+                isAnimationActive={!chartRenderCompact}
+                animationDuration={chartRenderCompact ? 0 : 180}
               />
               {isSimulated ? (
                 <>
@@ -2582,8 +2646,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 strokeLinejoin={isSimulated ? "round" : undefined}
                 strokeDasharray={isSimulated ? undefined : "5 4"}
                 dot={false}
-                isAnimationActive={!chartLayoutCompact}
-                animationDuration={chartLayoutCompact ? 0 : 180}
+                isAnimationActive={!chartRenderCompact}
+                animationDuration={chartRenderCompact ? 0 : 180}
               />
             </ComposedChart>
           </ResponsiveContainer>
@@ -2634,7 +2698,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   };
 
   const renderDashboard = () => (
-    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <>
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-w-0">
         <div className="rounded-[30px] border border-border/75 bg-card/70 p-5 shadow-[0_22px_52px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl md:p-6 lg:p-7 dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_28px_64px_-30px_rgba(0,0,0,0.78)]">
           <div className="flex flex-col gap-4 border-b border-border/55 pb-5 dark:border-slate-600/35">
@@ -2756,7 +2821,80 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                     />
                   </div>
 
-                  {renderFlowChartSection("observed")}
+                  {chartLayoutCompact ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <div
+                          role="tablist"
+                          aria-label={language === "de" ? "Kurvenmodus" : "Chart mode"}
+                          className="inline-flex min-w-0 flex-1 rounded-full border border-border/70 bg-background/55 p-1 dark:border-slate-600/40 dark:bg-slate-950/35"
+                        >
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={briefingChartMode === "observed"}
+                            className={`min-w-0 flex-1 rounded-full px-3 py-2 text-center text-[11px] font-semibold transition ${
+                              briefingChartMode === "observed"
+                                ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                            }`}
+                            onClick={() => {
+                              onSimulatedModeChange?.(false);
+                            }}
+                          >
+                            {t.modeObserved}
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={briefingChartMode === "simulated"}
+                            className={`min-w-0 flex-1 rounded-full px-3 py-2 text-center text-[11px] font-semibold transition ${
+                              briefingChartMode === "simulated"
+                                ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                            }`}
+                            onClick={() => {
+                              onSimulatedModeChange?.(true);
+                            }}
+                          >
+                            {t.modeSimulated}
+                          </button>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                          aria-label={t.chartFullscreenExpand}
+                          onClick={() => {
+                            setFlowChartFullscreenMode(briefingChartMode);
+                            setFlowChartFullscreenOpen(true);
+                          }}
+                        >
+                          <Maximize2 className="size-4" aria-hidden />
+                        </Button>
+                      </div>
+                      {renderFlowChartSection(briefingChartMode)}
+                    </>
+                  ) : (
+                    renderFlowChartSection("observed", {
+                      chartActions: (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                          aria-label={t.chartFullscreenExpand}
+                          onClick={() => {
+                            setFlowChartFullscreenMode("observed");
+                            setFlowChartFullscreenOpen(true);
+                          }}
+                        >
+                          <Maximize2 className="size-4" aria-hidden />
+                        </Button>
+                      ),
+                    })
+                  )}
                   {briefingStoryWindow ? (
                     <BriefingDailyStory
                       language={language}
@@ -2895,17 +3033,70 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                     </div>
 
                     <div id="bessforge-germany-flow-capture" className="space-y-4 md:space-y-5">
-                      {chartPerspective === "with-bess" ? (
-                        <>
-                          {renderFlowChartSection("simulated")}
-                          {renderFlowChartSection("observed")}
-                        </>
-                      ) : (
-                        <>
-                          {renderFlowChartSection("observed")}
-                          {renderFlowChartSection("simulated")}
-                        </>
-                      )}
+                      <div className="hidden space-y-4 md:space-y-5 lg:block">
+                        {chartPerspective === "with-bess" ? (
+                          <>
+                            {renderFlowChartSection("simulated")}
+                            {renderFlowChartSection("observed")}
+                          </>
+                        ) : (
+                          <>
+                            {renderFlowChartSection("observed")}
+                            {renderFlowChartSection("simulated")}
+                          </>
+                        )}
+                      </div>
+
+                      <div className="space-y-3 lg:hidden">
+                        <div className="flex items-center gap-2">
+                          <div
+                            role="tablist"
+                            aria-label={language === "de" ? "Vergleichskurve" : "Comparison curve"}
+                            className="inline-flex min-w-0 flex-1 rounded-full border border-border/70 bg-background/55 p-1 dark:border-slate-600/40 dark:bg-slate-950/35"
+                          >
+                            <button
+                              type="button"
+                              role="tab"
+                              aria-selected={structuralMobileMode === "observed"}
+                              className={`min-w-0 flex-1 rounded-full px-3 py-2 text-center text-[11px] font-semibold transition ${
+                                structuralMobileMode === "observed"
+                                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                              }`}
+                              onClick={() => setStructuralMobileMode("observed")}
+                            >
+                              {t.modeObserved}
+                            </button>
+                            <button
+                              type="button"
+                              role="tab"
+                              aria-selected={structuralMobileMode === "simulated"}
+                              className={`min-w-0 flex-1 rounded-full px-3 py-2 text-center text-[11px] font-semibold transition ${
+                                structuralMobileMode === "simulated"
+                                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                              }`}
+                              onClick={() => setStructuralMobileMode("simulated")}
+                            >
+                              {t.modeSimulated}
+                            </button>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                            aria-label={t.chartFullscreenExpand}
+                            onClick={() => {
+                              setFlowChartFullscreenMode(structuralMobileMode);
+                              setFlowChartFullscreenOpen(true);
+                            }}
+                          >
+                            <Maximize2 className="size-4" aria-hidden />
+                          </Button>
+                        </div>
+                        {renderFlowChartSection(structuralMobileMode)}
+                      </div>
                     </div>
                   </section>
                 </motion.div>
@@ -3514,7 +3705,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           <div className="mt-4 inline-flex w-full rounded-full border border-border/70 bg-background/55 p-1 dark:border-slate-600/40 dark:bg-slate-950/35">
             <button
               type="button"
-              onClick={() => setChartPerspective("without-bess")}
+              onClick={() => {
+                setChartPerspective("without-bess");
+                setStructuralMobileMode("observed");
+              }}
               className={`flex-1 rounded-full px-3 py-2 text-[11px] font-semibold transition ${
                 chartPerspective === "without-bess"
                   ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
@@ -3525,7 +3719,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             </button>
             <button
               type="button"
-              onClick={() => setChartPerspective("with-bess")}
+              onClick={() => {
+                setChartPerspective("with-bess");
+                setStructuralMobileMode("simulated");
+              }}
               className={`flex-1 rounded-full px-3 py-2 text-[11px] font-semibold transition ${
                 chartPerspective === "with-bess"
                   ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
@@ -3565,6 +3762,83 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         </section>
       </motion.aside>
     </div>
+    {flowChartFullscreenOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[2000] flex flex-col bg-background/98 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.chartFullscreenTitle}
+          >
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">{t.chartFullscreenTitle}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-full"
+                aria-label={t.chartFullscreenClose}
+                onClick={() => setFlowChartFullscreenOpen(false)}
+              >
+                <X className="size-4" aria-hidden />
+              </Button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-3">
+              <div className="flex shrink-0 justify-center">
+                <div
+                  role="tablist"
+                  aria-label={language === "de" ? "Kurvenmodus" : "Chart mode"}
+                  className="inline-flex w-full max-w-md rounded-full border border-border/70 bg-background/55 p-1 dark:border-slate-600/40 dark:bg-slate-950/35"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={flowChartFullscreenMode === "observed"}
+                    className={`min-w-0 flex-1 rounded-full px-3 py-2.5 text-center text-[12px] font-semibold transition ${
+                      flowChartFullscreenMode === "observed"
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                        : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                    }`}
+                    onClick={() => {
+                      setFlowChartFullscreenMode("observed");
+                      onSimulatedModeChange?.(false);
+                    }}
+                  >
+                    {t.modeObserved}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={flowChartFullscreenMode === "simulated"}
+                    className={`min-w-0 flex-1 rounded-full px-3 py-2.5 text-center text-[12px] font-semibold transition ${
+                      flowChartFullscreenMode === "simulated"
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                        : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                    }`}
+                    onClick={() => {
+                      setFlowChartFullscreenMode("simulated");
+                      onSimulatedModeChange?.(true);
+                    }}
+                  >
+                    {t.modeSimulated}
+                  </button>
+                </div>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {renderFlowChartSection(flowChartFullscreenMode, {
+                  chartAreaClassName:
+                    "min-h-0 h-[min(78dvh,900px)] w-full flex-1 sm:h-[min(72dvh,820px)] md:h-[min(70dvh,760px)]",
+                })}
+              </div>
+              <p className="shrink-0 text-center text-[11px] text-slate-500 dark:text-slate-400">
+                {t.chartFullscreenEscHint}
+              </p>
+            </div>
+          </div>,
+          document.body
+        )
+      : null}
+    </>
   );
 
   return (
