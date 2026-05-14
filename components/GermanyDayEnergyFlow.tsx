@@ -2304,7 +2304,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     const chartActions = opts?.chartActions;
     const chartAreaClass =
       opts?.chartAreaClassName ??
-      "h-[min(64vh,560px)] min-h-[240px] w-full min-w-0 sm:min-h-[300px] md:h-[540px]";
+      "min-h-[220px] h-[min(46dvh,380px)] w-full min-w-0 sm:min-h-[240px] sm:h-[min(48dvh,440px)] md:min-h-[260px] md:h-[min(50dvh,500px)] lg:h-[min(48dvh,480px)]";
     const activeNetLegend = isSimulated ? t.legendNetSimulated : t.legendNet;
     const activeNetDataKey = isSimulated ? "netAfterPracticalBessMw" : "netBalanceMw";
     const activeSocLegend = isSimulated ? t.legendPracticalSoc : t.legendFleetSoc;
@@ -2665,6 +2665,67 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     });
   };
 
+  const renderDualFlowChartsBlock = () => (
+    <div className="space-y-2 pt-2 md:pt-4">
+      <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+        {t.onePagerChartsIntro}
+      </p>
+      <div
+        id="bessforge-germany-flow-capture"
+        className="mt-3 space-y-4 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 shadow-[0_24px_56px_-30px_rgb(15_23_42_/_0.26)] md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+            {simulatedCapacityBadgeText}
+          </span>
+          {selectedWindowBalancedPowerMw !== null ? (
+            <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+              {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-2">
+          {renderFlowChartSection("observed", {
+            chartActions: (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                aria-label={t.chartFullscreenExpand}
+                onClick={() => {
+                  setFlowChartFullscreenMode("observed");
+                  onSimulatedModeChange?.(false);
+                  setFlowChartFullscreenOpen(true);
+                }}
+              >
+                <Maximize2 className="size-4" aria-hidden />
+              </Button>
+            ),
+          })}
+          {renderFlowChartSection("simulated", {
+            chartActions: (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                aria-label={t.chartFullscreenExpand}
+                onClick={() => {
+                  setFlowChartFullscreenMode("simulated");
+                  onSimulatedModeChange?.(true);
+                  setFlowChartFullscreenOpen(true);
+                }}
+              >
+                <Maximize2 className="size-4" aria-hidden />
+              </Button>
+            ),
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
   const renderDashboard = () => (
     <>
       <div className="min-w-0 space-y-6">
@@ -2953,69 +3014,13 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             </div>
           </div>
 
+          {renderDualFlowChartsBlock()}
+
           {briefingStoryWindow ? (
             <BriefingDailyStory language={language} storyWindow={briefingStoryWindow} refreshNonce={briefingStoryRefreshNonce}>
               {({ introSection, counterfactualSection, footerSection }) => (
-                <div className="space-y-6 pt-6">
+                <div className="space-y-6 pt-4 md:pt-6">
                   {introSection}
-                  <div>
-                    <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-                      {t.onePagerChartsIntro}
-                    </p>
-                    <div
-                      id="bessforge-germany-flow-capture"
-                      className="mt-3 space-y-4 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 shadow-[0_24px_56px_-30px_rgb(15_23_42_/_0.26)] md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                          {simulatedCapacityBadgeText}
-                        </span>
-                        {selectedWindowBalancedPowerMw !== null ? (
-                          <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                            {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                        {renderFlowChartSection("observed", {
-                          chartActions: (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-                              aria-label={t.chartFullscreenExpand}
-                              onClick={() => {
-                                setFlowChartFullscreenMode("observed");
-                                onSimulatedModeChange?.(false);
-                                setFlowChartFullscreenOpen(true);
-                              }}
-                            >
-                              <Maximize2 className="size-4" aria-hidden />
-                            </Button>
-                          ),
-                        })}
-                        {renderFlowChartSection("simulated", {
-                          chartActions: (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-                              aria-label={t.chartFullscreenExpand}
-                              onClick={() => {
-                                setFlowChartFullscreenMode("simulated");
-                                onSimulatedModeChange?.(true);
-                                setFlowChartFullscreenOpen(true);
-                              }}
-                            >
-                              <Maximize2 className="size-4" aria-hidden />
-                            </Button>
-                          ),
-                        })}
-                      </div>
-                    </div>
-                  </div>
 
                   <div className="space-y-3">
                     <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
@@ -3101,53 +3106,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 </div>
               )}
             </BriefingDailyStory>
-          ) : (
-            <div className="space-y-6 pt-6">
-              <div
-                id="bessforge-germany-flow-capture"
-                className="space-y-4 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622]"
-              >
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {renderFlowChartSection("observed", {
-                    chartActions: (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-                        aria-label={t.chartFullscreenExpand}
-                        onClick={() => {
-                          setFlowChartFullscreenMode("observed");
-                          onSimulatedModeChange?.(false);
-                          setFlowChartFullscreenOpen(true);
-                        }}
-                      >
-                        <Maximize2 className="size-4" aria-hidden />
-                      </Button>
-                    ),
-                  })}
-                  {renderFlowChartSection("simulated", {
-                    chartActions: (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-                        aria-label={t.chartFullscreenExpand}
-                        onClick={() => {
-                          setFlowChartFullscreenMode("simulated");
-                          onSimulatedModeChange?.(true);
-                          setFlowChartFullscreenOpen(true);
-                        }}
-                      >
-                        <Maximize2 className="size-4" aria-hidden />
-                      </Button>
-                    ),
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
+          ) : null}
 
           <div className="flex flex-col gap-3 border-t border-border/50 pt-6 dark:border-slate-600/35">
             <FlowExportButtons language={language} flow={flow} captureElementId="bessforge-germany-flow-capture" />
@@ -3483,7 +3442,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     {flowChartFullscreenOpen && typeof document !== "undefined"
       ? createPortal(
           <div
-            className="fixed inset-0 z-[2000] flex flex-col bg-background/98 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] backdrop-blur-md"
+            className="fixed inset-0 z-[2000] flex max-h-[100dvh] flex-col overflow-hidden bg-background/98 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] backdrop-blur-md"
             role="dialog"
             aria-modal="true"
             aria-label={t.chartFullscreenTitle}
@@ -3501,7 +3460,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 <X className="size-4" aria-hidden />
               </Button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-3">
               <div className="flex shrink-0 justify-center">
                 <div
                   role="tablist"
@@ -3542,13 +3501,13 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                   </button>
                 </div>
               </div>
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="mx-auto w-full max-w-[min(100%,1240px)] shrink-0">
                 {renderFlowChartSection(flowChartFullscreenMode, {
                   chartAreaClassName:
-                    "min-h-0 h-[min(78dvh,900px)] w-full flex-1 sm:h-[min(72dvh,820px)] md:h-[min(70dvh,760px)]",
+                    "h-[min(78dvh,900px)] min-h-[320px] w-full sm:min-h-[360px]",
                 })}
               </div>
-              <p className="shrink-0 text-center text-[11px] text-slate-500 dark:text-slate-400">
+              <p className="shrink-0 pb-1 text-center text-[11px] text-slate-500 dark:text-slate-400">
                 {t.chartFullscreenEscHint}
               </p>
             </div>
