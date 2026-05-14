@@ -389,7 +389,7 @@ function SectionKpiTile({
             : "border-border/70 bg-background/50 text-slate-950 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-white";
 
   return (
-    <div className={`rounded-xl border px-3.5 py-3 shadow-sm ${toneClass}`}>
+    <div className={`rounded-xl border px-3 py-2.5 shadow-sm ${toneClass}`}>
       <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
         {eyebrow}
       </p>
@@ -2739,7 +2739,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   };
 
   const renderDualFlowChartsBlock = () => (
-    <div className="space-y-2 pt-2 md:pt-4">
+    <div className="space-y-2 pt-2 md:pt-3">
       <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
         {t.onePagerChartsIntro}
       </p>
@@ -2801,207 +2801,205 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
 
   const renderDashboard = () => (
     <>
-      <div className="min-w-0 space-y-6">
-        <div className="rounded-[30px] border border-border/75 bg-card/70 p-5 shadow-[0_22px_52px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl md:p-6 lg:p-7 dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_28px_64px_-30px_rgba(0,0,0,0.78)]">
-          <div className="flex flex-col gap-4 border-b border-border/55 pb-5 dark:border-slate-600/35">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-2">
-                <p className="text-[10px] font-semibold tracking-[0.22em] text-slate-500 uppercase dark:text-slate-400">
+      <div className="min-w-0 space-y-4">
+        <div className="rounded-2xl border border-border/75 bg-card/70 p-4 shadow-[0_22px_52px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl md:p-5 dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)] dark:shadow-[0_28px_64px_-30px_rgba(0,0,0,0.78)]">
+          <div className="flex flex-col gap-2.5 border-b border-border/55 pb-4 dark:border-slate-600/35">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-1">
+              <div className="min-w-0">
+                <p className="text-[9px] font-semibold tracking-[0.16em] text-slate-500 uppercase dark:text-slate-400">
                   {language === "de" ? "Analyst Workspace" : "Analyst workspace"}
                 </p>
-                <div className="space-y-1">
-                  <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-3xl dark:text-white [font-family:var(--font-heading)]">
-                    {t.profileTitle}
-                  </h2>
-                  <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                    {t.profileSubtitle}
-                  </p>
-                </div>
+                <h2 className="mt-0.5 text-xl font-semibold leading-tight tracking-tight text-slate-950 md:text-2xl dark:text-white [font-family:var(--font-heading)]">
+                  {t.profileTitle}
+                </h2>
               </div>
-              <div className="flex w-full flex-col gap-3 lg:max-w-xl">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                    <CalendarDays className="size-3.5" aria-hidden />
-                    {selectorLabel}
+              <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-end">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/55 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                  <CalendarDays className="size-3.5" aria-hidden />
+                  {selectorLabel}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/55 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                  {coveragePct}% {language === "de" ? "Abdeckung" : "coverage"}
+                </span>
+                {lastUpdatedIso ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/55 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+                    {language === "de" ? "Live" : "Live"} ·{" "}
+                    {timeFormatterSingleDay.format(new Date(lastUpdatedIso))}
                   </span>
-                  <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                    {coveragePct}% {language === "de" ? "Abdeckung" : "coverage"}
-                  </span>
-                  {lastUpdatedIso ? (
-                    <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-                      {language === "de" ? "Live" : "Live"} ·{" "}
-                      {timeFormatterSingleDay.format(new Date(lastUpdatedIso))}
-                    </span>
-                  ) : null}
-                  {onRefresh ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 rounded-full px-3 text-[11px]"
-                      disabled={isRefreshing}
-                      onClick={onRefresh}
-                    >
-                      {language === "de" ? "Aktualisieren" : "Refresh"}
-                    </Button>
-                  ) : null}
-                </div>
-                <div className="rounded-2xl border border-border/70 bg-background/45 p-3 dark:border-slate-600/40 dark:bg-slate-950/25">
-                  <div
-                    className="inline-flex min-h-8 w-full overflow-x-auto rounded-full border border-slate-200/90 bg-slate-100/95 p-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/55 dark:bg-slate-900/80 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] [&::-webkit-scrollbar]:hidden"
-                    role="tablist"
-                    aria-label={t.timeframeLabelShort}
+                ) : null}
+                {onRefresh ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-full px-3 text-[11px]"
+                    disabled={isRefreshing}
+                    onClick={onRefresh}
                   >
-                    {(
-                      [
-                        { mode: "day", label: t.dayMode },
-                        { mode: "week", label: t.weekMode },
-                        { mode: "month", label: t.monthMode },
-                      ] as const
-                    ).map((option) => (
-                      <button
-                        key={option.mode}
-                        type="button"
-                        role="tab"
-                        aria-selected={selectorMode === option.mode}
-                        onClick={() => setSelectorMode(option.mode)}
-                        className={`min-h-8 flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-tight transition ${
-                          selectorMode === option.mode
-                            ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90 dark:bg-slate-950 dark:text-white dark:ring-slate-600/70"
-                            : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-3 inline-flex w-full items-center gap-1 rounded-2xl border border-slate-200/90 bg-white/95 p-1 shadow-sm dark:border-slate-600/60 dark:bg-slate-950/95">
-                    <button
-                      type="button"
-                      onClick={handlePreviousWindow}
-                      className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                      aria-label={t.previousRange}
-                    >
-                      <ChevronLeft className="size-4" aria-hidden />
-                    </button>
-                    {selectorMode === "day" ? (
-                      <BerlinDayCalendarButton
-                        value={selectedDate}
-                        max={todayKey}
-                        onChange={setSelectedDate}
-                        language={language}
-                        className="min-w-0 flex-1 border-0 bg-transparent shadow-none dark:bg-transparent"
-                      />
-                    ) : null}
-                    {selectorMode === "week" ? (
-                      <input
-                        type="week"
-                        value={selectedWeek}
-                        max={currentWeekKey}
-                        onChange={(event) => setSelectedWeek(event.target.value)}
-                        className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
-                      />
-                    ) : null}
-                    {selectorMode === "month" ? (
-                      <input
-                        type="month"
-                        value={selectedMonth}
-                        max={currentMonthKey}
-                        onChange={(event) => setSelectedMonth(event.target.value)}
-                        className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
-                      />
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={nextDisabled}
-                      onClick={handleNextWindow}
-                      className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                      aria-label={t.nextRange}
-                    >
-                      <ChevronRight className="size-4" aria-hidden />
-                    </button>
-                  </div>
-                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                    {coverageSummaryLine}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border/70 bg-background/45 p-3 dark:border-slate-600/40 dark:bg-slate-950/25">
-                  <div className="flex items-center gap-2">
-                    <SlidersHorizontal className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
-                    <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-                      {t.simulatedCapacityControlEyebrow}
-                    </p>
-                  </div>
-                  <label htmlFor={simulatedCapacityInputId} className="mt-3 block space-y-1.5">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200">
-                      {t.simulatedCapacityInputLabel}
-                    </span>
-                    <input
-                      id={simulatedCapacityInputId}
-                      ref={simulatedCapacityInputRef}
-                      type="text"
-                      inputMode="decimal"
-                      value={customSimulatedCapacityGwhInput}
-                      onChange={(event) => setCustomSimulatedCapacityGwhInput(event.target.value)}
-                      placeholder={autoSimulatedCapacityInputPlaceholder}
-                      aria-describedby={simulatedCapacityHintId}
-                      aria-invalid={customSimulatedCapacityInvalid}
-                      className={`h-11 w-full rounded-xl border bg-white px-3 text-sm font-semibold tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-400/70 dark:bg-slate-950/75 dark:text-white dark:placeholder:text-slate-500 ${
-                        customSimulatedCapacityInvalid
-                          ? "border-rose-300/90 focus-visible:border-rose-300 dark:border-rose-400/45"
-                          : "border-emerald-300/80 dark:border-emerald-400/30"
-                      }`}
-                    />
-                  </label>
-                  <p id={simulatedCapacityHintId} className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-                    {hasCustomSimulatedCapacity
-                      ? language === "de"
-                        ? `Manuelle Schicht aktiv. Automatik: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
-                        : `Manual layer active. Auto size: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
-                      : autoSimulatedCapacityGwhLabel
-                        ? language === "de"
-                          ? `Automatik aktiv: ${autoSimulatedCapacityGwhLabel}.`
-                          : `Auto sizing active: ${autoSimulatedCapacityGwhLabel}.`
-                        : t.simulatedCapacityInputHintUnavailable}
-                    {practicalDispatchBalancedPowerMw !== null ? (
-                      <>
-                        {" "}
-                        {language === "de"
-                          ? `Leistung: ${formatPowerFromMw(practicalDispatchBalancedPowerMw)}.`
-                          : `Power cap: ${formatPowerFromMw(practicalDispatchBalancedPowerMw)}.`}
-                      </>
-                    ) : null}
-                  </p>
-                  {customSimulatedCapacityInvalid ? (
-                    <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-200">
-                      {t.simulatedCapacityInputInvalid}
-                    </p>
-                  ) : null}
-                  {hasCustomSimulatedCapacity ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-2"
-                      onClick={() => setCustomSimulatedCapacityGwhInput("")}
-                    >
-                      {t.simulatedCapacityReset}
-                    </Button>
-                  ) : null}
-                </div>
+                    {language === "de" ? "Aktualisieren" : "Refresh"}
+                  </Button>
+                ) : null}
               </div>
             </div>
+            <p className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              {t.profileSubtitle}
+            </p>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+                  <div className="rounded-xl border border-border/70 bg-background/45 p-2.5 dark:border-slate-600/40 dark:bg-slate-950/25">
+                    <div
+                      className="inline-flex min-h-8 w-full overflow-x-auto rounded-full border border-slate-200/90 bg-slate-100/95 p-0.5 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/55 dark:bg-slate-900/80 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] [&::-webkit-scrollbar]:hidden"
+                      role="tablist"
+                      aria-label={t.timeframeLabelShort}
+                    >
+                      {(
+                        [
+                          { mode: "day", label: t.dayMode },
+                          { mode: "week", label: t.weekMode },
+                          { mode: "month", label: t.monthMode },
+                        ] as const
+                      ).map((option) => (
+                        <button
+                          key={option.mode}
+                          type="button"
+                          role="tab"
+                          aria-selected={selectorMode === option.mode}
+                          onClick={() => setSelectorMode(option.mode)}
+                          className={`min-h-8 flex-1 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-tight transition ${
+                            selectorMode === option.mode
+                              ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90 dark:bg-slate-950 dark:text-white dark:ring-slate-600/70"
+                              : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-2 inline-flex w-full items-center gap-0.5 rounded-xl border border-slate-200/90 bg-white/95 p-0.5 shadow-sm dark:border-slate-600/60 dark:bg-slate-950/95">
+                      <button
+                        type="button"
+                        onClick={handlePreviousWindow}
+                        className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                        aria-label={t.previousRange}
+                      >
+                        <ChevronLeft className="size-4" aria-hidden />
+                      </button>
+                      {selectorMode === "day" ? (
+                        <BerlinDayCalendarButton
+                          value={selectedDate}
+                          max={todayKey}
+                          onChange={setSelectedDate}
+                          language={language}
+                          className="min-w-0 flex-1 border-0 bg-transparent shadow-none dark:bg-transparent"
+                        />
+                      ) : null}
+                      {selectorMode === "week" ? (
+                        <input
+                          type="week"
+                          value={selectedWeek}
+                          max={currentWeekKey}
+                          onChange={(event) => setSelectedWeek(event.target.value)}
+                          className="h-8 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-[11px] font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
+                        />
+                      ) : null}
+                      {selectorMode === "month" ? (
+                        <input
+                          type="month"
+                          value={selectedMonth}
+                          max={currentMonthKey}
+                          onChange={(event) => setSelectedMonth(event.target.value)}
+                          className="h-8 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-center text-[11px] font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 dark:text-slate-100"
+                        />
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={nextDisabled}
+                        onClick={handleNextWindow}
+                        className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-transparent text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                        aria-label={t.nextRange}
+                      >
+                        <ChevronRight className="size-4" aria-hidden />
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                      {coverageSummaryLine}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-background/45 p-2.5 dark:border-slate-600/40 dark:bg-slate-950/25">
+                    <div className="flex items-center gap-2">
+                      <SlidersHorizontal className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden />
+                      <p className="text-[10px] font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
+                        {t.simulatedCapacityControlEyebrow}
+                      </p>
+                    </div>
+                    <label htmlFor={simulatedCapacityInputId} className="mt-2 block space-y-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-700 dark:text-slate-200">
+                        {t.simulatedCapacityInputLabel}
+                      </span>
+                      <input
+                        id={simulatedCapacityInputId}
+                        ref={simulatedCapacityInputRef}
+                        type="text"
+                        inputMode="decimal"
+                        value={customSimulatedCapacityGwhInput}
+                        onChange={(event) => setCustomSimulatedCapacityGwhInput(event.target.value)}
+                        placeholder={autoSimulatedCapacityInputPlaceholder}
+                        aria-describedby={simulatedCapacityHintId}
+                        aria-invalid={customSimulatedCapacityInvalid}
+                        className={`h-10 w-full max-w-md rounded-xl border bg-white px-3 text-sm font-semibold tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-400/70 dark:bg-slate-950/75 dark:text-white dark:placeholder:text-slate-500 ${
+                          customSimulatedCapacityInvalid
+                            ? "border-rose-300/90 focus-visible:border-rose-300 dark:border-rose-400/45"
+                            : "border-emerald-300/80 dark:border-emerald-400/30"
+                        }`}
+                      />
+                    </label>
+                    <p id={simulatedCapacityHintId} className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                      {hasCustomSimulatedCapacity
+                        ? language === "de"
+                          ? `Manuelle Schicht aktiv. Automatik: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
+                          : `Manual layer active. Auto size: ${autoSimulatedCapacityGwhLabel ?? "—"}.`
+                        : autoSimulatedCapacityGwhLabel
+                          ? language === "de"
+                            ? `Automatik aktiv: ${autoSimulatedCapacityGwhLabel}.`
+                            : `Auto sizing active: ${autoSimulatedCapacityGwhLabel}.`
+                          : t.simulatedCapacityInputHintUnavailable}
+                      {practicalDispatchBalancedPowerMw !== null ? (
+                        <>
+                          {" "}
+                          {language === "de"
+                            ? `Leistung: ${formatPowerFromMw(practicalDispatchBalancedPowerMw)}.`
+                            : `Power cap: ${formatPowerFromMw(practicalDispatchBalancedPowerMw)}.`}
+                        </>
+                      ) : null}
+                    </p>
+                    {customSimulatedCapacityInvalid ? (
+                      <p className="mt-1.5 text-[10px] font-medium text-rose-700 dark:text-rose-200">
+                        {t.simulatedCapacityInputInvalid}
+                      </p>
+                    ) : null}
+                    {hasCustomSimulatedCapacity ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 h-8 px-3 text-[11px]"
+                        onClick={() => setCustomSimulatedCapacityGwhInput("")}
+                      >
+                        {t.simulatedCapacityReset}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
           </div>
 
-          <div className="space-y-8 pt-6">
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+          <div className="space-y-4 pt-4">
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
                 {t.onePagerStructuralEyebrow}
               </p>
-              <p className="max-w-3xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              <p className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
                 {t.onePagerStructuralLead}
               </p>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
                 <SectionKpiTile
                   eyebrow={language === "de" ? "Nettobilanz" : "Net balance"}
                   value={formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}
@@ -3059,14 +3057,14 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
                 {t.onePagerInstalledFleetEyebrow}
               </p>
-              <p className="max-w-3xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              <p className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
                 {t.onePagerInstalledFleetLead}
               </p>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
                 <SectionKpiTile
                   eyebrow={language === "de" ? "Flotten-SoC" : "Fleet SoC"}
                   value={currentFleetSocStatusValue}
@@ -3248,7 +3246,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             </BriefingDailyStory>
           ) : null}
 
-          <div className="flex flex-col gap-3 border-t border-border/50 pt-6 dark:border-slate-600/35">
+          <div className="flex flex-col gap-3 border-t border-border/50 pt-4 dark:border-slate-600/35">
             <FlowExportButtons language={language} flow={flow} captureElementId="bessforge-germany-flow-capture" />
             <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{t.onePagerExportHint}</p>
           </div>
