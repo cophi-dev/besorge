@@ -507,6 +507,12 @@ type ScenarioImpactSnapshot = {
   bessRevenueTodayEur: number | null;
   avoidedRedispatchCostsEur: number | null;
   avoidedCurtailmentValueEur: number | null;
+  /**
+   * Charge-side economic proxy: same €/MWh weighting as `missedOpportunityEur`, applied to absorbed
+   * surplus energy. Scales with fleet size when extra capacity banks more surplus (unlike discharge-only
+   * spread on `bessRevenueTodayEur`, which plateaus once structural deficits are fully served).
+   */
+  chargeOpportunityValueEur: number | null;
   totalValueCreatedEur: number | null;
   missedOpportunityEur: number | null;
   curtailedRecoveredToLoadEnergyMwh: number;
@@ -654,6 +660,10 @@ function evaluateBessScenario(params: {
       : 0;
   const opportunityValuePerMwh =
     (spreadEurPerMwh ?? 0) + (redispatchEurPerMwh ?? 0) * curtailedShareOfOpportunity;
+  const chargeOpportunityValueEur =
+    opportunityValuePerMwh > 0
+      ? coverage.absorbedSurplusEnergyMwh * opportunityValuePerMwh
+      : null;
   const missedOpportunityEur =
     opportunityValuePerMwh > 0
       ? Math.max(0, coverage.totalChargeOpportunityEnergyMwh - coverage.absorbedSurplusEnergyMwh) *
@@ -691,6 +701,7 @@ function evaluateBessScenario(params: {
     bessRevenueTodayEur,
     avoidedRedispatchCostsEur,
     avoidedCurtailmentValueEur,
+    chargeOpportunityValueEur,
     totalValueCreatedEur,
     missedOpportunityEur,
     curtailedRecoveredToLoadEnergyMwh,
@@ -1327,17 +1338,12 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             "P95 aus diesem Fenster. Simulation zeigt Überschussaufnahme und Netzwirkung.",
           capacityBadgeUnavailable: "Keine berechenbare Simulationskapazitaet",
           simulatedCapacityBadgeLabel: (capacity: string) => `Simulierte Kapazitaet: ${capacity}`,
-          simulatedCapacityModeAuto: "Automatik · Fenster-P95",
+          simulatedCapacityModeAutoWindow: "Automatik · Fenster-P95",
+          simulatedCapacityModeAuto12m: "Automatik · 12M balanced",
           simulatedCapacityModeCustom: "Manuell gesetzt",
           simulatedCapacityPowerBadge: (power: string) => `Leistungslimit: ${power}`,
           simulatedCapacityControlEyebrow: "Kapazität überschreiben",
           simulatedCapacityControlTitle: "Simulierte BESS-Kapazitaet anpassen",
-          simulatedCapacityControlHintAuto: (capacity: string) =>
-            `Aktuell nutzt die Kurve automatisch ${capacity} (praktische Fenster-P95). Trage einen Wert ein, um die Simulation zu ueberschreiben.`,
-          simulatedCapacityControlHintCustom: (capacity: string | null) =>
-            capacity
-              ? `Manuelle Kapazitaet aktiv. Die automatische Fenster-P95 waere ${capacity}.`
-              : "Manuelle Kapazitaet aktiv. Fuer dieses Fenster ist derzeit keine automatische Groesse berechenbar.",
           simulatedCapacityInputLabel: "Kapazitaet (GWh)",
           simulatedCapacityInputHint: (power: string) =>
             `Das Leistungslimit bleibt bei ${power} (balanced).`,
@@ -1500,17 +1506,12 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             "P95 for this window. Simulated mode shows surplus capture and grid impact.",
           capacityBadgeUnavailable: "Simulation capacity not computable yet",
           simulatedCapacityBadgeLabel: (capacity: string) => `Simulated capacity: ${capacity}`,
-          simulatedCapacityModeAuto: "Auto · window P95",
+          simulatedCapacityModeAutoWindow: "Auto · window P95",
+          simulatedCapacityModeAuto12m: "Auto · 12M balanced",
           simulatedCapacityModeCustom: "Manual override",
           simulatedCapacityPowerBadge: (power: string) => `Power cap: ${power}`,
           simulatedCapacityControlEyebrow: "Capacity override",
           simulatedCapacityControlTitle: "Adjust simulated BESS capacity",
-          simulatedCapacityControlHintAuto: (capacity: string) =>
-            `The chart currently auto-uses ${capacity} (practical window P95). Enter a value to override the simulation.`,
-          simulatedCapacityControlHintCustom: (capacity: string | null) =>
-            capacity
-              ? `Manual capacity active. The automatic window P95 would be ${capacity}.`
-              : "Manual capacity active. No automatic size is computable for this window yet.",
           simulatedCapacityInputLabel: "Capacity (GWh)",
           simulatedCapacityInputHint: (power: string) =>
             `The power cap stays at ${power} (balanced).`,
@@ -1591,14 +1592,20 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     return computePracticalDailyCycleCapacityMwh(previousDaySlots);
   }, [selectorMode, previousDaySlots]);
 
-  const autoPracticalCapacityMwh = useMemo(() => {
+  const autoSimulatedBaselineMwh = useMemo(() => {
+    if (selectorMode === "day" && recommendation) {
+      const balanced = recommendation.tiers.find((entry) => entry.label === "balanced");
+      if (balanced && balanced.recommendedEnergyMwh > 0) {
+        return balanced.recommendedEnergyMwh;
+      }
+    }
     const current = practicalCapacity?.practicalCapacityMwh ?? 0;
     if (current > 0) {
       return current;
     }
     const fallback = previousDayPracticalCapacity?.practicalCapacityMwh ?? 0;
     return fallback > 0 ? fallback : 0;
-  }, [practicalCapacity, previousDayPracticalCapacity]);
+  }, [selectorMode, recommendation, practicalCapacity, previousDayPracticalCapacity]);
 
   const customSimulatedCapacityMwh = useMemo(
     () => parseCapacityGwhInput(customSimulatedCapacityGwhInput),
@@ -1607,9 +1614,21 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const customSimulatedCapacityInvalid =
     customSimulatedCapacityGwhInput.trim().length > 0 && customSimulatedCapacityMwh === null;
   const hasCustomSimulatedCapacity = customSimulatedCapacityMwh !== null;
+  const usesTwelveMonthAutoSizing = useMemo(() => {
+    if (selectorMode !== "day" || hasCustomSimulatedCapacity || !recommendation) {
+      return false;
+    }
+    const balanced = recommendation.tiers.find((entry) => entry.label === "balanced");
+    return (
+      balanced !== undefined &&
+      balanced.recommendedEnergyMwh > 0 &&
+      balanced.recommendedPowerMw > 0 &&
+      Number.isFinite(balanced.recommendedPowerMw)
+    );
+  }, [selectorMode, hasCustomSimulatedCapacity, recommendation]);
   const effectivePracticalCapacityMwh = hasCustomSimulatedCapacity
     ? customSimulatedCapacityMwh
-    : autoPracticalCapacityMwh;
+    : autoSimulatedBaselineMwh;
 
   const recommendationByTier = useMemo(() => {
     if (!recommendation) {
@@ -1682,6 +1701,20 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     };
   }, [flow]);
   const selectedWindowBalancedPowerMw = selectedWindowRecommendation?.balanced?.recommendedPowerMw ?? null;
+
+  const practicalDispatchBalancedPowerMw = useMemo(() => {
+    if (selectorMode === "day" && recommendation) {
+      const balanced = recommendation.tiers.find((entry) => entry.label === "balanced");
+      if (
+        balanced &&
+        balanced.recommendedPowerMw > 0 &&
+        Number.isFinite(balanced.recommendedPowerMw)
+      ) {
+        return balanced.recommendedPowerMw;
+      }
+    }
+    return selectedWindowBalancedPowerMw;
+  }, [selectorMode, recommendation, selectedWindowBalancedPowerMw]);
 
   const visualizationResetDailyByBerlin = selectorMode === "day" ? dayModeResetAtStart : false;
 
@@ -1774,7 +1807,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       dayBeforePreviousSlots,
       previousDaySlots,
       capacityMwh: effectivePracticalCapacityMwh,
-      maxPowerMw: selectedWindowBalancedPowerMw,
+      maxPowerMw: practicalDispatchBalancedPowerMw,
     });
   }, [
     selectorMode,
@@ -1783,7 +1816,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     effectivePracticalCapacityMwh,
     previousDaySlots,
     dayBeforePreviousSlots,
-    selectedWindowBalancedPowerMw,
+    practicalDispatchBalancedPowerMw,
   ]);
 
   const recommendedCoverage = useMemo(() => {
@@ -1796,14 +1829,14 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     );
     return computeCoverageAtCapacityMwh(flow.slots, effectivePracticalCapacityMwh, {
       resetDailyByBerlin: visualizationResetDailyByBerlin,
-      maxPowerMw: selectedWindowBalancedPowerMw,
+      maxPowerMw: practicalDispatchBalancedPowerMw,
       initialSocMwh,
     });
   }, [
     flow,
     effectivePracticalCapacityMwh,
     visualizationResetDailyByBerlin,
-    selectedWindowBalancedPowerMw,
+    practicalDispatchBalancedPowerMw,
     estimatedInitialSocMwh,
   ]);
 
@@ -1817,7 +1850,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         ? simulatePracticalDispatchAtCapacity(flow.slots, effectivePracticalCapacityMwh, {
             resetDailyByBerlin: visualizationResetDailyByBerlin,
             initialSocMwh: estimatedInitialSocMwh,
-            maxPowerMw: selectedWindowBalancedPowerMw,
+            maxPowerMw: practicalDispatchBalancedPowerMw,
           })
         : [];
     const practicalSocSeries = practicalDispatchSeries.map((d) =>
@@ -1828,7 +1861,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         ? simulateAdjustedNetMwAtCapacity(flow.slots, effectivePracticalCapacityMwh, {
             resetDailyByBerlin: visualizationResetDailyByBerlin,
             initialSocMwh: estimatedInitialSocMwh,
-            maxPowerMw: selectedWindowBalancedPowerMw,
+            maxPowerMw: practicalDispatchBalancedPowerMw,
           })
         : [];
     const fleetDispatchSeries =
@@ -1895,7 +1928,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     effectivePracticalCapacityMwh,
     visualizationResetDailyByBerlin,
     estimatedInitialSocMwh,
-    selectedWindowBalancedPowerMw,
+    practicalDispatchBalancedPowerMw,
     fleetEnergyCapacityMwh,
     estimatedInitialFleetSocMwh,
     fleetPowerMw,
@@ -2183,12 +2216,12 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       ? `${energyFormatter.format(effectivePracticalCapacityMwh / 1_000)} GWh`
       : null;
   const autoSimulatedCapacityGwhLabel =
-    autoPracticalCapacityMwh > 0
-      ? `${energyFormatter.format(autoPracticalCapacityMwh / 1_000)} GWh`
+    autoSimulatedBaselineMwh > 0
+      ? `${energyFormatter.format(autoSimulatedBaselineMwh / 1_000)} GWh`
       : null;
   const autoSimulatedCapacityInputPlaceholder =
-    autoPracticalCapacityMwh > 0
-      ? energyFormatter.format(autoPracticalCapacityMwh / 1_000)
+    autoSimulatedBaselineMwh > 0
+      ? energyFormatter.format(autoSimulatedBaselineMwh / 1_000)
       : undefined;
   const simulatedCapacityBadgeText = simulatedCapacityGwhLabel
     ? t.simulatedCapacityBadgeLabel(simulatedCapacityGwhLabel)
@@ -2262,7 +2295,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       ? evaluateBessScenario({
           slots: flow.slots,
           capacityMwh: effectivePracticalCapacityMwh,
-          maxPowerMw: selectedWindowBalancedPowerMw,
+          maxPowerMw: practicalDispatchBalancedPowerMw,
           initialSocMwh: estimatedInitialSocMwh,
           resetDailyByBerlin: visualizationResetDailyByBerlin,
           marketReference,
@@ -2388,11 +2421,13 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                   <span className="inline-flex items-center rounded-full border border-slate-200/85 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/55 dark:bg-slate-950/70 dark:text-slate-200">
                     {hasCustomSimulatedCapacity
                       ? t.simulatedCapacityModeCustom
-                      : t.simulatedCapacityModeAuto}
+                      : usesTwelveMonthAutoSizing
+                        ? t.simulatedCapacityModeAuto12m
+                        : t.simulatedCapacityModeAutoWindow}
                   </span>
-                  {selectedWindowBalancedPowerMw !== null ? (
+                  {practicalDispatchBalancedPowerMw !== null ? (
                     <span className="inline-flex items-center rounded-full border border-slate-200/85 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/55 dark:bg-slate-950/70 dark:text-slate-200">
-                      {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
+                      {t.simulatedCapacityPowerBadge(formatPowerFromMw(practicalDispatchBalancedPowerMw))}
                     </span>
                   ) : null}
                 </div>
@@ -2716,9 +2751,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
             {simulatedCapacityBadgeText}
           </span>
-          {selectedWindowBalancedPowerMw !== null ? (
+          {practicalDispatchBalancedPowerMw !== null ? (
             <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-              {t.simulatedCapacityPowerBadge(formatPowerFromMw(selectedWindowBalancedPowerMw))}
+              {t.simulatedCapacityPowerBadge(formatPowerFromMw(practicalDispatchBalancedPowerMw))}
             </span>
           ) : null}
         </div>
@@ -2928,12 +2963,12 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                           ? `Automatik aktiv: ${autoSimulatedCapacityGwhLabel}.`
                           : `Auto sizing active: ${autoSimulatedCapacityGwhLabel}.`
                         : t.simulatedCapacityInputHintUnavailable}
-                    {selectedWindowBalancedPowerMw !== null ? (
+                    {practicalDispatchBalancedPowerMw !== null ? (
                       <>
                         {" "}
                         {language === "de"
-                          ? `Leistung: ${formatPowerFromMw(selectedWindowBalancedPowerMw)}.`
-                          : `Power cap: ${formatPowerFromMw(selectedWindowBalancedPowerMw)}.`}
+                          ? `Leistung: ${formatPowerFromMw(practicalDispatchBalancedPowerMw)}.`
+                          : `Power cap: ${formatPowerFromMw(practicalDispatchBalancedPowerMw)}.`}
                       </>
                     ) : null}
                   </p>
@@ -3453,8 +3488,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                       </h4>
                       <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                         {language === "de"
-                          ? "Alle Szenarien skalieren Energie und Leistung der aktuellen Flotte gemeinsam."
-                          : "All scenarios scale current fleet energy and power together."}
+                          ? "Alle Szenarien skalieren Energie und Leistung der aktuellen Flotte gemeinsam. Die Umsatzzeile wertet eingelagerte MWh mit dem gleichen Spot-/Redispatch-Gewicht wie die Rest-Chance (kein reiner Entlade-Deckel — der kann saturieren, sobald alle strukturellen Defizite bedient sind). Abregelung: \"—\" wenn die Slots keine Abregelenergie führen."
+                          : "All scenarios scale current fleet energy and power together. The revenue row values stored MWh with the same spot/redispatch blend as the remaining opportunity (not discharge-only, which plateaus once structural deficits are fully served). Curtailment: “—” when slots carry no curtailed-energy signal."}
                       </p>
                     </div>
 
@@ -3486,20 +3521,24 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                               {
                                 label: language === "de" ? "Curtailment Avoided" : "Curtailment Avoided",
                                 render: (scenario: ScenarioImpactSnapshot) =>
-                                  formatEnergyFromMwh(scenario.absorbedCurtailmentEnergyMwh),
+                                  scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
+                                    ? "—"
+                                    : formatEnergyFromMwh(scenario.absorbedCurtailmentEnergyMwh),
                               },
                               {
-                                label: language === "de" ? "Revenue" : "Revenue",
+                                label:
+                                  language === "de"
+                                    ? "Umsatz (Spread auf Einlagerung)"
+                                    : "Revenue (spread on stored energy)",
                                 render: (scenario: ScenarioImpactSnapshot) =>
-                                  formatCurrencyCompact(
-                                    (scenario.bessRevenueTodayEur ?? 0) +
-                                      (scenario.avoidedCurtailmentValueEur ?? 0)
-                                  ),
+                                  formatCurrencyCompact(scenario.chargeOpportunityValueEur ?? null),
                               },
                               {
                                 label: language === "de" ? "Avoided Costs" : "Avoided Costs",
                                 render: (scenario: ScenarioImpactSnapshot) =>
-                                  formatCurrencyCompact(scenario.avoidedRedispatchCostsEur),
+                                  scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
+                                    ? "—"
+                                    : formatCurrencyCompact(scenario.avoidedRedispatchCostsEur),
                               },
                               {
                                 label: language === "de" ? "Grid Relief" : "Grid Relief",
