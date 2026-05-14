@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { BriefingDailyStory } from "@/components/briefing/BriefingDailyStory";
 
@@ -112,6 +112,24 @@ describe("BriefingDailyStory", () => {
     expect(screen.getByText(/same published quarter-hours as the signals above/i)).toBeInTheDocument();
     expect(container.textContent ?? "").toMatch(/47%/);
     expect(container.textContent ?? "").toMatch(/22%/);
+  });
+
+  it("hides intro hero KPI tiles when hideIntroHeroStats is set", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => goodPayload,
+    }) as unknown as typeof fetch;
+
+    render(
+      <BriefingDailyStory language="en" storyWindow={dayWindow} hideIntroHeroStats>
+        {({ introSection }) => <div>{introSection}</div>}
+      </BriefingDailyStory>
+    );
+
+    await waitFor(() => expect(screen.getByText(goodPayload.story.headline)).toBeInTheDocument());
+    const keyInsights = screen.getByRole("group", { name: /key insights/i });
+    expect(within(keyInsights).queryByText(/^Net balance$/i)).toBeNull();
+    expect(screen.getByText(goodPayload.story.insights[0])).toBeInTheDocument();
   });
 
   it("flags the deterministic fallback in the footer", async () => {

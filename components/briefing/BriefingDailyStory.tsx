@@ -71,6 +71,11 @@ type BriefingDailyStoryProps = {
   storyWindow: BriefingStoryWindow;
   /** Bumped to force a refetch (e.g. user pressed "Refresh"). */
   refreshNonce?: number;
+  /**
+   * When true, the three headline KPI tiles inside the intro (net balance, modeled BESS, coverage)
+   * are omitted — use when the parent surface already shows those numbers.
+   */
+  hideIntroHeroStats?: boolean;
   children?: (sections: BriefingDailyStorySections) => ReactNode;
 };
 
@@ -218,6 +223,7 @@ export function BriefingDailyStory({
   language,
   storyWindow,
   refreshNonce = 0,
+  hideIntroHeroStats = false,
   children,
 }: BriefingDailyStoryProps) {
   const [data, setData] = useState<StoryResponse | null>(null);
@@ -446,19 +452,21 @@ export function BriefingDailyStory({
               {t.keyInsightsLabel}
             </p>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <StoryHeroStat label={t.netBalanceLabel} value={storyMetrics.netBalance} />
-              <StoryHeroStat
-                label={t.modelCapacityLabel}
-                value={`${headerNumbers.capGwh} GWh`}
-                subtitle={t.modelCapacitySubtitle(headerNumbers.pwGw)}
-              />
-              <StoryHeroStat
-                label={t.coverageLabel}
-                value={storyMetrics.coverage}
-                subtitle={`${t.peakHoursLabel}: ${storyMetrics.peakHours}`}
-              />
-            </div>
+            {hideIntroHeroStats ? null : (
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <StoryHeroStat label={t.netBalanceLabel} value={storyMetrics.netBalance} />
+                <StoryHeroStat
+                  label={t.modelCapacityLabel}
+                  value={`${headerNumbers.capGwh} GWh`}
+                  subtitle={t.modelCapacitySubtitle(headerNumbers.pwGw)}
+                />
+                <StoryHeroStat
+                  label={t.coverageLabel}
+                  value={storyMetrics.coverage}
+                  subtitle={`${t.peakHoursLabel}: ${storyMetrics.peakHours}`}
+                />
+              </div>
+            )}
 
             <ol className="mt-4 space-y-3">
               {data.story.insights.map((insight, index) => (
