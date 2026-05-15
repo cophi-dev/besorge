@@ -3004,7 +3004,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     </section>
   );
 
-  const renderDualFlowChartsBlock = () => (
+  const renderDualFlowChartsBlock = (missedBetweenCharts?: ReactNode) => (
     <div
       id="speicherpilot-germany-flow-capture"
       className="space-y-4 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 shadow-[0_24px_56px_-30px_rgb(15_23_42_/_0.26)] md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
@@ -3028,6 +3028,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             </Button>
           ),
         })}
+        {missedBetweenCharts}
         {renderSimulatedCapacityOverridePanel()}
         {renderFlowChartSection("simulated", {
           chartActions: (
@@ -3079,6 +3080,57 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       language,
       marketReference,
       modeledMissedOpportunityValuePerMwh
+    );
+
+    const workspaceMissedOpportunityBlock = (
+      <section
+        className="rounded-2xl border border-amber-400/45 bg-gradient-to-br from-amber-50/80 via-background/50 to-orange-50/30 p-3 shadow-sm dark:border-amber-500/35 dark:from-amber-950/40 dark:via-slate-950/30 dark:to-slate-950/25 md:p-4"
+        aria-labelledby="workspace-missed-heading"
+      >
+        <p
+          id="workspace-missed-heading"
+          className="text-[10px] font-semibold tracking-[0.2em] text-amber-900/90 uppercase dark:text-amber-200/90"
+        >
+          {t.onePagerMissedEyebrow}
+        </p>
+        <div
+          className="mt-3 flex flex-col divide-y divide-amber-200/60 dark:divide-amber-600/35 sm:flex-row sm:divide-x sm:divide-y-0"
+          role="group"
+          aria-label={t.onePagerMissedEyebrow}
+        >
+          <WindowMetricCell
+            label={language === "de" ? "Nicht gespeichert" : "Not stored"}
+            value={modeledMissedChargeMwh !== null ? formatEnergyFromMwh(modeledMissedChargeMwh) : "—"}
+            hint={language === "de" ? "Überschuss + Abregelung" : "Surplus + curtailment"}
+            tone="amber"
+          />
+          <WindowMetricCell
+            label={language === "de" ? "Indik. Wert" : "Indic. value"}
+            value={formatCurrencyCompact(modeledScenario?.missedOpportunityEur ?? null)}
+            hint={
+              modeledMissedOpportunityValuePerMwh !== null
+                ? `${priceFormatter.format(modeledMissedOpportunityValuePerMwh)} EUR/MWh`
+                : language === "de"
+                  ? "Kein SMARD-Spread"
+                  : "No SMARD spread"
+            }
+            tone="amber"
+          />
+          <WindowMetricCell
+            label={language === "de" ? "Anteil" : "Share"}
+            value={
+              modeledMissedChargeSharePct !== null
+                ? `${pctFormatter.format(modeledMissedChargeSharePct)}%`
+                : "—"
+            }
+            hint={language === "de" ? "der Ladechance" : "of charge opportunity"}
+            tone="amber"
+          />
+        </div>
+        <p className="mt-3 border-t border-amber-200/60 pt-3 text-[10px] leading-relaxed text-amber-950/85 dark:border-amber-600/30 dark:text-amber-100/80">
+          {missedOpportunityFootnote}
+        </p>
+      </section>
     );
 
     const simAbsorbedMwh = modeledScenario?.coverage.absorbedSurplusEnergyMwh ?? null;
@@ -3469,55 +3521,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               : "Installed German BESS layer · same slot model as the charts"}
           </p>
         </section>
-
-        <section
-          className="rounded-2xl border border-amber-400/45 bg-gradient-to-br from-amber-50/80 via-background/50 to-orange-50/30 p-3 shadow-sm dark:border-amber-500/35 dark:from-amber-950/40 dark:via-slate-950/30 dark:to-slate-950/25 md:p-4"
-          aria-labelledby="workspace-missed-heading"
-        >
-          <p
-            id="workspace-missed-heading"
-            className="text-[10px] font-semibold tracking-[0.2em] text-amber-900/90 uppercase dark:text-amber-200/90"
-          >
-            {t.onePagerMissedEyebrow}
-          </p>
-          <div
-            className="mt-3 flex flex-col divide-y divide-amber-200/60 dark:divide-amber-600/35 sm:flex-row sm:divide-x sm:divide-y-0"
-            role="group"
-            aria-label={t.onePagerMissedEyebrow}
-          >
-            <WindowMetricCell
-              label={language === "de" ? "Nicht gespeichert" : "Not stored"}
-              value={modeledMissedChargeMwh !== null ? formatEnergyFromMwh(modeledMissedChargeMwh) : "—"}
-              hint={language === "de" ? "Überschuss + Abregelung" : "Surplus + curtailment"}
-              tone="amber"
-            />
-            <WindowMetricCell
-              label={language === "de" ? "Indik. Wert" : "Indic. value"}
-              value={formatCurrencyCompact(modeledScenario?.missedOpportunityEur ?? null)}
-              hint={
-                modeledMissedOpportunityValuePerMwh !== null
-                  ? `${priceFormatter.format(modeledMissedOpportunityValuePerMwh)} EUR/MWh`
-                  : language === "de"
-                    ? "Kein SMARD-Spread"
-                    : "No SMARD spread"
-              }
-              tone="amber"
-            />
-            <WindowMetricCell
-              label={language === "de" ? "Anteil" : "Share"}
-              value={
-                modeledMissedChargeSharePct !== null
-                  ? `${pctFormatter.format(modeledMissedChargeSharePct)}%`
-                  : "—"
-              }
-              hint={language === "de" ? "der Ladechance" : "of charge opportunity"}
-              tone="amber"
-            />
-          </div>
-          <p className="mt-3 border-t border-amber-200/60 pt-3 text-[10px] leading-relaxed text-amber-950/85 dark:border-amber-600/30 dark:text-amber-100/80">
-            {missedOpportunityFootnote}
-          </p>
-        </section>
       </div>
     );
 
@@ -3846,7 +3849,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                         {t.workspaceChartsLead}
                       </p>
                     </div>
-                    {renderDualFlowChartsBlock()}
+                    {renderDualFlowChartsBlock(workspaceMissedOpportunityBlock)}
                   </section>
 
                   <div className="border-t border-border/40 pt-8 dark:border-slate-600/30">{systemImpactSection}</div>
@@ -3901,7 +3904,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                     {t.workspaceChartsLead}
                   </p>
                 </div>
-                {renderDualFlowChartsBlock()}
+                {renderDualFlowChartsBlock(workspaceMissedOpportunityBlock)}
               </section>
 
               <div className="border-t border-border/40 pt-8 dark:border-slate-600/30">{systemImpactSection}</div>
