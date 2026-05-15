@@ -71,6 +71,26 @@ const curtailedChargeOpportunityMwhForSlot = (slot: OptimalCapacitySlotInput): n
     : 0;
 };
 
+/** Charging power not covered by structural surplus or curtailed headroom — only this moves the border proxy. */
+export function borderCoupledBatteryChargeMw(slot: OptimalCapacitySlotInput, chargeMw: number): number {
+  if (!Number.isFinite(chargeMw) || chargeMw <= 0) {
+    return 0;
+  }
+  const surplusMw =
+    Number.isFinite(slot.totalGenerationMw) && Number.isFinite(slot.loadMw)
+      ? Math.max(0, slot.totalGenerationMw - slot.loadMw)
+      : 0;
+  const curtailMw =
+    slot.curtailmentMw !== null &&
+    slot.curtailmentMw !== undefined &&
+    Number.isFinite(slot.curtailmentMw) &&
+    slot.curtailmentMw > 0
+      ? slot.curtailmentMw
+      : 0;
+  const domesticSlackMw = surplusMw + curtailMw;
+  return Math.max(0, chargeMw - domesticSlackMw);
+}
+
 /**
  * "Optimal" energy capacity for a perfect surplus-following BESS over the given slot series:
  * - Start empty (SoC = 0).

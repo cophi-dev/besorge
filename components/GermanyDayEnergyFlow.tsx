@@ -57,6 +57,7 @@ import {
   computeCoverageAtCapacityMwh,
   computePracticalDailyCycleCapacityMwh,
   computeStitchedPracticalInitialSocMwh,
+  borderCoupledBatteryChargeMw,
   simulateAdjustedNetMwAtCapacity,
   simulatePracticalDispatchAtCapacity,
 } from "@/lib/optimalBessCapacity";
@@ -751,9 +752,11 @@ function evaluateBessScenario(params: {
       const observedCrossBorderMw = slot.crossBorderElectricityTradingMw;
       const practicalChargeMw = dispatchSeries[i]?.chargeMw ?? 0;
       const practicalDischargeMw = dispatchSeries[i]?.dischargeMw ?? 0;
+      const borderCoupledChargeMw = borderCoupledBatteryChargeMw(slot, practicalChargeMw);
       observedImportEnergyMwh += Math.max(0, observedCrossBorderMw) * QUARTER_HOUR_H;
       simulatedImportEnergyMwh +=
-        Math.max(0, observedCrossBorderMw + practicalChargeMw - practicalDischargeMw) * QUARTER_HOUR_H;
+        Math.max(0, observedCrossBorderMw + borderCoupledChargeMw - practicalDischargeMw) *
+        QUARTER_HOUR_H;
     }
   }
 
@@ -1247,7 +1250,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           curtailmentFootnote:
             "Abregelung: Zusatzreihe zur Ladechance; Nettolinie unveraendert.",
           crossBorderFootnote:
-            "Import/Export: Energy-Charts-Grenzhandel; in der Simulation als 1:1-Grenzproxy.",
+            "Import/Export: Energy-Charts-Grenzhandel; simuliert: beobachtete Werte verschieben sich um BESS-Leistung, die nicht schon aus Inlandsüberschuss oder Abregelung gedeckt ist, zuzüglich Entladung (1:1 für diesen Rest).",
           legendSimulatedPrefix: "Simuliert:",
           legendEvening: "Abend",
           legendEveningHint: "Abendfenster (hervorgehoben)",
@@ -1399,7 +1402,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             "Ein-Tages-Optimum, 12-Monats-Balanced-Empfehlung und marginale Kapazitaetsschritte greifen dieselbe Flottenlogik.",
           workspaceModeledBorderEyebrow: "Grenzfluss (modelliert)",
           workspaceModeledBorderSubtitle:
-            "Import- und Exportaenderung vs. beobachtet (1:1-Grenzproxy aus der Simulation).",
+            "Import- und Exportaenderung vs. beobachtet (Grenzproxy: nur grenzkoppelnde BESS-Leistung plus Entladung).",
           onePagerImpactHeading: "Systemwirkung & Wert",
           onePagerImpactLead:
             "Nach den Kurven: wie die modellierte Schicht die Netzspur entlastet, Grenzfluesse buendig verschiebt und heute indikativ wirtschaftet — plus Speicherfuellstand am Ende des Fensters.",
@@ -1490,7 +1493,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           curtailmentFootnote:
             "Curtailment: extra charge-opportunity series; net line unchanged.",
           crossBorderFootnote:
-            "Import/export: Energy-Charts border trade; in simulation, a 1:1 border proxy.",
+            "Import/export: Energy-Charts border trade; simulated series shift observed values by BESS power not already covered by structural surplus or curtailment, plus discharge (1:1 for that remainder).",
           legendSimulatedPrefix: "Simulated:",
           legendEvening: "Evening",
           legendEveningHint: "Evening window (highlighted)",
@@ -1640,7 +1643,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             "Single-day optimum, 12‑month balanced recommendation, and marginal capacity steps share the same fleet scaling logic.",
           workspaceModeledBorderEyebrow: "Border flow (modeled)",
           workspaceModeledBorderSubtitle:
-            "Import and export change vs observed (1:1 border proxy from the simulation).",
+            "Import and export change vs observed (border proxy: border-coupled BESS power plus discharge).",
           onePagerImpactHeading: "System impact & value",
           onePagerImpactLead:
             "After the charts: how the modeled layer smooths the net trace, bundles border-flow shifts, and indicative economics today—plus stored energy at the end of the window.",
@@ -2047,6 +2050,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       const netBalanceMw = s.totalGenerationMw - s.loadMw;
       const practicalChargeMw = practicalDispatchSeries[i]?.chargeMw ?? 0;
       const practicalDischargeMw = practicalDispatchSeries[i]?.dischargeMw ?? 0;
+      const borderCoupledChargeMw = borderCoupledBatteryChargeMw(s, practicalChargeMw);
       const observedCrossBorderMw =
         s.crossBorderElectricityTradingMw !== null &&
         s.crossBorderElectricityTradingMw !== undefined &&
@@ -2062,17 +2066,17 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         simulatedCrossBorderMw:
           observedCrossBorderMw === null
             ? null
-            : observedCrossBorderMw + practicalChargeMw - practicalDischargeMw,
+            : observedCrossBorderMw + borderCoupledChargeMw - practicalDischargeMw,
         observedImportMw: observedCrossBorderMw !== null ? Math.max(0, observedCrossBorderMw) : 0,
         observedExportSignedMw:
           observedCrossBorderMw !== null ? Math.min(0, observedCrossBorderMw) : 0,
         simulatedImportMw:
           observedCrossBorderMw !== null
-            ? Math.max(0, observedCrossBorderMw + practicalChargeMw - practicalDischargeMw)
+            ? Math.max(0, observedCrossBorderMw + borderCoupledChargeMw - practicalDischargeMw)
             : 0,
         simulatedExportSignedMw:
           observedCrossBorderMw !== null
-            ? Math.min(0, observedCrossBorderMw + practicalChargeMw - practicalDischargeMw)
+            ? Math.min(0, observedCrossBorderMw + borderCoupledChargeMw - practicalDischargeMw)
             : 0,
         curtailmentDisplayMw:
           s.curtailmentMw !== null && s.curtailmentMw !== undefined && Number.isFinite(s.curtailmentMw)

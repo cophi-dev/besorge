@@ -1,4 +1,5 @@
 import {
+  borderCoupledBatteryChargeMw,
   computeDailyBessSizingProfiles,
   computeLogicalBessRecommendation,
   computeCoverageAtCapacityMwh,
@@ -245,6 +246,27 @@ describe("simulateAdjustedNetMwAtCapacity", () => {
     const slots = [{ totalGenerationMw: 1000, loadMw: 1000, curtailmentMw: 400 }];
     const adjusted = simulateAdjustedNetMwAtCapacity(slots, 500, { maxPowerMw: 400 });
     expect(adjusted).toEqual([0]);
+  });
+});
+
+describe("borderCoupledBatteryChargeMw", () => {
+  it("treats surplus- and curtailment-covered charging as domestic (no border coupling)", () => {
+    const slot = { totalGenerationMw: 1200, loadMw: 1000, curtailmentMw: 50 };
+    expect(borderCoupledBatteryChargeMw(slot, 200)).toBe(0);
+    expect(borderCoupledBatteryChargeMw(slot, 250)).toBe(0);
+  });
+
+  it("returns excess charge above domestic slack only", () => {
+    const slot = { totalGenerationMw: 1050, loadMw: 1000, curtailmentMw: 0 };
+    expect(borderCoupledBatteryChargeMw(slot, 50)).toBe(0);
+    expect(borderCoupledBatteryChargeMw(slot, 100)).toBeCloseTo(50, 6);
+    expect(borderCoupledBatteryChargeMw(slot, 120)).toBeCloseTo(70, 6);
+  });
+
+  it("returns 0 for non-positive charge", () => {
+    const slot = { totalGenerationMw: 2000, loadMw: 1000 };
+    expect(borderCoupledBatteryChargeMw(slot, 0)).toBe(0);
+    expect(borderCoupledBatteryChargeMw(slot, -5)).toBe(0);
   });
 });
 
