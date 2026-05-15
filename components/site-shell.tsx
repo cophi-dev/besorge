@@ -285,17 +285,29 @@ export function SiteShell({ children }: SiteShellProps) {
                   ? "BESS Planning & Dispatch Simulator"
                   : "BESS Planning & Dispatch Simulator"}
               </p>
-              {process.env.NEXT_PUBLIC_X_SITE_HANDLE ? (
+              <div className="mt-4 flex flex-col items-end gap-3">
+                {process.env.NEXT_PUBLIC_X_SITE_HANDLE ? (
+                  <a
+                    href={`https://x.com/${process.env.NEXT_PUBLIC_X_SITE_HANDLE.replace(/^@/, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-end gap-2 text-sm font-medium text-foreground/90 transition hover:text-emerald-400"
+                  >
+                    <XLogo className="size-4 shrink-0" />
+                    {language === "de" ? "SpeicherPilot auf X" : "SpeicherPilot on X"}
+                  </a>
+                ) : null}
                 <a
-                  href={`https://x.com/${process.env.NEXT_PUBLIC_X_SITE_HANDLE.replace(/^@/, "")}`}
+                  href="https://x.com/pphhiillliipppp"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-4 inline-flex items-center justify-end gap-2 text-sm font-medium text-foreground/90 transition hover:text-emerald-400"
+                  className="inline-flex items-center justify-end gap-2 text-sm font-medium text-foreground/90 transition hover:text-emerald-400"
+                  aria-label={language === "de" ? "@pphhiillliipppp auf X" : "@pphhiillliipppp on X"}
                 >
-                  <XLogo className="size-4" />
-                  {language === "de" ? "SpeicherPilot auf X" : "SpeicherPilot on X"}
+                  <XLogo className="size-4 shrink-0" />
+                  <span>@pphhiillliipppp</span>
                 </a>
-              ) : null}
+              </div>
               <p className="mt-4 text-xs opacity-80">
                 {mounted
                   ? language === "de"
