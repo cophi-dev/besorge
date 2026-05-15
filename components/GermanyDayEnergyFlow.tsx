@@ -1308,7 +1308,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           kpiFleetRequiredShort: "Flotten-Leistung und -Kapazitaet aus dem Snapshot fuer dieses KPI noetig.",
           profileTitle: "Deutschland-Tagesprofil",
           profileSubtitle:
-            "Energy-Charts: strukturelle Lage, heutige Flotte, Kurven — dann modellierte Speicherwirkung (Europa/Berlin).",
+            "Live-Snapshot, Ausgangslage, Flotte, verpasste Chance, Kurven, modellierte Systemwirkung — zuletzt Fazit und Skalierung (Europa/Berlin).",
           modeObserved: "Beobachtet",
           modeSimulated: "Simuliertes BESS",
           timeframeLabelShort: "Zeitraum",
@@ -1375,28 +1375,40 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           chartFullscreenClose: "Schliessen",
           chartFullscreenTitle: "Tagesprofil",
           chartFullscreenEscHint: "Escape schliesst die Ansicht.",
-          onePagerStructuralEyebrow: "Ausgangslage",
+          onePagerStructuralEyebrow: "Ausgangslage heute",
           onePagerStructuralLead:
-            "Nettobilanz, strukturelle Spannungen und beobachteter Grenzhandel — die Ausgangssituation im gewaehlten Fenster.",
-          onePagerBorderTradeTitle: "Beobachtete Importe + Exporte",
-          onePagerInstalledFleetEyebrow: "Aktuelle Flottenleistung",
+            "Nettobilanz und strukturelle Spannungen fassen das Fenster zusammen; der Grenzhandel zeigt den beobachteten Import- und Exportrahmen.",
+          onePagerBorderTradeTitle: "Beobachteter Grenzhandel (Import + Export)",
+          onePagerInstalledFleetEyebrow: "Performance der aktuellen Flotte",
           onePagerInstalledFleetLead:
-            "Was die installierte DE-BESS-Schicht aus der Ladechance holt, wie viel Brutto-Defizit sie deckt, und ein kompakter SoC-Snapshot.",
-          onePagerMissedEyebrow: "Verpasste Chance",
+            "So nutzt die installierte DE-BESS-Schicht die Ladechance, wie viel Brutto-Defizit sie deckt, und ein kompakter SoC-Snapshot — direkt aus dem gleichen Slot-Modell wie die Kurven.",
+          onePagerMissedEyebrow: "Verpasste Opportunitaet",
           onePagerMissedLead:
-            "Ungenutzte Ladechance bei der aktuell modellierten Kapazitaet (Slider) — Energie und indikativer Marktwert der Rest-Chance.",
+            "Was bei der aktuell modellierten Kapazitaet (Slider) nicht mehr in den Speicher passt — Energie, indikativer Marktwert und Anteil der Rest-Chance.",
           onePagerStructuralDeficitEyebrow: "Brutto-Defizit",
           onePagerStructuralDeficitSubtitle: "Energie in strukturellen Minus-Slots",
           kpiInstalledFleetAbsorbedEyebrow: "Ladechance aufgenommen (Flotte)",
           kpiInstalledFleetAbsorbedSubtitle: "Greedy-Walk mit installierter Schicht",
           onePagerChartsIntro: "Kurven: beobachtet vs. modelliertes BESS im selben Fenster.",
+          workspaceLiveSnapshotEyebrow: "Live-Snapshot",
+          workspaceLiveSnapshotLead:
+            "Kurzer Lagebericht aus denselben Viertelstunden — die Kennzahlen darunter quantifizieren dieselbe Fensterrechnung.",
+          workspaceChartsEyebrow: "Kurven",
+          workspaceChartsLead:
+            "Beobachtete Spur und modellierte BESS-Schicht im selben Fenster — untereinander fuer bessere Lesbarkeit.",
+          workspaceConclusionEyebrow: "Fazit & Skalierung",
+          workspaceConclusionLead:
+            "Ein-Tages-Optimum, 12-Monats-Balanced-Empfehlung und marginale Kapazitaetsschritte greifen dieselbe Flottenlogik.",
+          workspaceModeledBorderEyebrow: "Grenzfluss (modelliert)",
+          workspaceModeledBorderSubtitle:
+            "Import- und Exportaenderung vs. beobachtet (1:1-Grenzproxy aus der Simulation).",
           onePagerImpactHeading: "Systemwirkung & Wert",
           onePagerImpactLead:
-            "Wie die modellierte Schicht die Netzspur entlastet, Grenzfluesse verschiebt und heute indikativ wirtschaftet — plus Speicherfuellstand am Ende des Fensters.",
+            "Nach den Kurven: wie die modellierte Schicht die Netzspur entlastet, Grenzfluesse buendig verschiebt und heute indikativ wirtschaftet — plus Speicherfuellstand am Ende des Fensters.",
           onePagerNetPeakEyebrow: "Netzentlastung & Peak-Shaving",
           onePagerNetPeakPeakLine: (peak: string) => `Peak-Reduktion ${peak}`,
           onePagerFinalActionHint:
-            "Kurz: verbleibende Ladechance sinkt mit mehr Energie oder Leistungskopf; die Kurven unten zeigen slotweise, wo die Flotte und die Simulation greifen.",
+            "Kurz: verbleibende Ladechance sinkt mit mehr Energie oder Leistungskopf; die Kurven oben zeigen slotweise, wo die Flotte und die Simulation greifen.",
           onePagerDetailsSummary: "Markt-Snapshot & Szenarien",
           twelveMonthSectionEyebrow: "Langfristige Balanced-Empfehlung",
           twelveMonthSectionTitle: "Empfohlene BESS-Größe für die letzten 12 Monate",
@@ -1419,7 +1431,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             `Die Ein-Tages-Optimallösung (${day}) liegt nahe der empfohlenen 12-Monats-Balanced-Größe (${year}) — das heutige Tagesprofil entspricht dem Jahres-P90 gut.`,
           twelveMonthHeuristicNote: (window: string) =>
             `${window} · Balanced-Tier aus täglichem Energie- und Leistungsbedarf (Perzentil je Kalendertag).`,
-          onePagerExportHint: "Exporte erfassen die beiden Diagrammfelder unten.",
+          onePagerExportHint: "Exporte erfassen die beiden Diagrammfelder in diesem Arbeitsbereich.",
           kpiStoredEndEyebrow: "Energie im Speicher (Ende Fenster)",
           aiInsightPlaceholder:
             "Keine Zahlenbasis fuer diese Kurzfassung. Nach Anbindung eines LLM kann zusätzlicher Text uber die Prop simulationAiInsight kommen.",
@@ -1506,7 +1518,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           kpiFleetRequiredShort: "Fleet power and capacity from the snapshot are required for this KPI.",
           profileTitle: "Germany Day Profile",
           profileSubtitle:
-            "Energy-Charts: structural setup, today’s fleet, charts — then modeled storage impact (Europe/Berlin).",
+            "Live snapshot, starting position, fleet, missed opportunity, charts, modeled system impact — then conclusion and scaling (Europe/Berlin).",
           modeObserved: "Observed",
           modeSimulated: "Simulated BESS",
           timeframeLabelShort: "Period",
@@ -1572,28 +1584,40 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           chartFullscreenClose: "Close",
           chartFullscreenTitle: "Day profile",
           chartFullscreenEscHint: "Press Escape to close.",
-          onePagerStructuralEyebrow: "Starting position",
+          onePagerStructuralEyebrow: "Starting position today",
           onePagerStructuralLead:
-            "Net balance, structural tensions, and observed cross-border trade—the baseline for the selected window.",
-          onePagerBorderTradeTitle: "Observed imports + exports",
+            "Net balance and structural tensions summarize the window; cross-border trade frames observed import and export energy in the same period.",
+          onePagerBorderTradeTitle: "Observed cross-border trade (imports + exports)",
           onePagerInstalledFleetEyebrow: "Current fleet performance",
           onePagerInstalledFleetLead:
-            "What the installed German BESS layer captures from charge opportunity, how much gross deficit it covers, and a compact SoC snapshot.",
+            "How the installed German BESS layer uses charge opportunity, how much gross deficit it covers, and a compact SoC snapshot—using the same slot model as the charts.",
           onePagerMissedEyebrow: "Missed opportunity",
           onePagerMissedLead:
-            "Charge opportunity left on the table at the modeled capacity (slider)—energy plus the indicative market value of the remainder.",
+            "What no longer fits into storage at the modeled capacity (slider)—energy, indicative market value, and share of the remaining charge opportunity.",
           onePagerStructuralDeficitEyebrow: "Gross structural deficit",
           onePagerStructuralDeficitSubtitle: "Energy in negative structural slots",
           kpiInstalledFleetAbsorbedEyebrow: "Charge opportunity absorbed (fleet)",
           kpiInstalledFleetAbsorbedSubtitle: "Greedy walk at installed layer",
           onePagerChartsIntro: "Charts: observed vs modeled BESS in the same window.",
+          workspaceLiveSnapshotEyebrow: "Live snapshot",
+          workspaceLiveSnapshotLead:
+            "A concise read on the same published quarter-hours—the KPI blocks below quantify that same window math.",
+          workspaceChartsEyebrow: "Charts",
+          workspaceChartsLead:
+            "Observed trace and modeled BESS layer in the same window—stacked for readability.",
+          workspaceConclusionEyebrow: "Conclusion & scaling",
+          workspaceConclusionLead:
+            "Single-day optimum, 12‑month balanced recommendation, and marginal capacity steps share the same fleet scaling logic.",
+          workspaceModeledBorderEyebrow: "Border flow (modeled)",
+          workspaceModeledBorderSubtitle:
+            "Import and export change vs observed (1:1 border proxy from the simulation).",
           onePagerImpactHeading: "System impact & value",
           onePagerImpactLead:
-            "How the modeled layer smooths the net trace, shifts border flows, and indicative economics today—plus stored energy at the end of the window.",
+            "After the charts: how the modeled layer smooths the net trace, bundles border-flow shifts, and indicative economics today—plus stored energy at the end of the window.",
           onePagerNetPeakEyebrow: "Grid relief & peak shaving",
           onePagerNetPeakPeakLine: (peak: string) => `Peak reduction ${peak}`,
           onePagerFinalActionHint:
-            "In short: add energy or power headroom to capture more of the remaining charge opportunity—the charts below show where the fleet and simulation engage slot by slot.",
+            "In short: add energy or power headroom to capture more of the remaining charge opportunity—the charts above show where the fleet and simulation engage slot by slot.",
           onePagerDetailsSummary: "Market snapshot & scenarios",
           twelveMonthSectionEyebrow: "Long-term balanced recommendation",
           twelveMonthSectionTitle: "Recommended BESS size over the last 12 months",
@@ -1616,7 +1640,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             `The single-day optimum (${day}) is close to the 12‑month balanced size (${year})—today’s profile is representative of the annual P90.`,
           twelveMonthHeuristicNote: (window: string) =>
             `${window} · Balanced tier from per-day energy and power need (per-day percentile).`,
-          onePagerExportHint: "Exports capture the two chart panels below.",
+          onePagerExportHint: "Exports capture the two chart panels in this workspace.",
           kpiStoredEndEyebrow: "Energy in store (end of window)",
           aiInsightPlaceholder:
             "Not enough KPI context to summarise. Pass narrative text via the simulationAiInsight prop once an LLM route exists.",
@@ -2810,62 +2834,57 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   };
 
   const renderDualFlowChartsBlock = () => (
-    <div className="space-y-2 pt-2 md:pt-3">
-      <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-        {t.onePagerChartsIntro}
-      </p>
-      <div
-        id="speicherpilot-germany-flow-capture"
-        className="mt-3 space-y-4 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 shadow-[0_24px_56px_-30px_rgb(15_23_42_/_0.26)] md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
-      >
-        <div className="flex flex-wrap items-center gap-2">
+    <div
+      id="speicherpilot-germany-flow-capture"
+      className="space-y-4 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 shadow-[0_24px_56px_-30px_rgb(15_23_42_/_0.26)] md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
+          {simulatedCapacityBadgeText}
+        </span>
+        {practicalDispatchBalancedPowerMw !== null ? (
           <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-            {simulatedCapacityBadgeText}
+            {t.simulatedCapacityPowerBadge(formatPowerFromMw(practicalDispatchBalancedPowerMw))}
           </span>
-          {practicalDispatchBalancedPowerMw !== null ? (
-            <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-200">
-              {t.simulatedCapacityPowerBadge(formatPowerFromMw(practicalDispatchBalancedPowerMw))}
-            </span>
-          ) : null}
-        </div>
-        <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-2">
-          {renderFlowChartSection("observed", {
-            chartActions: (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-                aria-label={t.chartFullscreenExpand}
-                onClick={() => {
-                  setFlowChartFullscreenMode("observed");
-                  onSimulatedModeChange?.(false);
-                  setFlowChartFullscreenOpen(true);
-                }}
-              >
-                <Maximize2 className="size-4" aria-hidden />
-              </Button>
-            ),
-          })}
-          {renderFlowChartSection("simulated", {
-            chartActions: (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-                aria-label={t.chartFullscreenExpand}
-                onClick={() => {
-                  setFlowChartFullscreenMode("simulated");
-                  onSimulatedModeChange?.(true);
-                  setFlowChartFullscreenOpen(true);
-                }}
-              >
-                <Maximize2 className="size-4" aria-hidden />
-              </Button>
-            ),
-          })}
-        </div>
+        ) : null}
+      </div>
+      <div className="flex min-w-0 flex-col gap-6">
+        {renderFlowChartSection("observed", {
+          chartActions: (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+              aria-label={t.chartFullscreenExpand}
+              onClick={() => {
+                setFlowChartFullscreenMode("observed");
+                onSimulatedModeChange?.(false);
+                setFlowChartFullscreenOpen(true);
+              }}
+            >
+              <Maximize2 className="size-4" aria-hidden />
+            </Button>
+          ),
+        })}
+        {renderFlowChartSection("simulated", {
+          chartActions: (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+              aria-label={t.chartFullscreenExpand}
+              onClick={() => {
+                setFlowChartFullscreenMode("simulated");
+                onSimulatedModeChange?.(true);
+                setFlowChartFullscreenOpen(true);
+              }}
+            >
+              <Maximize2 className="size-4" aria-hidden />
+            </Button>
+          ),
+        })}
       </div>
     </div>
   );
@@ -2894,7 +2913,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         <p className="max-w-3xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
           {t.onePagerImpactLead}
         </p>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <SectionKpiTile
             eyebrow={t.onePagerNetPeakEyebrow}
             value={
@@ -2912,26 +2931,36 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             }
             tone="sky"
           />
-          <SectionKpiTile
-            eyebrow={language === "de" ? "Import-Aenderung" : "Import change"}
-            value={
-              borderTradeTotals !== null
-                ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)
-                : "—"
-            }
-            subtitle={language === "de" ? "Modell 1:1 Grenzfluss" : "Modeled 1:1 border proxy"}
-            tone="amber"
-          />
-          <SectionKpiTile
-            eyebrow={language === "de" ? "Export-Aenderung" : "Export change"}
-            value={
-              borderTradeTotals !== null
-                ? formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh)
-                : "—"
-            }
-            subtitle={language === "de" ? "vs. beobachtet" : "vs observed"}
-            tone="slate"
-          />
+          <div className="rounded-xl border border-border/70 bg-background/50 px-3 py-2.5 shadow-sm text-slate-950 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-white">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
+              {t.workspaceModeledBorderEyebrow}
+            </p>
+            <div className="mt-2 space-y-2.5">
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                  {language === "de" ? "Import-Aenderung" : "Import change"}
+                </p>
+                <p className="mt-0.5 text-[1.05rem] font-extrabold leading-tight tabular-nums text-slate-950 dark:text-white md:text-[1.12rem]">
+                  {borderTradeTotals !== null
+                    ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)
+                    : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                  {language === "de" ? "Export-Aenderung" : "Export change"}
+                </p>
+                <p className="mt-0.5 text-[1.05rem] font-extrabold leading-tight tabular-nums text-slate-950 dark:text-white md:text-[1.12rem]">
+                  {borderTradeTotals !== null
+                    ? formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh)
+                    : "—"}
+                </p>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+              {t.workspaceModeledBorderSubtitle}
+            </p>
+          </div>
           <SectionKpiTile
             eyebrow={language === "de" ? "Wert heute (indik.)" : "Value today (indic.)"}
             value={formatCurrencyCompact(modeledScenario?.totalValueCreatedEur ?? null)}
@@ -2966,6 +2995,270 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           <p className="mt-2 text-sm leading-relaxed whitespace-pre-line text-slate-800 dark:text-slate-100">
             {insightPanelBody}
           </p>
+        </div>
+      </div>
+    );
+
+    const renderMarginalScalingTableSection = () => (
+      <section
+        className="rounded-[28px] border border-border/75 bg-background/35 p-5 dark:border-slate-600/40 dark:bg-slate-950/25"
+        aria-labelledby="marginal-capacity-heading"
+      >
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+            {language === "de" ? "Marginal Impact of More Capacity" : "Marginal Impact of More Capacity"}
+          </p>
+          <h3
+            id="marginal-capacity-heading"
+            className="text-lg font-semibold text-slate-900 dark:text-white md:text-xl [font-family:var(--font-heading)]"
+          >
+            {language === "de"
+              ? "Wie mehr DE-BESS den Tageseffekt verschiebt"
+              : "How more German BESS shifts the daily effect"}
+          </h3>
+          <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            {language === "de"
+              ? "Alle Szenarien skalieren Energie und Leistung der aktuellen Flotte gemeinsam. Die Umsatzzeile wertet eingelagerte MWh mit dem gleichen Spot-/Redispatch-Gewicht wie die Rest-Chance (kein reiner Entlade-Deckel — der kann saturieren, sobald alle strukturellen Defizite bedient sind). Abregelung: \"—\" wenn die Slots keine Abregelenergie führen."
+              : "All scenarios scale current fleet energy and power together. The revenue row values stored MWh with the same spot/redispatch blend as the remaining opportunity (not discharge-only, which plateaus once structural deficits are fully served). Curtailment: “—” when slots carry no curtailed-energy signal."}
+          </p>
+        </div>
+
+        {scalingScenarioColumns.length > 0 ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full border-separate border-spacing-0 text-sm">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-10 rounded-l-2xl border border-border/70 bg-background/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-400">
+                    {language === "de" ? "Metric" : "Metric"}
+                  </th>
+                  {scalingScenarioColumns.map((column, index) => (
+                    <th
+                      key={column.label}
+                      className={`border border-border/70 bg-background/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-400 ${index === scalingScenarioColumns.length - 1 ? "rounded-r-2xl" : ""}`}
+                    >
+                      {column.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  {
+                    label: language === "de" ? "Absorbed Energy" : "Absorbed Energy",
+                    render: (scenario: ScenarioImpactSnapshot) =>
+                      formatEnergyFromMwh(scenario.coverage.absorbedSurplusEnergyMwh),
+                  },
+                  {
+                    label: language === "de" ? "Curtailment Avoided" : "Curtailment Avoided",
+                    render: (scenario: ScenarioImpactSnapshot) =>
+                      scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
+                        ? "—"
+                        : formatEnergyFromMwh(scenario.absorbedCurtailmentEnergyMwh),
+                  },
+                  {
+                    label:
+                      language === "de"
+                        ? "Umsatz (Spread auf Einlagerung)"
+                        : "Revenue (spread on stored energy)",
+                    render: (scenario: ScenarioImpactSnapshot) =>
+                      formatCurrencyCompact(scenario.chargeOpportunityValueEur ?? null),
+                  },
+                  {
+                    label: language === "de" ? "Avoided Costs" : "Avoided Costs",
+                    render: (scenario: ScenarioImpactSnapshot) =>
+                      scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
+                        ? "—"
+                        : formatCurrencyCompact(scenario.avoidedRedispatchCostsEur),
+                  },
+                  {
+                    label: language === "de" ? "Grid Relief" : "Grid Relief",
+                    render: (scenario: ScenarioImpactSnapshot) =>
+                      scenario.gridReliefScore !== null ? `${scenario.gridReliefScore}/100` : "—",
+                  },
+                ].map((row, rowIndex, rows) => (
+                  <tr key={row.label}>
+                    <th
+                      className={`sticky left-0 z-[1] border border-border/70 bg-background/95 px-4 py-3 text-left font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-200 ${rowIndex === rows.length - 1 ? "rounded-bl-2xl" : ""}`}
+                    >
+                      {row.label}
+                    </th>
+                    {scalingScenarioColumns.map((column, columnIndex) => (
+                      <td
+                        key={`${row.label}-${column.label}`}
+                        className={`border border-border/70 bg-background/60 px-4 py-3 text-slate-900 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-100 ${rowIndex === rows.length - 1 && columnIndex === scalingScenarioColumns.length - 1 ? "rounded-br-2xl" : ""}`}
+                      >
+                        {row.render(column.scenario)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-5 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
+            {language === "de"
+              ? "Skalierungstabelle derzeit nicht berechenbar."
+              : "Scaling table is not computable right now."}
+          </div>
+        )}
+      </section>
+    );
+
+    const workspaceStructuralFleetMissedBlock = (
+      <div className="space-y-10">
+        <div className="space-y-3">
+          <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+            {t.onePagerStructuralEyebrow}
+          </p>
+          <p className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+            {t.onePagerStructuralLead}
+          </p>
+          <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+            <SectionKpiTile
+              eyebrow={language === "de" ? "Nettobilanz" : "Net balance"}
+              value={formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}
+              subtitle={language === "de" ? "Σ Erzeugung − Last" : "Σ generation − load"}
+              tone="sky"
+            />
+            <SectionKpiTile
+              eyebrow={language === "de" ? "Struktureller Ueberschuss" : "Structural surplus"}
+              value={formatEnergyFromMwh(grossStructuralSurplusMwh)}
+              subtitle={language === "de" ? "Brutto in Plus-Slots" : "Gross energy in positive slots"}
+              tone="emerald"
+            />
+            <SectionKpiTile
+              eyebrow={t.onePagerStructuralDeficitEyebrow}
+              value={formatEnergyFromMwh(grossStructuralDeficitMwh)}
+              subtitle={t.onePagerStructuralDeficitSubtitle}
+              tone="amber"
+            />
+          </div>
+          <div className="rounded-xl border border-border/70 bg-gradient-to-br from-amber-50/50 via-background/60 to-slate-50/40 p-3.5 shadow-sm dark:border-slate-600/40 dark:from-amber-950/20 dark:via-slate-950/35 dark:to-slate-950/25 md:p-4">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-slate-600 uppercase dark:text-slate-300">
+              {t.onePagerBorderTradeTitle}
+            </p>
+            <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:gap-6">
+              <div className="min-w-0 flex-1 rounded-lg border border-amber-200/80 bg-amber-50/55 px-3 py-2.5 dark:border-amber-500/25 dark:bg-amber-950/25">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-amber-900/85 dark:text-amber-100/85">
+                  {t.kpiObservedImportsEyebrow}
+                </p>
+                <p className="mt-1 text-[1.05rem] font-extrabold leading-tight tabular-nums text-slate-950 dark:text-white md:text-[1.12rem]">
+                  {borderTradeTotals !== null
+                    ? formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh)
+                    : "—"}
+                </p>
+                <p className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                  {borderTradeTotals !== null
+                    ? language === "de"
+                      ? "Grenzhandel im Fenster"
+                      : "Border trade in window"
+                    : language === "de"
+                      ? "Keine Grenzdaten"
+                      : "No border data"}
+                </p>
+              </div>
+              <div className="min-w-0 flex-1 rounded-lg border border-slate-200/85 bg-slate-50/60 px-3 py-2.5 dark:border-slate-600/50 dark:bg-slate-950/40">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
+                  {t.kpiObservedExportsEyebrow}
+                </p>
+                <p className="mt-1 text-[1.05rem] font-extrabold leading-tight tabular-nums text-slate-950 dark:text-white md:text-[1.12rem]">
+                  {borderTradeTotals !== null
+                    ? formatEnergyFromMwh(borderTradeTotals.observedExportEnergyMwh)
+                    : "—"}
+                </p>
+                <p className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                  {borderTradeTotals !== null
+                    ? language === "de"
+                      ? "Exportrichtung positiv"
+                      : "Export direction positive"
+                    : language === "de"
+                      ? "Keine Grenzdaten"
+                      : "No border data"}
+                </p>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+              {t.kpiCrossBorderObservedSubtitle}
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+            {t.onePagerInstalledFleetEyebrow}
+          </p>
+          <p className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+            {t.onePagerInstalledFleetLead}
+          </p>
+          <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,10.5rem)]">
+            <SectionKpiTile
+              eyebrow={t.kpiInstalledFleetAbsorbedEyebrow}
+              value={
+                currentFleetScenario !== null
+                  ? `${formatEnergyFromMwh(currentFleetScenario.coverage.absorbedSurplusEnergyMwh)} · ${pctFormatter.format(
+                      currentFleetScenario.coverage.absorbedSurplusShare * 100
+                    )}%`
+                  : "—"
+              }
+              subtitle={
+                currentFleetScenario !== null
+                  ? t.kpiInstalledFleetAbsorbedSubtitle
+                  : t.kpiFleetRequiredShort
+              }
+              tone="emerald"
+            />
+            <SectionKpiTile
+              eyebrow={language === "de" ? "Defizit gedeckt (Flotte)" : "Deficit served (fleet)"}
+              value={
+                currentFleetScenario !== null
+                  ? `${formatEnergyFromMwh(currentFleetScenario.coverage.servedDeficitEnergyMwh)} · ${
+                      currentFleetScenario.coverage.totalDeficitEnergyMwh > 1e-9
+                        ? `${pctFormatter.format(currentFleetScenario.coverage.servedDeficitShare * 100)}%`
+                        : "0%"
+                    }`
+                  : "—"
+              }
+              subtitle={language === "de" ? "Installierte Schicht" : "Installed layer"}
+              tone="sky"
+            />
+            <SectionKpiTile
+              eyebrow={language === "de" ? "Flotten-SoC" : "Fleet SoC"}
+              value={currentFleetSocStatusValue}
+              subtitle={language === "de" ? "Schaetzung aus Chart" : "Estimate from chart"}
+              tone="violet"
+              density="compact"
+              className="sm:col-span-2 xl:col-span-1"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-[10px] font-semibold tracking-[0.2em] text-amber-900/80 uppercase dark:text-amber-100/85">
+            {t.onePagerMissedEyebrow}
+          </p>
+          <p className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+            {t.onePagerMissedLead}
+          </p>
+          <div className="rounded-2xl border-2 border-amber-400/70 bg-gradient-to-br from-amber-50/95 via-white to-orange-50/45 px-4 py-5 shadow-[0_20px_50px_-28px_rgba(180,83,9,0.35)] dark:border-amber-400/40 dark:from-amber-950/45 dark:via-slate-950/55 dark:to-slate-950/40 md:px-6 md:py-6">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-950/90 dark:text-amber-100/90">
+              {language === "de" ? "Verpasste Ladechance" : "Missed charge opportunity"}
+            </p>
+            <p className="mt-2 text-2xl font-black leading-[1.15] tracking-tight text-slate-950 tabular-nums dark:text-white md:text-[1.85rem]">
+              {modeledMissedChargeMwh !== null
+                ? `${formatEnergyFromMwh(modeledMissedChargeMwh)} · ${formatCurrencyCompact(
+                    modeledScenario?.missedOpportunityEur ?? null
+                  )}`
+                : "—"}
+            </p>
+            {modeledMissedChargeSharePct !== null ? (
+              <p className="mt-3 text-sm font-semibold text-amber-950/95 dark:text-amber-50/95">
+                {language === "de"
+                  ? `${pctFormatter.format(modeledMissedChargeSharePct)}% der Ladechance verpasst`
+                  : `${pctFormatter.format(modeledMissedChargeSharePct)}% of charge opportunity missed`}
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
     );
@@ -3278,164 +3571,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 </div>
           </div>
 
-          <div className="space-y-8 pt-4">
-            <div className="space-y-3">
-              <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-                {t.onePagerStructuralEyebrow}
-              </p>
-              <p className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                {t.onePagerStructuralLead}
-              </p>
-              <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-                <SectionKpiTile
-                  eyebrow={language === "de" ? "Nettobilanz" : "Net balance"}
-                  value={formatSignedEnergyFromMwh(windowNetStructuralBalanceGwh * 1_000)}
-                  subtitle={language === "de" ? "Σ Erzeugung − Last" : "Σ generation − load"}
-                  tone="sky"
-                />
-                <SectionKpiTile
-                  eyebrow={language === "de" ? "Struktureller Ueberschuss" : "Structural surplus"}
-                  value={formatEnergyFromMwh(grossStructuralSurplusMwh)}
-                  subtitle={language === "de" ? "Brutto in Plus-Slots" : "Gross energy in positive slots"}
-                  tone="emerald"
-                />
-                <SectionKpiTile
-                  eyebrow={t.onePagerStructuralDeficitEyebrow}
-                  value={formatEnergyFromMwh(grossStructuralDeficitMwh)}
-                  subtitle={t.onePagerStructuralDeficitSubtitle}
-                  tone="amber"
-                />
-              </div>
-              <div className="rounded-xl border border-border/70 bg-gradient-to-br from-amber-50/50 via-background/60 to-slate-50/40 p-3.5 shadow-sm dark:border-slate-600/40 dark:from-amber-950/20 dark:via-slate-950/35 dark:to-slate-950/25 md:p-4">
-                <p className="text-[10px] font-semibold tracking-[0.18em] text-slate-600 uppercase dark:text-slate-300">
-                  {t.onePagerBorderTradeTitle}
-                </p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-amber-200/80 bg-amber-50/55 px-3 py-2.5 dark:border-amber-500/25 dark:bg-amber-950/25">
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-amber-900/85 dark:text-amber-100/85">
-                      {t.kpiObservedImportsEyebrow}
-                    </p>
-                    <p className="mt-1 text-[1.05rem] font-extrabold leading-tight tabular-nums text-slate-950 dark:text-white md:text-[1.12rem]">
-                      {borderTradeTotals !== null
-                        ? formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh)
-                        : "—"}
-                    </p>
-                    <p className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                      {borderTradeTotals !== null
-                        ? language === "de"
-                          ? "Grenzhandel im Fenster"
-                          : "Border trade in window"
-                        : language === "de"
-                          ? "Keine Grenzdaten"
-                          : "No border data"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200/85 bg-slate-50/60 px-3 py-2.5 dark:border-slate-600/50 dark:bg-slate-950/40">
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
-                      {t.kpiObservedExportsEyebrow}
-                    </p>
-                    <p className="mt-1 text-[1.05rem] font-extrabold leading-tight tabular-nums text-slate-950 dark:text-white md:text-[1.12rem]">
-                      {borderTradeTotals !== null
-                        ? formatEnergyFromMwh(borderTradeTotals.observedExportEnergyMwh)
-                        : "—"}
-                    </p>
-                    <p className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                      {borderTradeTotals !== null
-                        ? language === "de"
-                          ? "Exportrichtung positiv"
-                          : "Export direction positive"
-                        : language === "de"
-                          ? "Keine Grenzdaten"
-                          : "No border data"}
-                    </p>
-                  </div>
-                </div>
-                <p className="mt-2 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
-                  {t.kpiCrossBorderObservedSubtitle}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-                {t.onePagerInstalledFleetEyebrow}
-              </p>
-              <p className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                {t.onePagerInstalledFleetLead}
-              </p>
-              <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,10.5rem)]">
-                <SectionKpiTile
-                  eyebrow={t.kpiInstalledFleetAbsorbedEyebrow}
-                  value={
-                    currentFleetScenario !== null
-                      ? `${formatEnergyFromMwh(currentFleetScenario.coverage.absorbedSurplusEnergyMwh)} · ${pctFormatter.format(
-                          currentFleetScenario.coverage.absorbedSurplusShare * 100
-                        )}%`
-                      : "—"
-                  }
-                  subtitle={
-                    currentFleetScenario !== null
-                      ? t.kpiInstalledFleetAbsorbedSubtitle
-                      : t.kpiFleetRequiredShort
-                  }
-                  tone="emerald"
-                />
-                <SectionKpiTile
-                  eyebrow={language === "de" ? "Defizit gedeckt (Flotte)" : "Deficit served (fleet)"}
-                  value={
-                    currentFleetScenario !== null
-                      ? `${formatEnergyFromMwh(currentFleetScenario.coverage.servedDeficitEnergyMwh)} · ${
-                          currentFleetScenario.coverage.totalDeficitEnergyMwh > 1e-9
-                            ? `${pctFormatter.format(currentFleetScenario.coverage.servedDeficitShare * 100)}%`
-                            : "0%"
-                        }`
-                      : "—"
-                  }
-                  subtitle={language === "de" ? "Installierte Schicht" : "Installed layer"}
-                  tone="sky"
-                />
-                <SectionKpiTile
-                  eyebrow={language === "de" ? "Flotten-SoC" : "Fleet SoC"}
-                  value={currentFleetSocStatusValue}
-                  subtitle={language === "de" ? "Schaetzung aus Chart" : "Estimate from chart"}
-                  tone="violet"
-                  density="compact"
-                  className="sm:col-span-2 xl:col-span-1"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-[10px] font-semibold tracking-[0.2em] text-amber-900/80 uppercase dark:text-amber-100/85">
-                {t.onePagerMissedEyebrow}
-              </p>
-              <p className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                {t.onePagerMissedLead}
-              </p>
-              <div className="rounded-2xl border-2 border-amber-400/70 bg-gradient-to-br from-amber-50/95 via-white to-orange-50/45 px-4 py-5 shadow-[0_20px_50px_-28px_rgba(180,83,9,0.35)] dark:border-amber-400/40 dark:from-amber-950/45 dark:via-slate-950/55 dark:to-slate-950/40 md:px-6 md:py-6">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-950/90 dark:text-amber-100/90">
-                  {language === "de" ? "Verpasste Ladechance" : "Missed charge opportunity"}
-                </p>
-                <p className="mt-2 text-2xl font-black leading-[1.15] tracking-tight text-slate-950 tabular-nums dark:text-white md:text-[1.85rem]">
-                  {modeledMissedChargeMwh !== null
-                    ? `${formatEnergyFromMwh(modeledMissedChargeMwh)} · ${formatCurrencyCompact(
-                        modeledScenario?.missedOpportunityEur ?? null
-                      )}`
-                    : "—"}
-                </p>
-                {modeledMissedChargeSharePct !== null ? (
-                  <p className="mt-3 text-sm font-semibold text-amber-950/95 dark:text-amber-50/95">
-                    {language === "de"
-                      ? `${pctFormatter.format(modeledMissedChargeSharePct)}% der Ladechance verpasst`
-                      : `${pctFormatter.format(modeledMissedChargeSharePct)}% of charge opportunity missed`}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {renderDualFlowChartsBlock()}
-
           {briefingStoryWindow ? (
             <BriefingDailyStory
               language={language}
@@ -3444,23 +3579,122 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               hideIntroHeroStats
             >
               {({ introSection, counterfactualSection, footerSection, dayOptimalContext }) => (
-                <div className="space-y-6 pt-2 md:pt-5">
-                  {introSection}
-                  {systemImpactSection}
-                  {counterfactualSection}
-                  {renderDayYearBridge(dayOptimalContext)}
-                  {renderTwelveMonthBalancedSection(dayOptimalContext)}
-                  <p className="rounded-xl border border-emerald-200/70 bg-emerald-50/40 px-4 py-3 text-sm leading-relaxed text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/25 dark:text-emerald-50/95">
-                    {t.onePagerFinalActionHint}
-                  </p>
-                  {footerSection}
+                <div className="space-y-10 pt-4 md:pt-5">
+                  <section className="space-y-3" aria-labelledby="workspace-live-snapshot-heading">
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                        {t.workspaceLiveSnapshotEyebrow}
+                      </p>
+                      <p
+                        id="workspace-live-snapshot-heading"
+                        className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
+                      >
+                        {t.workspaceLiveSnapshotLead}
+                      </p>
+                    </div>
+                    {introSection}
+                  </section>
+
+                  <div className="border-t border-border/40 pt-8 dark:border-slate-600/30">
+                    {workspaceStructuralFleetMissedBlock}
+                  </div>
+
+                  <section
+                    className="space-y-3 border-t border-border/40 pt-8 dark:border-slate-600/30"
+                    aria-labelledby="workspace-charts-heading"
+                  >
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                        {t.workspaceChartsEyebrow}
+                      </p>
+                      <p
+                        id="workspace-charts-heading"
+                        className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
+                      >
+                        {t.workspaceChartsLead}
+                      </p>
+                    </div>
+                    {renderDualFlowChartsBlock()}
+                  </section>
+
+                  <div className="border-t border-border/40 pt-8 dark:border-slate-600/30">{systemImpactSection}</div>
+
+                  <section
+                    className="space-y-5 border-t border-border/40 pt-8 dark:border-slate-600/30"
+                    aria-labelledby="workspace-conclusion-heading"
+                  >
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                        {t.workspaceConclusionEyebrow}
+                      </p>
+                      <p
+                        id="workspace-conclusion-heading"
+                        className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
+                      >
+                        {t.workspaceConclusionLead}
+                      </p>
+                    </div>
+                    <div className="space-y-5">
+                      {counterfactualSection}
+                      {renderDayYearBridge(dayOptimalContext)}
+                      {renderTwelveMonthBalancedSection(dayOptimalContext)}
+                      {renderMarginalScalingTableSection()}
+                      <p className="rounded-xl border border-emerald-200/70 bg-emerald-50/40 px-4 py-3 text-sm leading-relaxed text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/25 dark:text-emerald-50/95">
+                        {t.onePagerFinalActionHint}
+                      </p>
+                      {footerSection}
+                    </div>
+                  </section>
                 </div>
               )}
             </BriefingDailyStory>
           ) : (
-            <div className="space-y-6 pt-2 md:pt-5">
-              {systemImpactSection}
-              {renderTwelveMonthBalancedSection(null)}
+            <div className="space-y-10 pt-4 md:pt-5">
+              {workspaceStructuralFleetMissedBlock}
+
+              <section
+                className="space-y-3 border-t border-border/40 pt-8 dark:border-slate-600/30"
+                aria-labelledby="workspace-charts-heading-nb"
+              >
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                    {t.workspaceChartsEyebrow}
+                  </p>
+                  <p
+                    id="workspace-charts-heading-nb"
+                    className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
+                  >
+                    {t.workspaceChartsLead}
+                  </p>
+                </div>
+                {renderDualFlowChartsBlock()}
+              </section>
+
+              <div className="border-t border-border/40 pt-8 dark:border-slate-600/30">{systemImpactSection}</div>
+
+              <section
+                className="space-y-5 border-t border-border/40 pt-8 dark:border-slate-600/30"
+                aria-labelledby="workspace-conclusion-heading-nb"
+              >
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                    {t.workspaceConclusionEyebrow}
+                  </p>
+                  <p
+                    id="workspace-conclusion-heading-nb"
+                    className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
+                  >
+                    {t.workspaceConclusionLead}
+                  </p>
+                </div>
+                <div className="space-y-5">
+                  {renderTwelveMonthBalancedSection(null)}
+                  {renderMarginalScalingTableSection()}
+                  <p className="rounded-xl border border-emerald-200/70 bg-emerald-50/40 px-4 py-3 text-sm leading-relaxed text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/25 dark:text-emerald-50/95">
+                    {t.onePagerFinalActionHint}
+                  </p>
+                </div>
+              </section>
             </div>
           )}
 
@@ -3477,8 +3711,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                 </p>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                   {language === "de"
-                    ? "Marktpreis-Snapshot und marginale Kapazitäts-Szenarien."
-                    : "Live price snapshot and marginal capacity scenarios."}
+                    ? "Zusaetzlicher Live-Preis-Snapshot (SMARD / Redispatch-Kontext)."
+                    : "Additional live price snapshot (SMARD / redispatch context)."}
                 </p>
               </div>
               <ChevronRight className="size-5 shrink-0 text-slate-400 transition group-open:rotate-90" aria-hidden />
@@ -3507,8 +3741,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                       </h3>
                       <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                         {language === "de"
-                          ? "Die empfohlene 12-Monats-Balanced-Größe steht im Hauptteil oben; hier folgen Marktbild und Skalierungstabelle."
-                          : "The recommended 12‑month balanced size is summarized in the main section above; this area adds market context and the scaling table."}
+                          ? "Die empfohlene 12-Monats-Balanced-Groesse steht im Hauptteil; hier folgt zusaetzliches Marktbild (Live-Preis)."
+                          : "The recommended 12‑month balanced size is summarized in the main workspace; this drawer adds extra market context (live prices)."}
                       </p>
                     </div>
 
@@ -3612,104 +3846,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                         </div>
                       )}
                     </div>
-                  </section>
-
-                  <section className="rounded-[28px] border border-border/75 bg-background/35 p-5 dark:border-slate-600/40 dark:bg-slate-950/25">
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        {language === "de" ? "Marginal Impact of More Capacity" : "Marginal Impact of More Capacity"}
-                      </p>
-                      <h4 className="text-lg font-semibold text-slate-900 dark:text-white md:text-xl">
-                        {language === "de"
-                          ? "Wie mehr DE-BESS den Tageseffekt verschiebt"
-                          : "How more German BESS shifts the daily effect"}
-                      </h4>
-                      <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                        {language === "de"
-                          ? "Alle Szenarien skalieren Energie und Leistung der aktuellen Flotte gemeinsam. Die Umsatzzeile wertet eingelagerte MWh mit dem gleichen Spot-/Redispatch-Gewicht wie die Rest-Chance (kein reiner Entlade-Deckel — der kann saturieren, sobald alle strukturellen Defizite bedient sind). Abregelung: \"—\" wenn die Slots keine Abregelenergie führen."
-                          : "All scenarios scale current fleet energy and power together. The revenue row values stored MWh with the same spot/redispatch blend as the remaining opportunity (not discharge-only, which plateaus once structural deficits are fully served). Curtailment: “—” when slots carry no curtailed-energy signal."}
-                      </p>
-                    </div>
-
-                    {scalingScenarioColumns.length > 0 ? (
-                      <div className="mt-4 overflow-x-auto">
-                        <table className="min-w-full border-separate border-spacing-0 text-sm">
-                          <thead>
-                            <tr>
-                              <th className="sticky left-0 z-10 rounded-l-2xl border border-border/70 bg-background/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-400">
-                                {language === "de" ? "Metric" : "Metric"}
-                              </th>
-                              {scalingScenarioColumns.map((column, index) => (
-                                <th
-                                  key={column.label}
-                                  className={`border border-border/70 bg-background/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-400 ${index === scalingScenarioColumns.length - 1 ? "rounded-r-2xl" : ""}`}
-                                >
-                                  {column.label}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[
-                              {
-                                label: language === "de" ? "Absorbed Energy" : "Absorbed Energy",
-                                render: (scenario: ScenarioImpactSnapshot) =>
-                                  formatEnergyFromMwh(scenario.coverage.absorbedSurplusEnergyMwh),
-                              },
-                              {
-                                label: language === "de" ? "Curtailment Avoided" : "Curtailment Avoided",
-                                render: (scenario: ScenarioImpactSnapshot) =>
-                                  scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
-                                    ? "—"
-                                    : formatEnergyFromMwh(scenario.absorbedCurtailmentEnergyMwh),
-                              },
-                              {
-                                label:
-                                  language === "de"
-                                    ? "Umsatz (Spread auf Einlagerung)"
-                                    : "Revenue (spread on stored energy)",
-                                render: (scenario: ScenarioImpactSnapshot) =>
-                                  formatCurrencyCompact(scenario.chargeOpportunityValueEur ?? null),
-                              },
-                              {
-                                label: language === "de" ? "Avoided Costs" : "Avoided Costs",
-                                render: (scenario: ScenarioImpactSnapshot) =>
-                                  scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
-                                    ? "—"
-                                    : formatCurrencyCompact(scenario.avoidedRedispatchCostsEur),
-                              },
-                              {
-                                label: language === "de" ? "Grid Relief" : "Grid Relief",
-                                render: (scenario: ScenarioImpactSnapshot) =>
-                                  scenario.gridReliefScore !== null ? `${scenario.gridReliefScore}/100` : "—",
-                              },
-                            ].map((row, rowIndex, rows) => (
-                              <tr key={row.label}>
-                                <th
-                                  className={`sticky left-0 z-[1] border border-border/70 bg-background/95 px-4 py-3 text-left font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-200 ${rowIndex === rows.length - 1 ? "rounded-bl-2xl" : ""}`}
-                                >
-                                  {row.label}
-                                </th>
-                                {scalingScenarioColumns.map((column, columnIndex) => (
-                                  <td
-                                    key={`${row.label}-${column.label}`}
-                                    className={`border border-border/70 bg-background/60 px-4 py-3 text-slate-900 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-100 ${rowIndex === rows.length - 1 && columnIndex === scalingScenarioColumns.length - 1 ? "rounded-br-2xl" : ""}`}
-                                  >
-                                    {row.render(column.scenario)}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div className="mt-4 rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-5 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
-                        {language === "de"
-                          ? "Skalierungstabelle derzeit nicht berechenbar."
-                          : "Scaling table is not computable right now."}
-                      </div>
-                    )}
                   </section>
 
                 </motion.div>

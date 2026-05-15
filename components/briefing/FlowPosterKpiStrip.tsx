@@ -67,14 +67,14 @@ export function FlowPosterKpiStrip({ items }: FlowPosterKpiStripProps) {
         return (
           <div
             key={`${item.eyebrow}-${i}`}
-            className={`relative flex min-h-0 flex-col rounded-xl border px-3 py-2.5 ${tone.panel}`}
+            className={`relative flex min-h-0 flex-col rounded-xl border px-3.5 py-3 ${tone.panel}`}
           >
             <div className={`pointer-events-none mb-1.5 h-0.5 w-11 shrink-0 rounded-full ${tone.bar}`} aria-hidden />
             <p className={`text-[9px] font-semibold uppercase leading-snug tracking-[0.13em] ${tone.eyebrowTone}`}>
               {item.eyebrow}
             </p>
             <p
-              className={`mt-1 text-[1.0625rem] font-extrabold leading-tight tabular-nums sm:text-lg [font-family:var(--font-sans)] ${tone.valueTone}`}
+              className={`mt-1.5 text-[1.35rem] font-extrabold leading-tight tabular-nums sm:text-[1.6rem] [font-family:var(--font-sans)] ${tone.valueTone}`}
             >
               {item.value}
             </p>
