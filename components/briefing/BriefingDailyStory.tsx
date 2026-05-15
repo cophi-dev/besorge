@@ -76,6 +76,8 @@ type BriefingDailyStoryProps = {
    * are omitted — use when the parent surface already shows those numbers.
    */
   hideIntroHeroStats?: boolean;
+  /** When true, the intro narrative block (headline, insights, fleet pills) is omitted. */
+  hideIntroSection?: boolean;
   children?: (sections: BriefingDailyStorySections) => ReactNode;
 };
 
@@ -244,6 +246,7 @@ export function BriefingDailyStory({
   storyWindow,
   refreshNonce = 0,
   hideIntroHeroStats = false,
+  hideIntroSection = false,
   children,
 }: BriefingDailyStoryProps) {
   const [data, setData] = useState<StoryResponse | null>(null);
@@ -406,8 +409,7 @@ export function BriefingDailyStory({
       </div>
     ) : null;
 
-  const introSection =
-    loadingState === "loading" && !data ? (
+  const introSection = hideIntroSection ? null : loadingState === "loading" && !data ? (
       <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-emerald-50/30 px-5 py-5 shadow-[0_1px_0_rgb(255_255_255_/_0.6)_inset,0_18px_44px_-22px_rgb(15_23_42_/_0.18)] dark:border-white/[0.06] dark:from-[rgba(13,19,36,0.92)] dark:via-[rgba(13,19,36,0.85)] dark:to-emerald-950/20 dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_22px_60px_-28px_rgb(0_0_0_/_0.7)] md:px-7 md:py-6">
         {headerBlock}
         <div className="mt-5 space-y-3">

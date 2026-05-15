@@ -226,7 +226,7 @@ function formatEnergyFromMwh(mwh: number): string {
 
 function formatSignedEnergyFromMwh(mwh: number): string {
   const sign = mwh > 0 ? "+" : mwh < 0 ? "−" : "";
-  return `${sign}${formatEnergyFromMwh(mwh)}`;
+  return `${sign}${formatEnergyFromMwh(Math.abs(mwh))}`;
 }
 
 function formatSignedMw(mw: number): string {
