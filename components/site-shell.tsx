@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Monitor, Moon, Sparkles, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
 import BessAiChatOverlay from "@/components/BessAiChatOverlay";
 import { SpeicherPilotLogo } from "@/components/SpeicherPilotLogo";
 import { XLogo } from "@/components/XLogo";
@@ -44,12 +43,6 @@ export function SiteShell({ children }: SiteShellProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSeedPrompt, setChatSeedPrompt] = useState<string | null>(null);
   const [language, setLanguage] = useState<AppLanguage>("en");
-  const pathname = usePathname();
-  const onHome = pathname === "/";
-  const onNews = pathname?.startsWith("/news") ?? false;
-  /** Always use path + hash so Next.js `Link` and cross-route jumps behave consistently. */
-  const sectionHref = (id: string) => `/#${id}`;
-  const [routeHash, setRouteHash] = useState("");
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -89,17 +82,6 @@ export function SiteShell({ children }: SiteShellProps) {
   }, [language]);
 
   useEffect(() => {
-    const syncFromLocation = () => {
-      queueMicrotask(() => {
-        setRouteHash(window.location.hash);
-      });
-    };
-    syncFromLocation();
-    window.addEventListener("hashchange", syncFromLocation);
-    return () => window.removeEventListener("hashchange", syncFromLocation);
-  }, [pathname]);
-
-  useEffect(() => {
     const openFromHash = () => {
       if (window.location.hash === "#ai-chat") {
         setChatOpen(true);
@@ -123,14 +105,6 @@ export function SiteShell({ children }: SiteShellProps) {
 
   const resolved = mounted ? resolveTheme(themePref) : "dark";
 
-  const briefingActive =
-    onHome &&
-    (routeHash === "" ||
-      routeHash === "#speicherpilot-briefing-root" ||
-      routeHash === "#bessforge-briefing-root" ||
-      routeHash === "#overview");
-  const flowActive = onHome && routeHash === "#germany-day-energy-flow";
-
   return (
     <LanguageContext.Provider value={{ language, setLanguage }}>
       <div className="relative min-h-screen overflow-x-hidden bg-background dark:bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(16,185,129,0.14),transparent_52%),radial-gradient(ellipse_100%_60%_at_50%_120%,rgba(244,63,94,0.08),transparent_48%),var(--background)]">
@@ -138,12 +112,12 @@ export function SiteShell({ children }: SiteShellProps) {
           Header — premium glass surface.
           - Ultra-thin border + soft shadow + 1px inset highlight create separation
             from the canvas without any hard line.
-          - Tight, single-row balance: brand · primary nav · controls.
+          - Tight, single-row balance: brand · language/theme controls.
         */}
         <header
           className="fixed inset-x-0 top-0 z-[1200] border-b border-border/45 bg-background/85 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_10px_30px_-18px_rgba(2,6,23,0.55)] dark:border-white/[0.06] dark:bg-[rgba(7,11,20,0.72)] dark:supports-[backdrop-filter]:bg-[rgba(7,11,20,0.55)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05)_inset,0_14px_36px_-20px_rgba(0,0,0,0.85)]"
         >
-          <nav className="relative mx-auto grid h-16 w-full max-w-7xl grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-5 lg:h-[68px] lg:gap-6 lg:px-12">
+          <nav className="relative mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-5 lg:h-[68px] lg:px-12">
             {/* Brand — logo + wordmark + tagline, baseline-aligned */}
             <Link
               href="/"
@@ -168,32 +142,7 @@ export function SiteShell({ children }: SiteShellProps) {
               </div>
             </Link>
 
-            {/* Primary nav — centered column; scrolls on very narrow viewports */}
-            <div className="col-start-2 flex max-w-[min(100%,52vw)] items-center justify-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:max-w-none lg:gap-1 [&::-webkit-scrollbar]:hidden">
-              <NavItem
-                href={sectionHref("speicherpilot-briefing-root")}
-                active={briefingActive}
-                label={language === "de" ? "Briefing" : "Briefing"}
-              />
-              <NavItem
-                href={sectionHref("germany-day-energy-flow")}
-                active={flowActive}
-                label={language === "de" ? "Tagesprofil" : "Day profile"}
-              />
-              <NavItem href="/news" active={onNews} label="News" />
-              <button
-                type="button"
-                onClick={() => setChatOpen(true)}
-                className="ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-gradient-to-b from-emerald-500/[0.10] to-emerald-500/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-emerald-900 shadow-[0_1px_0_0_rgba(255,255,255,0.5)_inset,0_6px_18px_-8px_rgba(16,185,129,0.55)] transition-all duration-200 hover:-translate-y-px hover:border-emerald-500/60 hover:from-emerald-500/[0.16] hover:to-emerald-500/[0.08] active:translate-y-0 sm:ml-1 sm:gap-1.5 sm:px-3.5 sm:text-[12.5px] dark:border-emerald-400/35 dark:text-emerald-100 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_8px_22px_-10px_rgba(16,185,129,0.6)] dark:hover:border-emerald-400/55"
-              >
-                <Sparkles className="size-3 -translate-y-px text-emerald-600 sm:size-3.5 dark:text-emerald-300" aria-hidden />
-                <span className="hidden sm:inline">{language === "de" ? "Analyst-KI" : "Analyst AI"}</span>
-                <span className="sm:hidden">AI</span>
-              </button>
-            </div>
-
-            {/* Right cluster — language + theme, balanced and quiet */}
-            <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <div
                 className="inline-flex items-center rounded-full border border-border/60 bg-card/40 p-0.5 dark:border-white/[0.08] dark:bg-white/[0.03]"
                 role="group"
@@ -362,46 +311,3 @@ export function SiteShell({ children }: SiteShellProps) {
   );
 }
 
-type NavItemProps = {
-  href: string;
-  label: string;
-  active: boolean;
-};
-
-/**
- * Premium top-nav item.
- * - Quiet hover state (subtle emerald wash).
- * - Active state is unmistakable: tinted background + emerald text + a tiny
- *   accent dot underneath, recalling Bloomberg-style "current section" cues.
- */
-function NavItem({ href, label, active }: NavItemProps) {
-  const className = `relative inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-1.5 text-[11px] font-medium transition-colors duration-200 sm:px-3 sm:text-[12.5px] ${
-    active
-      ? "bg-emerald-500/[0.10] text-emerald-700 dark:bg-emerald-400/[0.12] dark:text-emerald-100"
-      : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-white/[0.04]"
-  }`;
-  const content = (
-    <>
-      {label}
-      {active ? (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.85)] dark:bg-emerald-400"
-        />
-      ) : null}
-    </>
-  );
-
-  if (href.startsWith("http://") || href.startsWith("https://")) {
-    return (
-      <a href={href} className={className} aria-current={active ? "page" : undefined}>
-        {content}
-      </a>
-    );
-  }
-  return (
-    <Link href={href} className={className} aria-current={active ? "page" : undefined} scroll={!href.includes("#")}>
-      {content}
-    </Link>
-  );
-}
