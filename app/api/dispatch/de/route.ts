@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { formatBerlinDateKeyFromUtcDate } from "@/lib/berlinCalendar";
 import { createLogger } from "@/lib/debug";
 import { simulateDispatch } from "@/lib/dispatchSimulation";
 import { getGermanyTodaysDispatchSlots } from "@/lib/energyChartsApi";
+import {
+  getRedispatchReferenceForBerlinDateKey,
+  getSmardSpotPriceMapForTimestamps,
+} from "@/lib/germanyRevenueModel";
 
 const log = createLogger("api:dispatch:de");
 
@@ -40,7 +45,24 @@ export async function POST(request: Request) {
 
   try {
     const dataset = await getGermanyTodaysDispatchSlots();
-    const simulation = simulateDispatch(dataset.slots, parsed.data);
+    const spotPriceMap = await getSmardSpotPriceMapForTimestamps(
+      dataset.slots.map((slot) => slot.timestampIso)
+    );
+    const dateKey =
+      dataset.slots[0]?.timestampIso !== undefined
+        ? formatBerlinDateKeyFromUtcDate(new Date(dataset.slots[0].timestampIso))
+        : dataset.dateBerlin;
+    const redispatchReference = getRedispatchReferenceForBerlinDateKey(dateKey);
+    const simulation = simulateDispatch(
+      dataset.slots.map((slot) => ({
+        ...slot,
+        spotPriceEurPerMwh: spotPriceMap.get(slot.timestampIso) ?? null,
+      })),
+      parsed.data,
+      {
+        positiveRedispatchCostEurPerMwh: redispatchReference.positiveCostEurPerMwh,
+      }
+    );
 
     return NextResponse.json(
       {
@@ -49,6 +71,12 @@ export async function POST(request: Request) {
           samplePoints: dataset.samplePoints,
           pointFractionOfDay: dataset.pointFractionOfDay,
           source: dataset.source,
+        },
+        market: {
+          priceSource: simulation.diagnostics.priceSource,
+          positiveRedispatchCostEurPerMwh: redispatchReference.positiveCostEurPerMwh,
+          negativeRedispatchCostEurPerMwh: redispatchReference.negativeCostEurPerMwh,
+          redispatchSourceLabel: `Netztransparenz calculated redispatch prices (${redispatchReference.validFrom} to ${redispatchReference.validTo})`,
         },
         ...simulation,
       },

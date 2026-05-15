@@ -21,6 +21,7 @@ import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLanguage, type AppLanguage } from "@/components/language-context";
 import { createLogger } from "@/lib/debug";
+import { getMegapackEquivalent } from "@/lib/teslaMegapack";
 
 const log = createLogger("dispatch-simulator");
 
@@ -66,6 +67,12 @@ const responseSchema = z.object({
     pointFractionOfDay: z.number(),
     source: z.literal("energy-charts.total_power"),
   }),
+  market: z.object({
+    priceSource: z.enum(["smard_spot", "residual_proxy", "mixed"]),
+    positiveRedispatchCostEurPerMwh: z.number(),
+    negativeRedispatchCostEurPerMwh: z.number(),
+    redispatchSourceLabel: z.string(),
+  }),
   schedule: z.array(
     z.object({
       timestampIso: z.string(),
@@ -93,6 +100,10 @@ const responseSchema = z.object({
     avgChargePriceEurPerMwh: z.number(),
     avgDischargePriceEurPerMwh: z.number(),
     grossRevenueEur: z.number(),
+    arbitrageRevenueEur: z.number(),
+    chargedFromCurtailmentMwh: z.number(),
+    avoidedRedispatchCostEur: z.number(),
+    totalValueEur: z.number(),
     cycles: z.number(),
     eveningDeliveredMwh: z.number(),
     eveningCoveragePct: z.number(),
@@ -114,6 +125,8 @@ const responseSchema = z.object({
     dischargeSlots: z.number(),
     priceProxyMinEurPerMwh: z.number(),
     priceProxyMaxEurPerMwh: z.number(),
+    priceSource: z.enum(["smard_spot", "residual_proxy", "mixed"]),
+    positiveRedispatchCostEurPerMwh: z.number(),
   }),
 });
 
@@ -235,6 +248,11 @@ const copy = {
     powerHint: "AC nameplate power, charge and discharge symmetric.",
     capacityLabel: "Capacity (MWh)",
     capacityHint: "Usable energy capacity. Default 2,000 MWh ≈ 4h at 500 MW.",
+    megapackRefTitle: "Megapack reference",
+    megapackRefHeadline: (packs: string) =>
+      `This simulator size is roughly ${packs} Megapack 2 XL units.`,
+    megapackRefDetail: (powerPacks: string, energyPacks: string) =>
+      `Power basis ${powerPacks} packs · Energy basis ${energyPacks} packs.`,
     rteLabel: "Round-trip efficiency (%)",
     rteHint: "Applied symmetrically as √η on each side.",
     strategyLabel: "Strategy",
@@ -252,7 +270,8 @@ const copy = {
       "After the chart, stress-test how more MW/MWh would behave on the same quarter-hour tape—coverage of the 17–21 proxy window, gross revenue (price proxy), and SoC path.",
     errorTitle: "Could not run simulation",
     errorRetry: "Try again",
-    kpiRevenue: "Gross revenue",
+    kpiRevenue: "Total value",
+    kpiRedispatch: "Avoided redispatch",
     kpiSpread: "Captured spread",
     kpiDelivered: "Delivered to grid",
     kpiEvening: "Evening coverage",
@@ -269,7 +288,7 @@ const copy = {
     datasetSamples: (n: number, pct: number) =>
       `${n} quarter-hours observed (${INTEGER_FORMATTER.format(pct)}% of day)`,
     invalidInputs: "Inputs are out of range. Adjust and retry.",
-    kpiEstimatedRevenueToday: "Estimated revenue today",
+    kpiEstimatedRevenueToday: "Estimated total value today",
     kpiEveningGapCoverage: "Evening gap coverage",
     kpiCyclesToday: "Cycles today",
     kpiMaxReachableEveningSoc: "Max reachable SoC by 17:00",
@@ -278,7 +297,8 @@ const copy = {
     kpiObservedVsDelta: (observed: string, delta: string) =>
       `Observed ${observed} · Δ ${delta} vs observed`,
     kpiCurrentMode: "Current BESS mode",
-    kpiPriceProxyHint: "Residual-load price proxy (larger deficit → higher assumed price). EPEX later.",
+    kpiPriceProxyHint:
+      "SMARD quarter-hour spot price when available; otherwise residual-load proxy fallback.",
     chartSocTitle: "State of charge",
     chartSocTrajectoryTitle: "SoC through the day",
     chartSocTrajectorySubtitle:
@@ -313,7 +333,7 @@ const copy = {
     kpiMaxReachableEveningSocHint: "Best-case from intraday surplus only (power/capacity/RTE constrained).",
     chartLegendMaxReachableSoc: "Max reachable SoC",
     resultsHeadline: (powerMw: number, capMwh: number, revenueEur: string, covPct: string) =>
-      `Your virtual ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS would have earned about ${revenueEur} today and covered ${covPct}% of the evening-gap proxy (17–21, Berlin).`,
+      `Your virtual ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS would have created about ${revenueEur} of total value today and covered ${covPct}% of the evening-gap proxy (17–21, Berlin).`,
     socExplainTitle: "Why the SoC looks like this",
     socNarrativeLow:
       "The battery barely moved—few lucrative charge/discharge windows versus your power and RTE, so stored energy stays in a narrow band.",
@@ -352,6 +372,11 @@ const copy = {
     powerHint: "AC-Nennleistung, symmetrisch für Lade- und Entladevorgang.",
     capacityLabel: "Kapazität (MWh)",
     capacityHint: "Nutzbare Energiekapazität. Default 2.000 MWh ≈ 4h bei 500 MW.",
+    megapackRefTitle: "Megapack-Referenz",
+    megapackRefHeadline: (packs: string) =>
+      `Diese Simulator-Groesse entspricht grob ${packs} Megapack 2 XL Einheiten.`,
+    megapackRefDetail: (powerPacks: string, energyPacks: string) =>
+      `Leistungsbasis ${powerPacks} Packs · Energiebasis ${energyPacks} Packs.`,
     rteLabel: "Round-Trip Efficiency (%)",
     rteHint: "Symmetrisch als √η auf jeder Seite angewandt.",
     strategyLabel: "Strategie",
@@ -369,7 +394,8 @@ const copy = {
       "Nach dem Chart dieselbe Viertelstunden-Spur unter Spannung setzen — Abdeckung 17–21 (Proxy), Bruttoerlös (Preis-Proxy) und SoC-Verlauf.",
     errorTitle: "Simulation konnte nicht ausgeführt werden",
     errorRetry: "Erneut versuchen",
-    kpiRevenue: "Bruttoerlös",
+    kpiRevenue: "Gesamtwert",
+    kpiRedispatch: "Vermiedene Redispatch-Kosten",
     kpiSpread: "Eingefangener Spread",
     kpiDelivered: "Ans Netz geliefert",
     kpiEvening: "Abendabdeckung",
@@ -386,7 +412,7 @@ const copy = {
     datasetSamples: (n: number, pct: number) =>
       `${n} Viertelstunden beobachtet (${INTEGER_FORMATTER.format(pct)}% des Tages)`,
     invalidInputs: "Eingaben außerhalb des Bereichs. Bitte anpassen und erneut versuchen.",
-    kpiEstimatedRevenueToday: "Geschätzte Revenue heute",
+    kpiEstimatedRevenueToday: "Geschaetzter Gesamtwert heute",
     kpiEveningGapCoverage: "Evening-Gap-Abdeckung",
     kpiCyclesToday: "Zyklen heute",
     kpiMaxReachableEveningSoc: "Max. erreichbarer SoC bis 17:00",
@@ -396,7 +422,7 @@ const copy = {
       `Beobachtet ${observed} · Δ ${delta} ggü. Ist`,
     kpiCurrentMode: "Aktueller BESS-Modus",
     kpiPriceProxyHint:
-      "Preis-Proxy aus Restlast (höheres Defizit → höherer angenommener Preis). Später EPEX.",
+      "SMARD Viertelstunden-Spotpreis soweit verfuegbar, sonst Restlast-Proxy als Fallback.",
     chartSocTitle: "SoC-Verlauf",
     chartSocTrajectoryTitle: "SoC-Verlauf ueber den Tag",
     chartSocTrajectorySubtitle:
@@ -432,7 +458,7 @@ const copy = {
       "Best-Case nur aus Intraday-Überschuss (begrenzt durch Leistung/Kapazität/RTE).",
     chartLegendMaxReachableSoc: "Max. erreichbarer SoC",
     resultsHeadline: (powerMw: number, capMwh: number, revenueEur: string, covPct: string) =>
-      `Dein virtuelles ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS haette heute rund ${revenueEur} verdient und ${covPct}% des Evening-Gap-Proxys (17–21, Berlin) abgedeckt.`,
+      `Dein virtuelles ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS haette heute rund ${revenueEur} Gesamtwert erzeugt und ${covPct}% des Evening-Gap-Proxys (17–21, Berlin) abgedeckt.`,
     socExplainTitle: "Warum der SoC so verlaeuft",
     socNarrativeLow:
       "Die Batterie bewegt sich kaum — es gab relativ wenige lohnende Lade-/Entlade-Fenster gegenueber Ihrer Leistung und RTE, die gespeicherte Energie bleibt in einem schmalen Band.",
@@ -498,6 +524,10 @@ export default function BessDispatchSimulator() {
   const [error, setError] = useState<string | null>(null);
 
   const durationHours = capacityMwh > 0 && powerMw > 0 ? capacityMwh / powerMw : 0;
+  const megapackEquivalent = useMemo(
+    () => getMegapackEquivalent({ powerMw, capacityMwh, referencePackType: "megapack-2-xl" }),
+    [capacityMwh, powerMw]
+  );
 
   const inputsValid =
     Number.isFinite(powerMw) &&
@@ -673,6 +703,25 @@ export default function BessDispatchSimulator() {
             </span>
           </div>
 
+          <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-50/70 px-4 py-3 dark:border-emerald-400/20 dark:bg-emerald-500/8">
+            <p className="text-[11px] font-semibold tracking-[0.14em] text-emerald-800 uppercase dark:text-emerald-200">
+              {t.megapackRefTitle}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
+              {t.megapackRefHeadline(
+                INTEGER_FORMATTER.format(megapackEquivalent.roundedRequiredPacks)
+              )}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+              {t.megapackRefDetail(
+                NUMBER_FORMATTER.format(megapackEquivalent.packsByPower),
+                NUMBER_FORMATTER.format(megapackEquivalent.packsByEnergy)
+              )}{" "}
+              ({NUMBER_FORMATTER.format(megapackEquivalent.referencePack.powerMw)} MW /{" "}
+              {NUMBER_FORMATTER.format(megapackEquivalent.referencePack.energyMwh)} MWh each).
+            </p>
+          </div>
+
           <div className="mt-5">
             <NumberSliderField
               id={`${formId}-rte`}
@@ -756,7 +805,7 @@ export default function BessDispatchSimulator() {
             </div>
           ) : response ? (
             <ResultsPanel
-              key={`results-${response.dataset.dateBerlin}-${response.inputs.powerMw}-${response.inputs.capacityMwh}-${response.results.grossRevenueEur}`}
+              key={`results-${response.dataset.dateBerlin}-${response.inputs.powerMw}-${response.inputs.capacityMwh}-${response.results.totalValueEur}`}
               language={language}
               response={response}
               chartData={chartData}
@@ -998,7 +1047,7 @@ function ResultsPanel({
 }) {
   const gradientSuffix = useId().replace(/:/g, "");
   const socGradientId = `socfill-${gradientSuffix}`;
-  const { results, dataset, inputs, schedule } = response;
+  const { results, dataset, inputs, market, schedule } = response;
   const samplePct = dataset.pointFractionOfDay * 100;
 
   const eveningResidualGapMwh = useMemo(
@@ -1040,7 +1089,8 @@ function ResultsPanel({
     ]
   );
 
-  const animRevenue = useAnimatedNumber(results.grossRevenueEur);
+  const animRevenue = useAnimatedNumber(results.totalValueEur);
+  const animRedispatch = useAnimatedNumber(results.avoidedRedispatchCostEur);
   const animEveningMwh = useAnimatedNumber(results.eveningDeliveredMwh);
   const animCoverage = useAnimatedNumber(eveningGapCoveragePct);
   const animCycles = useAnimatedNumber(results.cycles);
@@ -1068,6 +1118,18 @@ function ResultsPanel({
     return t.modeIdle;
   };
   const currentModeLabel = actionLabel(schedule[schedule.length - 1]?.action ?? "idle");
+  const priceSourceLabel =
+    market.priceSource === "smard_spot"
+      ? language === "de"
+        ? "Preis: SMARD Spot"
+        : "Price: SMARD spot"
+      : market.priceSource === "mixed"
+        ? language === "de"
+          ? "Preis: SMARD + Proxy"
+          : "Price: SMARD + proxy"
+        : language === "de"
+          ? "Preis: Proxy"
+          : "Price: proxy";
 
   const socTrajectoryStats = useMemo(() => {
     if (chartData.length === 0) {
@@ -1146,9 +1208,14 @@ function ResultsPanel({
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {t.datasetSamples(dataset.samplePoints, samplePct)}
           </p>
-          <p className="rounded-full border border-slate-300/55 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 dark:border-slate-500/40 dark:bg-slate-900/70 dark:text-slate-200">
-            {t.kpiCurrentMode}: {currentModeLabel}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="rounded-full border border-slate-300/55 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 dark:border-slate-500/40 dark:bg-slate-900/70 dark:text-slate-200">
+              {t.kpiCurrentMode}: {currentModeLabel}
+            </p>
+            <p className="rounded-full border border-slate-300/55 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 dark:border-slate-500/40 dark:bg-slate-900/70 dark:text-slate-200">
+              {priceSourceLabel}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -1163,7 +1230,7 @@ function ResultsPanel({
           hidden: {},
           visible: { transition: { staggerChildren: 0.07, delayChildren: 0.04 } },
         }}
-        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6"
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7"
       >
         <motion.article
           variants={{
@@ -1180,6 +1247,25 @@ function ResultsPanel({
           </p>
           <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
             {t.kpiPriceProxyHint}
+          </p>
+        </motion.article>
+
+        <motion.article
+          variants={{
+            hidden: { opacity: 0, y: 14 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.34, ease: "easeOut" } },
+          }}
+          className="rounded-2xl border border-amber-400/35 bg-gradient-to-br from-amber-50/90 to-white/90 p-5 shadow-sm dark:border-amber-400/25 dark:from-amber-500/10 dark:to-slate-900/80"
+        >
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-amber-900/80 uppercase dark:text-amber-200/90">
+            {t.kpiRedispatch}
+          </p>
+          <p className="mt-3 text-2xl font-extrabold tracking-tight text-slate-900 md:text-3xl dark:text-white">
+            {EUR_FORMATTER.format(Math.round(animRedispatch))}
+          </p>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+            {MWH_DETAIL_FORMATTER.format(results.chargedFromCurtailmentMwh)} MWh ·{" "}
+            {NUMBER_FORMATTER.format(market.positiveRedispatchCostEurPerMwh)} EUR/MWh
           </p>
         </motion.article>
 

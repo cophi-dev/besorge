@@ -57,6 +57,10 @@ export type DispatchSlotInput = {
   renewableGenerationMw?: number | null;
   /** Signed observed cross-border trading in MW: positive = imports, negative = exports. */
   crossBorderElectricityTradingMw?: number | null;
+  /** Optional live quarter-hour spot price in EUR/MWh (e.g. SMARD). */
+  spotPriceEurPerMwh?: number | null;
+  /** Optional quarter-hour curtailed renewable power in MW. */
+  curtailmentMw?: number | null;
 };
 
 export type DispatchAction = "charge" | "discharge" | "idle";
@@ -102,6 +106,14 @@ export type DispatchResults = {
   avgDischargePriceEurPerMwh: number;
   /** Discharge revenue minus charge cost, in €. */
   grossRevenueEur: number;
+  /** Alias for gross revenue when only arbitrage is counted. */
+  arbitrageRevenueEur: number;
+  /** Charged energy that coincided with curtailed renewable power. */
+  chargedFromCurtailmentMwh: number;
+  /** Indicative congestion-management cost avoided through curtailment absorption. */
+  avoidedRedispatchCostEur: number;
+  /** Gross arbitrage revenue plus avoided redispatch value. */
+  totalValueEur: number;
   /** Equivalent full cycles based on energy delivered to the grid. */
   cycles: number;
   /** MWh delivered during 17–20 Berlin (inclusive). */
@@ -146,6 +158,8 @@ export type DispatchSimulationOutput = {
     /** Available residual-load price-proxy band, useful for UI labelling. */
     priceProxyMinEurPerMwh: number;
     priceProxyMaxEurPerMwh: number;
+    priceSource: "smard_spot" | "residual_proxy" | "mixed";
+    positiveRedispatchCostEurPerMwh: number;
   };
 };
 
@@ -185,7 +199,10 @@ const buildPriceProxyMapper = (residuals: number[]) => {
 
 export const simulateDispatch = (
   slots: DispatchSlotInput[],
-  inputs: DispatchSimulationInput
+  inputs: DispatchSimulationInput,
+  options?: {
+    positiveRedispatchCostEurPerMwh?: number;
+  }
 ): DispatchSimulationOutput => {
   if (slots.length === 0) {
     throw new Error("dispatch simulation requires at least one slot");
@@ -219,14 +236,25 @@ export const simulateDispatch = (
   const priceP35 = quantile(enrichedPrices(residuals, priceProxy), 0.35);
   const priceP75 = quantile(enrichedPrices(residuals, priceProxy), 0.75);
   const eveningResidualThreshold = quantile(residuals, 0.7);
+  const positiveRedispatchCostEurPerMwh = Math.max(
+    0,
+    options?.positiveRedispatchCostEurPerMwh ?? 0
+  );
+  let livePriceSlotCount = 0;
 
   const enrichedSlots = sortedSlots.map((slot, index) => {
-    const price = priceProxy(slot.residualLoadMw);
+    const liveSpotPrice =
+      isFiniteNumber(slot.spotPriceEurPerMwh) ? slot.spotPriceEurPerMwh : null;
+    const price = liveSpotPrice ?? priceProxy(slot.residualLoadMw);
+    if (liveSpotPrice !== null) {
+      livePriceSlotCount += 1;
+    }
     const isEvening = EVENING_HOURS_BERLIN.has(slot.hourBerlin);
     return {
       ...slot,
       index,
       priceProxyEurPerMwh: price,
+      priceSource: liveSpotPrice !== null ? ("smard_spot" as const) : ("residual_proxy" as const),
       dischargeScore: price + (isEvening ? eveningBonus : 0),
       isEvening,
     };
@@ -240,6 +268,7 @@ export const simulateDispatch = (
   let dischargedFromBatteryMwh = 0;
   let eveningDeliveredMwh = 0;
   let uncapturedSurplusMwh = 0;
+  let chargedFromCurtailmentMwh = 0;
   let observedImportEnergyMwh = 0;
   let observedExportEnergyMwh = 0;
   let simulatedImportEnergyMwh = 0;
@@ -291,6 +320,8 @@ export const simulateDispatch = (
         socMwh += actualStoredMwh;
         energyChargedFromGridMwh += actualGridDrawMwh;
         chargeCostEur += actualGridDrawMwh * slot.priceProxyEurPerMwh;
+        const curtailmentMwh = Math.max(0, slot.curtailmentMw ?? 0) * dt;
+        chargedFromCurtailmentMwh += Math.min(actualGridDrawMwh, curtailmentMwh);
         action = "charge";
         decisionReason = "surplus_capture";
         actualChargeSlots += 1;
@@ -411,6 +442,9 @@ export const simulateDispatch = (
   const avgDischargePriceEurPerMwh =
     energyDischargedToGridMwh > 0 ? dischargeRevenueEur / energyDischargedToGridMwh : 0;
   const grossRevenueEur = dischargeRevenueEur - chargeCostEur;
+  const avoidedRedispatchCostEur =
+    chargedFromCurtailmentMwh * positiveRedispatchCostEurPerMwh;
+  const totalValueEur = grossRevenueEur + avoidedRedispatchCostEur;
   const cycles = dischargedFromBatteryMwh / inputs.capacityMwh;
   const eveningCoveragePct =
     energyDischargedToGridMwh > 0
@@ -435,6 +469,10 @@ export const simulateDispatch = (
       avgChargePriceEurPerMwh,
       avgDischargePriceEurPerMwh,
       grossRevenueEur,
+      arbitrageRevenueEur: grossRevenueEur,
+      chargedFromCurtailmentMwh,
+      avoidedRedispatchCostEur,
+      totalValueEur,
       cycles,
       eveningDeliveredMwh,
       eveningCoveragePct,
@@ -456,6 +494,13 @@ export const simulateDispatch = (
       dischargeSlots: actualDischargeSlots,
       priceProxyMinEurPerMwh: minPrice,
       priceProxyMaxEurPerMwh: maxPrice,
+      priceSource:
+        livePriceSlotCount === 0
+          ? "residual_proxy"
+          : livePriceSlotCount === sortedSlots.length
+            ? "smard_spot"
+            : "mixed",
+      positiveRedispatchCostEurPerMwh,
     },
   };
 };

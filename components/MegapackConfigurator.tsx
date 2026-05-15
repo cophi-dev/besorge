@@ -8,52 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { PackType, ProjectMegapackConfig } from "@/lib/bessEconomics";
+import { teslaMegapackSpecs } from "@/lib/teslaMegapack";
 
 export type { ProjectMegapackConfig } from "@/lib/bessEconomics";
-
-type PackSpec = {
-  id: PackType;
-  label: string;
-  powerMw: number;
-  energyMwh: number;
-  footprintM2: number;
-  weightTons: number;
-  efficiency: number;
-};
 
 type MegapackConfiguratorProps = {
   onAddToProject: (config: ProjectMegapackConfig) => void;
   onConfigChange?: (config: ProjectMegapackConfig) => void;
-};
-
-const packSpecs: Record<PackType, PackSpec> = {
-  "megapack-2-xl": {
-    id: "megapack-2-xl",
-    label: "Megapack 2 XL",
-    powerMw: 1.927,
-    energyMwh: 3.854,
-    footprintM2: 57.4,
-    weightTons: 38.2,
-    efficiency: 92.5,
-  },
-  "megapack-2": {
-    id: "megapack-2",
-    label: "Megapack 2",
-    powerMw: 1.9,
-    energyMwh: 3.2,
-    footprintM2: 52.1,
-    weightTons: 35.8,
-    efficiency: 92.0,
-  },
-  custom: {
-    id: "custom",
-    label: "Custom",
-    powerMw: 2.2,
-    energyMwh: 4.1,
-    footprintM2: 59.6,
-    weightTons: 39.4,
-    efficiency: 92.5,
-  },
 };
 
 const getSliderValue = (value: number | readonly number[]) =>
@@ -109,7 +70,7 @@ export default function MegapackConfigurator({
   const [packType, setPackType] = useState<PackType>("megapack-2-xl");
   const [count, setCount] = useState(12);
 
-  const selectedPack = packSpecs[packType];
+  const selectedPack = teslaMegapackSpecs[packType];
 
   const totals = useMemo(() => {
     return {

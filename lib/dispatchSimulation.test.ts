@@ -178,4 +178,63 @@ describe("simulateDispatch", () => {
     expect(output.schedule[0]?.simulatedCrossBorderElectricityTradingMw).toBeCloseTo(-100, 6);
     expect(output.schedule[1]?.simulatedCrossBorderElectricityTradingMw).toBeCloseTo(100, 6);
   });
+
+  it("uses live spot prices when provided", () => {
+    const livePriceDay: DispatchSlotInput[] = day.map((slot) => ({
+      ...slot,
+      residualLoadMw: 30_000,
+      spotPriceEurPerMwh:
+        slot.hourBerlin >= 10 && slot.hourBerlin <= 14
+          ? 25
+          : slot.hourBerlin >= 17 && slot.hourBerlin <= 20
+            ? 180
+            : 80,
+    }));
+
+    const output = simulateDispatch(livePriceDay, baseInputs);
+
+    expect(output.diagnostics.priceSource).toBe("smard_spot");
+    expect(output.results.averageSpreadEurPerMwh).toBeGreaterThan(0);
+    expect(output.results.grossRevenueEur).toBeGreaterThan(0);
+  });
+
+  it("adds avoided redispatch value when charging aligns with curtailment", () => {
+    const slots: DispatchSlotInput[] = [
+      {
+        timestampIso: "2026-05-07T10:00:00+02:00",
+        hourBerlin: 10,
+        residualLoadMw: -400,
+        loadMw: 1_000,
+        totalGenerationMw: 1_400,
+        spotPriceEurPerMwh: 0,
+        curtailmentMw: 400,
+      },
+      {
+        timestampIso: "2026-05-07T18:00:00+02:00",
+        hourBerlin: 18,
+        residualLoadMw: 400,
+        loadMw: 1_000,
+        totalGenerationMw: 600,
+        spotPriceEurPerMwh: 200,
+      },
+    ];
+
+    const output = simulateDispatch(
+      slots,
+      {
+        powerMw: 400,
+        capacityMwh: 100,
+        rteEfficiencyPct: 100,
+        strategy: "auto_policy_v1",
+      },
+      { positiveRedispatchCostEurPerMwh: 150 }
+    );
+
+    expect(output.results.chargedFromCurtailmentMwh).toBeCloseTo(100, 6);
+    expect(output.results.avoidedRedispatchCostEur).toBeCloseTo(15_000, 6);
+    expect(output.results.totalValueEur).toBeCloseTo(
+      output.results.grossRevenueEur + output.results.avoidedRedispatchCostEur,
+      6
+    );
+  });
 });
