@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Monitor, Moon, Sparkles, Sun } from "lucide-react";
 import BessAiChatOverlay from "@/components/BessAiChatOverlay";
-import { BessForgeLogo } from "@/components/BessForgeLogo";
+import { SpeicherPilotLogo } from "@/components/SpeicherPilotLogo";
 import { XLogo } from "@/components/XLogo";
 import { AppLanguage, LanguageContext } from "@/components/language-context";
 
@@ -29,7 +29,8 @@ function readThemePreferenceFromStorage(): ThemePreference {
   if (typeof window === "undefined") {
     return "system";
   }
-  const stored = window.localStorage.getItem("bessforge-theme");
+  const stored =
+    window.localStorage.getItem("speicherpilot-theme") ?? window.localStorage.getItem("bessforge-theme");
   if (stored === "light" || stored === "dark" || stored === "system") {
     return stored;
   }
@@ -63,7 +64,7 @@ export function SiteShell({ children }: SiteShellProps) {
     const resolved = resolveTheme(themePref);
     root.classList.toggle("dark", resolved === "dark");
     root.style.colorScheme = resolved === "dark" ? "dark" : "light";
-    window.localStorage.setItem("bessforge-theme", themePref);
+    window.localStorage.setItem("speicherpilot-theme", themePref);
   }, [themePref]);
 
   useEffect(() => {
@@ -84,7 +85,7 @@ export function SiteShell({ children }: SiteShellProps) {
 
   useEffect(() => {
     document.documentElement.lang = language;
-    window.localStorage.setItem("bessforge-language", language);
+    window.localStorage.setItem("speicherpilot-language", language);
   }, [language]);
 
   useEffect(() => {
@@ -113,10 +114,10 @@ export function SiteShell({ children }: SiteShellProps) {
     };
     openFromHash();
     window.addEventListener("hashchange", openFromHash);
-    window.addEventListener("bessforge:open-ai-chat", handleOpen);
+    window.addEventListener("speicherpilot:open-ai-chat", handleOpen);
     return () => {
       window.removeEventListener("hashchange", openFromHash);
-      window.removeEventListener("bessforge:open-ai-chat", handleOpen);
+      window.removeEventListener("speicherpilot:open-ai-chat", handleOpen);
     };
   }, []);
 
@@ -125,6 +126,7 @@ export function SiteShell({ children }: SiteShellProps) {
   const briefingActive =
     onHome &&
     (routeHash === "" ||
+      routeHash === "#speicherpilot-briefing-root" ||
       routeHash === "#bessforge-briefing-root" ||
       routeHash === "#overview");
   const flowActive = onHome && routeHash === "#germany-day-energy-flow";
@@ -146,15 +148,15 @@ export function SiteShell({ children }: SiteShellProps) {
             <Link
               href="/"
               className="group flex min-w-0 items-center gap-2 sm:gap-3"
-              aria-label="BESSForge home"
+              aria-label="SpeicherPilot home"
             >
-              <BessForgeLogo
+              <SpeicherPilotLogo
                 size={34}
                 className="shrink-0 transition-transform duration-300 ease-out group-hover:scale-[1.04] shadow-[0_10px_28px_-8px_rgba(16,185,129,0.45)]"
               />
               <div className="flex min-w-0 items-baseline gap-2.5">
                 <span className="truncate text-[17px] font-medium leading-none tracking-[0.18em] text-foreground [font-family:var(--font-heading)]">
-                  BESSForge
+                  SpeicherPilot
                 </span>
                 <span
                   className="hidden h-3.5 w-px bg-border/70 dark:bg-white/10 sm:inline-block"
@@ -169,7 +171,7 @@ export function SiteShell({ children }: SiteShellProps) {
             {/* Primary nav — centered column; scrolls on very narrow viewports */}
             <div className="col-start-2 flex max-w-[min(100%,52vw)] items-center justify-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:max-w-none lg:gap-1 [&::-webkit-scrollbar]:hidden">
               <NavItem
-                href={sectionHref("bessforge-briefing-root")}
+                href={sectionHref("speicherpilot-briefing-root")}
                 active={briefingActive}
                 label={language === "de" ? "Briefing" : "Briefing"}
               />
@@ -328,7 +330,7 @@ export function SiteShell({ children }: SiteShellProps) {
               </p>
             </div>
             <div className="md:text-right">
-              <p className="text-xs font-semibold tracking-[0.2em] text-foreground uppercase">BESSForge</p>
+              <p className="text-xs font-semibold tracking-[0.2em] text-foreground uppercase">SpeicherPilot</p>
               <p className="mt-2">
                 {language === "de"
                   ? "BESS Planning & Dispatch Simulator"
@@ -342,7 +344,7 @@ export function SiteShell({ children }: SiteShellProps) {
                   className="mt-4 inline-flex items-center justify-end gap-2 text-sm font-medium text-foreground/90 transition hover:text-emerald-400"
                 >
                   <XLogo className="size-4" />
-                  {language === "de" ? "BESSForge auf X" : "BESSForge on X"}
+                  {language === "de" ? "SpeicherPilot auf X" : "SpeicherPilot on X"}
                 </a>
               ) : null}
               <p className="mt-4 text-xs opacity-80">

@@ -102,7 +102,7 @@ describe("BriefingDailyStory", () => {
         /A BESS sized optimally for this single day would have smoothed 31\.2% of net structural swings, captured 47% of charge opportunity, and covered 22% of gross deficit energy\./i
       )
     ).toBeInTheDocument();
-    expect(screen.getByText(/BESSForge analyst \(LLM\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/SpeicherPilot analyst \(LLM\)/i)).toBeInTheDocument();
     expect(screen.getByText(goodPayload.story.dataAsOfNote!)).toBeInTheDocument();
     expect(screen.getByText(/Net balance/i)).toBeInTheDocument();
     expect(screen.getByText(/Key insights/i)).toBeInTheDocument();
@@ -132,6 +132,7 @@ describe("BriefingDailyStory", () => {
     await waitFor(() => expect(screen.getByText(goodPayload.story.headline)).toBeInTheDocument());
     const keyInsights = screen.getByRole("group", { name: /key insights/i });
     expect(within(keyInsights).queryByText(/^Net balance$/i)).toBeNull();
+    expect(within(keyInsights).queryByText(/Day core \(10–16\)/i)).toBeNull();
     expect(screen.getByText(goodPayload.story.insights[0])).toBeInTheDocument();
   });
 
@@ -144,7 +145,7 @@ describe("BriefingDailyStory", () => {
     render(<BriefingDailyStory language="en" storyWindow={dayWindow} />);
     await waitFor(() =>
       expect(
-        screen.getByText(/BESSForge analyst \(deterministic — model offline\)/i)
+        screen.getByText(/SpeicherPilot analyst \(deterministic — model offline\)/i)
       ).toBeInTheDocument()
     );
   });

@@ -23,21 +23,21 @@ const xCreatorHandle =
 export const metadata: Metadata = {
   metadataBase: new URL(siteOrigin),
   title: {
-    default: "BESSForge - BESS Planning & Dispatch Simulator",
-    template: "%s | BESSForge",
+    default: "SpeicherPilot - BESS Planning & Dispatch Simulator",
+    template: "%s | SpeicherPilot",
   },
   description:
     "Germany day-ahead energy briefing: Energy-Charts quarter-hours, BESS heuristics, fleet signals — Fraunhofer ISE data.",
   openGraph: {
-    title: "BESSForge - BESS Planning & Dispatch Simulator",
+    title: "SpeicherPilot - BESS Planning & Dispatch Simulator",
     description: "Energy-Charts-powered Germany daily profile, BESS simulation, and market snapshot.",
     type: "website",
     url: siteOrigin,
-    siteName: "BESSForge",
+    siteName: "SpeicherPilot",
   },
   twitter: {
     card: "summary_large_image",
-    title: "BESSForge - BESS Planning & Dispatch Simulator",
+    title: "SpeicherPilot - BESS Planning & Dispatch Simulator",
     description: "Germany energy transition signals — daily.",
     ...(xSiteHandle ? { site: `@${xSiteHandle}` as const } : {}),
     ...(xCreatorHandle ? { creator: `@${xCreatorHandle}` as const } : {}),

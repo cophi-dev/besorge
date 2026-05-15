@@ -72,7 +72,7 @@ export default function NewsPreviewSection({
     };
   }, [limit]);
 
-  const title = language === "de" ? "BESSForge-Newsfeed" : "BESSForge Newsfeed";
+  const title = language === "de" ? "SpeicherPilot-Newsfeed" : "SpeicherPilot Newsfeed";
   const subtitle =
     language === "de"
       ? "Meilensteine · DE · Megapacks · Regulierung."

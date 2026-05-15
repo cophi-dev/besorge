@@ -2815,7 +2815,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         {t.onePagerChartsIntro}
       </p>
       <div
-        id="bessforge-germany-flow-capture"
+        id="speicherpilot-germany-flow-capture"
         className="mt-3 space-y-4 rounded-[28px] border border-slate-200/90 bg-gradient-to-b from-white via-slate-50/98 to-white p-4 shadow-[0_24px_56px_-30px_rgb(15_23_42_/_0.26)] md:p-5 dark:border-slate-600/45 dark:from-[#0d121f] dark:via-slate-950 dark:to-[#0a1622] dark:shadow-[0_28px_64px_-28px_rgb(0_0_0_/_0.72)]"
       >
         <div className="flex flex-wrap items-center gap-2">
@@ -3465,7 +3465,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           )}
 
           <div className="flex flex-col gap-3 border-t border-border/50 pt-4 dark:border-slate-600/35">
-            <FlowExportButtons language={language} flow={flow} captureElementId="bessforge-germany-flow-capture" />
+            <FlowExportButtons language={language} flow={flow} captureElementId="speicherpilot-germany-flow-capture" />
             <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{t.onePagerExportHint}</p>
           </div>
 

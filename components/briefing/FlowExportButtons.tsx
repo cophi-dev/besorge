@@ -52,7 +52,7 @@ export function FlowExportButtons({ language, flow, captureElementId }: FlowExpo
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `bessforge-germany-energy-${flow.dateBerlin}.csv`;
+      a.download = `speicherpilot-germany-energy-${flow.dateBerlin}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -79,8 +79,8 @@ export function FlowExportButtons({ language, flow, captureElementId }: FlowExpo
       const a = document.createElement("a");
       a.href = dataUrl;
       a.download = flow
-        ? `bessforge-germany-briefing-${flow.dateBerlin}.png`
-        : "bessforge-germany-briefing.png";
+        ? `speicherpilot-germany-briefing-${flow.dateBerlin}.png`
+        : "speicherpilot-germany-briefing.png";
       a.click();
     } catch (error) {
       log("png export failed %o", { error });

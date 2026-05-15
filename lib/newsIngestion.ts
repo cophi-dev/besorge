@@ -212,7 +212,7 @@ const getNewsCurationFromAi = async (candidates: RawNewsCandidate[], limit: numb
       {
         role: "user",
         content: JSON.stringify({
-          task: "Curate a concise BESS newsfeed for BESSForge.",
+          task: "Curate a concise BESS newsfeed for SpeicherPilot.",
           requirements: [
             "Keep only relevant entries.",
             "Use neutral factual summaries (max 2 sentences).",

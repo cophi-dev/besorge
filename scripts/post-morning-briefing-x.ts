@@ -7,7 +7,7 @@
  * (`TWITTER_*` or `X_*`).
  *
  * Example (manual): `pnpm morning:x`
- * Cron (Berlin 07:00): `0 7 * * * TZ=Europe/Berlin cd /path/to/bessforge && pnpm morning:x >> /tmp/bessforge-morning-x.log 2>&1`
+ * Cron (Berlin 07:00): `0 7 * * * TZ=Europe/Berlin cd /path/to/speicherpilot && pnpm morning:x >> /tmp/speicherpilot-morning-x.log 2>&1`
  *
  * First-time Playwright: `pnpm exec playwright install chromium`
  */
@@ -120,7 +120,7 @@ const main = async () => {
   log("generating LLM copy (%s)", language);
   const llm = await generateMorningBriefingCopy(context, language);
 
-  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "bessforge-morning-"));
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "speicherpilot-morning-"));
   const pngPath = path.join(tmpDir, `briefing-${berlinDate}.png`);
 
   log("screenshot %s", briefingUrl);
@@ -131,8 +131,8 @@ const main = async () => {
       deviceScaleFactor: 2,
     });
     await page.goto(briefingUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
-    await page.waitForSelector("#bessforge-germany-flow-capture", { state: "visible", timeout: 90_000 });
-    await page.waitForSelector("#bessforge-germany-flow-capture svg", { state: "visible", timeout: 90_000 });
+    await page.waitForSelector("#speicherpilot-germany-flow-capture", { state: "visible", timeout: 90_000 });
+    await page.waitForSelector("#speicherpilot-germany-flow-capture svg", { state: "visible", timeout: 90_000 });
     const settleMs = Math.min(
       10_000,
       Math.max(0, Number(process.env.MORNING_CHART_SETTLE_MS ?? "1500") || 1500)
@@ -140,8 +140,8 @@ const main = async () => {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, settleMs);
     });
-    await page.locator("#bessforge-germany-flow-capture").scrollIntoViewIfNeeded();
-    await page.locator("#bessforge-germany-flow-capture").screenshot({ path: pngPath, type: "png" });
+    await page.locator("#speicherpilot-germany-flow-capture").scrollIntoViewIfNeeded();
+    await page.locator("#speicherpilot-germany-flow-capture").screenshot({ path: pngPath, type: "png" });
   } finally {
     await browser.close();
   }

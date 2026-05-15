@@ -122,7 +122,7 @@ describe("getBessAssessmentFromAi", () => {
                 },
                 dataGapsImpact: "Missing forward curves lowers long-horizon confidence.",
                 analystSummary:
-                  "BESSForge currently reads this window as beneficial now. Recent solar strength and supportive next-day renewables suggest good recharge optionality after evening discharge.",
+                  "SpeicherPilot currently reads this window as beneficial now. Recent solar strength and supportive next-day renewables suggest good recharge optionality after evening discharge.",
                 fullAnalysisSummary:
                   "Recent renewable conditions point to a constructive near-term setup for BESS. Multiple solar-rich sessions likely improved fleet charge readiness, and the 24-48h forecast keeps recharge risk contained. This supports selective discharge into evening residual peaks with disciplined trigger thresholds.",
                 asOf: "2026-05-06T10:00:00.000Z",

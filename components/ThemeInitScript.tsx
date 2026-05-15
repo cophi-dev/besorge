@@ -3,9 +3,10 @@ import Script from "next/script";
 const SCRIPT = `
 (() => {
   try {
-    const STORAGE = "bessforge-theme";
+    const STORAGE = "speicherpilot-theme";
+    const LEGACY = "bessforge-theme";
     const root = document.documentElement;
-    const stored = localStorage.getItem(STORAGE);
+    const stored = localStorage.getItem(STORAGE) ?? localStorage.getItem(LEGACY);
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     const resolved =
       stored === "light" || stored === "dark"
@@ -25,5 +26,5 @@ const SCRIPT = `
 })();`;
 
 export function ThemeInitScript() {
-  return <Script id="bessforge-theme-init" strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: SCRIPT }} />;
+  return <Script id="speicherpilot-theme-init" strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: SCRIPT }} />;
 }

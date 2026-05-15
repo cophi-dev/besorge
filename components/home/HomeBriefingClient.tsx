@@ -387,7 +387,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
 
   return (
     <div
-      id="bessforge-briefing-root"
+      id="speicherpilot-briefing-root"
       className="scroll-mt-20 md:scroll-mt-24 mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 pb-16 pt-5 md:gap-8 md:px-8 md:pb-20 lg:px-12"
     >
       {isLiveDataLoading && initial.market === null ? (

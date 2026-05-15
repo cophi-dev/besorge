@@ -133,7 +133,7 @@ describe("GET /api/assessment/de", () => {
       },
       dataGapsImpact: "Forward data gaps reduce certainty.",
       analystSummary:
-        "BESSForge currently reads this window as beneficial now. Recent renewable momentum and a supportive day-ahead profile imply better recharge optionality after evening discharge.",
+        "SpeicherPilot currently reads this window as beneficial now. Recent renewable momentum and a supportive day-ahead profile imply better recharge optionality after evening discharge.",
       fullAnalysisSummary:
         "The last few days show a constructive renewable backdrop for short-term BESS dispatch. With batteries likely entering evening windows in healthier charge positions and forward renewable share still elevated, residual peaks can be monetized with lower next-day recharge risk. The setup supports selective, risk-controlled execution rather than broad acceleration.",
       asOf: "2026-05-06T10:00:00.000Z",

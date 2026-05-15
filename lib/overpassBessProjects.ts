@@ -153,7 +153,7 @@ out center tags 3000;
           method: "GET",
           headers: {
             Accept: "application/json",
-            "User-Agent": "bessforge/1.0",
+            "User-Agent": "speicherpilot/1.0",
           },
           signal: controller.signal,
           next: { revalidate: 60 * 60 * 12 },

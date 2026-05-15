@@ -128,7 +128,7 @@ const labels = {
     keyInsightsLabel: "Key insights",
     snapshotLabel: "Data snapshot",
     howToReadLabel: "How to read this window",
-    analysisLabel: "BESSForge analysis",
+    analysisLabel: "SpeicherPilot analysis",
     counterfactualLabel: "What an optimal BESS would have done",
     counterfactualDayTitle: (date: string) => `Optimal BESS for this day (${date})`,
     counterfactualWindowTitle: "Optimal BESS for this window",
@@ -136,8 +136,8 @@ const labels = {
       `Model BESS: ${capGwh} GWh / ${powerGw} GW balanced`,
     counterfactualDayExplainer: (gridPct: string, absorbedPct: string, servedPct: string) =>
       `A BESS sized optimally for this single day would have smoothed ${gridPct}% of net structural swings, captured ${absorbedPct}% of charge opportunity, and covered ${servedPct}% of gross deficit energy.`,
-    poweredBy: "BESSForge analyst (LLM)",
-    poweredByFallback: "BESSForge analyst (deterministic — model offline)",
+    poweredBy: "SpeicherPilot analyst (LLM)",
+    poweredByFallback: "SpeicherPilot analyst (deterministic — model offline)",
     loading: "Drafting today's analyst note…",
     windowLoading: "Drafting the window analyst note…",
     error: "Could not draft today's analyst note.",
@@ -180,7 +180,7 @@ const labels = {
     keyInsightsLabel: "Wichtigste Erkenntnisse",
     snapshotLabel: "Datensnapshot",
     howToReadLabel: "So liest du das Fenster",
-    analysisLabel: "BESSForge-Analyse",
+    analysisLabel: "SpeicherPilot-Analyse",
     counterfactualLabel: "Was ein optimaler BESS bewirkt hätte",
     counterfactualDayTitle: (date: string) => `Optimaler BESS für diesen Tag (${date})`,
     counterfactualWindowTitle: "Optimaler BESS für dieses Fenster",
@@ -188,8 +188,8 @@ const labels = {
       `Modell-BESS: ${capGwh} GWh / ${powerGw} GW balanced`,
     counterfactualDayExplainer: (gridPct: string, absorbedPct: string, servedPct: string) =>
       `Ein für diesen einzelnen Tag optimal dimensionierter BESS hätte ${gridPct}% der Netto-Schwankungen geglättet, ${absorbedPct}% der Ladechance genutzt und ${servedPct}% des Defizits gedeckt.`,
-    poweredBy: "BESSForge-Analyst (LLM)",
-    poweredByFallback: "BESSForge-Analyst (deterministisch — Modell offline)",
+    poweredBy: "SpeicherPilot-Analyst (LLM)",
+    poweredByFallback: "SpeicherPilot-Analyst (deterministisch — Modell offline)",
     loading: "Analystennotiz wird erstellt…",
     windowLoading: "Fenster-Analystennotiz wird erstellt…",
     error: "Heutige Analystennotiz konnte nicht erstellt werden.",
@@ -502,7 +502,9 @@ export function BriefingDailyStory({
             </ol>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <StoryMetaPill label={t.dayCoreLabel} value={storyMetrics.dayCore} />
+              {hideIntroHeroStats ? null : (
+                <StoryMetaPill label={t.dayCoreLabel} value={storyMetrics.dayCore} />
+              )}
               <StoryMetaPill
                 label={t.fleetLabel}
                 value={t.fleetSubtitle(storyMetrics.fleetPower, storyMetrics.fleetCapacity)}

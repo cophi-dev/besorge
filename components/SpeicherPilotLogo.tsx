@@ -1,4 +1,4 @@
-type BessForgeLogoProps = {
+type SpeicherPilotLogoProps = {
   className?: string;
   size?: number;
 };
@@ -6,7 +6,7 @@ type BessForgeLogoProps = {
 /**
  * Minimal vector mark: stylized “Δ” (delta / change) with an energy pulse arc — distinctive at favicon scale.
  */
-export function BessForgeLogo({ className, size = 32 }: BessForgeLogoProps) {
+export function SpeicherPilotLogo({ className, size = 32 }: SpeicherPilotLogoProps) {
   return (
     <svg
       width={size}
@@ -18,12 +18,12 @@ export function BessForgeLogo({ className, size = 32 }: BessForgeLogoProps) {
       aria-hidden
     >
       <defs>
-        <linearGradient id="bessforge-logo-a" x1="6" y1="34" x2="34" y2="6" gradientUnits="userSpaceOnUse">
+        <linearGradient id="speicherpilot-logo-a" x1="6" y1="34" x2="34" y2="6" gradientUnits="userSpaceOnUse">
           <stop stopColor="#34d399" />
           <stop offset="0.45" stopColor="#2dd4bf" />
           <stop offset="1" stopColor="#818cf8" />
         </linearGradient>
-        <linearGradient id="bessforge-logo-b" x1="10" y1="30" x2="30" y2="10" gradientUnits="userSpaceOnUse">
+        <linearGradient id="speicherpilot-logo-b" x1="10" y1="30" x2="30" y2="10" gradientUnits="userSpaceOnUse">
           <stop stopColor="#fbbf24" stopOpacity="0.95" />
           <stop offset="1" stopColor="#f59e0b" stopOpacity="0.55" />
         </linearGradient>
@@ -35,18 +35,18 @@ export function BessForgeLogo({ className, size = 32 }: BessForgeLogoProps) {
         width="38"
         height="38"
         rx="12"
-        stroke="url(#bessforge-logo-a)"
+        stroke="url(#speicherpilot-logo-a)"
         strokeWidth="1.25"
         className="opacity-90"
       />
       <path
         d="M20 9 L30 28 H10 Z"
-        fill="url(#bessforge-logo-a)"
+        fill="url(#speicherpilot-logo-a)"
         className="opacity-95"
       />
       <path
         d="M20 14 Q26 20 20 26 Q14 20 20 14"
-        stroke="url(#bessforge-logo-b)"
+        stroke="url(#speicherpilot-logo-b)"
         strokeWidth="2"
         strokeLinecap="round"
         fill="none"

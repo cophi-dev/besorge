@@ -1,3 +1,3 @@
 import createDebug from "debug";
 
-export const createLogger = (namespace: string) => createDebug(`bessforge:${namespace}`);
+export const createLogger = (namespace: string) => createDebug(`speicherpilot:${namespace}`);
