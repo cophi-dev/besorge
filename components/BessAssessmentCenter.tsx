@@ -177,7 +177,7 @@ export default function BessAssessmentCenter({
           className="rounded-full border border-slate-300/60 bg-white/70 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-600 dark:border-slate-500/35 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-blue-300 dark:hover:text-blue-200"
           disabled={isLoading}
         >
-          {isLoading ? (language === "de" ? "Aktualisiert..." : "Refreshing...") : language === "de" ? "Assessment aktualisieren" : "Refresh assessment"}
+          {isLoading ? (language === "de" ? "Aktualisiert..." : "Refreshing...") : language === "de" ? "Bewertung aktualisieren" : "Refresh assessment"}
         </button>
       </div>
 
@@ -192,7 +192,7 @@ export default function BessAssessmentCenter({
 
       {error ? (
         <p className="mt-5 rounded-xl border border-red-400/45 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-200">
-          {language === "de" ? "Assessment konnte nicht berechnet werden:" : "Could not run assessment:"} {error}
+          {language === "de" ? "Bewertung konnte nicht berechnet werden:" : "Could not run assessment:"} {error}
         </p>
       ) : null}
 
@@ -221,7 +221,7 @@ export default function BessAssessmentCenter({
                   <div className={`absolute rounded-full bg-white ${isMinimal ? "inset-1.5" : "inset-2"}`} />
                   <div className="relative text-center">
                     <p className="text-[10px] tracking-[0.12em] text-slate-500 uppercase">
-                      {language === "de" ? "Score" : "Score"}
+                      {language === "de" ? "Bewertung" : "Score"}
                     </p>
                     <p
                       className={`font-extrabold text-slate-900 [font-family:var(--font-sans)] ${isMinimal ? "text-lg" : "text-2xl"}`}
@@ -301,7 +301,7 @@ export default function BessAssessmentCenter({
 
               <div className="rounded-xl bg-white/60 p-4 shadow-sm dark:bg-slate-900/50">
                 <p className="text-xs tracking-[0.14em] text-slate-500 uppercase dark:text-slate-300">
-                  {language === "de" ? "Horizont-Ausblick" : "Horizon outlook"}
+                  {language === "de" ? "Zeithorizont" : "Horizon outlook"}
                 </p>
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <HorizonNode
@@ -313,14 +313,14 @@ export default function BessAssessmentCenter({
                     delay={0}
                   />
                   <HorizonNode
-                    label={language === "de" ? "Nächste 12M" : "Next 12m"}
+                    label={language === "de" ? "Nächste 12 Monate" : "Next 12m"}
                     verdict={resolvedData.horizonOutlook.next12m.recommendation}
                     summary={firstSentence(resolvedData.horizonOutlook.next12m.rationale)}
                     icon={<TrendingUp className="size-3.5" />}
                     delay={0.08}
                   />
                   <HorizonNode
-                    label={language === "de" ? "Nächste 36M" : "Next 36m"}
+                    label={language === "de" ? "Nächste 36 Monate" : "Next 36m"}
                     verdict={resolvedData.horizonOutlook.next36m.recommendation}
                     summary={firstSentence(resolvedData.horizonOutlook.next36m.rationale)}
                     icon={<Atom className="size-3.5" />}

@@ -26,27 +26,40 @@ function resolveTheme(pref: ThemePreference): "light" | "dark" {
 
 function readThemePreferenceFromStorage(): ThemePreference {
   if (typeof window === "undefined") {
-    return "system";
+    return "light";
   }
   const stored =
     window.localStorage.getItem("speicherpilot-theme") ?? window.localStorage.getItem("bessforge-theme");
   if (stored === "light" || stored === "dark" || stored === "system") {
     return stored;
   }
-  return "system";
+  return "light";
+}
+
+function readLanguageFromStorage(): AppLanguage {
+  if (typeof window === "undefined") {
+    return "de";
+  }
+  const stored =
+    window.localStorage.getItem("speicherpilot-language") ?? window.localStorage.getItem("bessforge-language");
+  if (stored === "en" || stored === "de") {
+    return stored;
+  }
+  return "de";
 }
 
 export function SiteShell({ children }: SiteShellProps) {
-  /** Must stay `system` on server + first client paint to avoid hydration mismatch; sync from storage after mount. */
-  const [themePref, setThemePref] = useState<ThemePreference>("system");
+  /** Must match SSR defaults; sync from storage after mount. */
+  const [themePref, setThemePref] = useState<ThemePreference>("light");
   const [mounted, setMounted] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSeedPrompt, setChatSeedPrompt] = useState<string | null>(null);
-  const [language, setLanguage] = useState<AppLanguage>("en");
+  const [language, setLanguage] = useState<AppLanguage>("de");
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       setThemePref(readThemePreferenceFromStorage());
+      setLanguage(readLanguageFromStorage());
       setMounted(true);
     });
     return () => cancelAnimationFrame(id);
@@ -103,7 +116,7 @@ export function SiteShell({ children }: SiteShellProps) {
     };
   }, []);
 
-  const resolved = mounted ? resolveTheme(themePref) : "dark";
+  const resolved = mounted ? resolveTheme(themePref) : "light";
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage }}>
@@ -137,7 +150,9 @@ export function SiteShell({ children }: SiteShellProps) {
                   aria-hidden
                 />
                 <span className="hidden truncate text-[10.5px] font-medium leading-none tracking-[0.22em] text-muted-foreground/80 uppercase sm:inline">
-                  {language === "de" ? "BESS Planning & Dispatch Simulator" : "BESS Planning & Dispatch Simulator"}
+                  {language === "de"
+                    ? "BESS-Planung & Einsatzsimulation"
+                    : "BESS Planning & Dispatch Simulator"}
                 </span>
               </div>
             </Link>
@@ -282,7 +297,7 @@ export function SiteShell({ children }: SiteShellProps) {
               <p className="text-xs font-semibold tracking-[0.2em] text-foreground uppercase">SpeicherPilot</p>
               <p className="mt-2">
                 {language === "de"
-                  ? "BESS Planning & Dispatch Simulator"
+                  ? "BESS-Planung & Einsatzsimulation"
                   : "BESS Planning & Dispatch Simulator"}
               </p>
               <div className="mt-4 flex flex-col items-end gap-3">

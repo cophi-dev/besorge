@@ -11,13 +11,11 @@ const SCRIPT = `
     const resolved =
       stored === "light" || stored === "dark"
         ? stored
-        : stored === "system" || stored === null
+        : stored === "system"
           ? prefersDark
             ? "dark"
             : "light"
-          : prefersDark
-            ? "dark"
-            : "light";
+          : "light";
     root.classList.toggle("dark", resolved === "dark");
     root.style.colorScheme = resolved === "dark" ? "dark" : "light";
   } catch {

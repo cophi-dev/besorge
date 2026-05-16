@@ -89,7 +89,7 @@ export default function NewsPreviewSection({
             href="/news"
             className="text-xs font-semibold text-primary hover:underline dark:text-emerald-200"
           >
-            {language === "de" ? "Alle News" : "View all"}
+            {language === "de" ? "Alle Meldungen" : "View all"}
           </Link>
         ) : null}
       </div>

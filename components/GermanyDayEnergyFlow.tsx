@@ -1224,22 +1224,22 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       language === "de"
       ? {
           eyebrow: "Energy-Charts Profile",
-          title: "Deutschland-Tagesprofil – beobachteter Ueberschuss, Defizit & geschaetzter Flotten-SoC",
-          chartTitle: "Ueberschuss / Defizit",
+          title: "Deutschland-Tagesprofil – beobachteter Überschuss, Defizit & geschätzter Flotten-SoC",
+          chartTitle: "Überschuss / Defizit",
           chartSimulatedPanelTitle: "Modellierte BESS · Leistung & SoC",
           legendNet: "Netto",
-          legendNetHint: "+Ueberschuss / −Defizit (Erzeugung − Last)",
+          legendNetHint: "+Überschuss / −Defizit (Erzeugung − Last)",
           legendNetSimulated: "Netto (sim.)",
           legendNetSimulatedHint: "Strukturelles Netto nach modellierter BESS-Schicht",
           legendFleetSoc: "Flotten-SoC",
-          legendFleetSocHint: "Geschaetzter SoC aus dem Flottenmodell",
+          legendFleetSocHint: "Geschätzter SoC aus dem Flottenmodell",
           legendPracticalSoc: "SoC",
           legendPracticalCharge: "Laden",
           legendPracticalDischarge: "Entladen",
           legendEstimatedCharge: "Laden",
-          legendEstimatedChargeHint: "Geschaetzte Ladung (Flottenmodell)",
+          legendEstimatedChargeHint: "Geschätzte Ladung (Flottenmodell)",
           legendEstimatedDischarge: "Entladen",
-          legendEstimatedDischargeHint: "Geschaetzte Entladung (Flottenmodell)",
+          legendEstimatedDischargeHint: "Geschätzte Entladung (Flottenmodell)",
           legendObservedImport: "Import",
           legendObservedExport: "Export",
           legendSimulatedImport: "Import (sim.)",
@@ -1248,7 +1248,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           observedChargeDischargeFootnote:
             "Laden/Entladen: gleiches Flottenmodell wie SoC (keine Echtzeitmesswerte).",
           curtailmentFootnote:
-            "Abregelung: Zusatzreihe zur Ladechance; Nettolinie unveraendert.",
+            "Abregelung: Zusatzreihe zur Ladechance; Nettolinie unverändert.",
           crossBorderFootnote:
             "Import/Export: Energy-Charts-Grenzhandel; simuliert: beobachtete Werte verschieben sich um BESS-Leistung, die nicht schon aus Inlandsüberschuss oder Abregelung gedeckt ist, zuzüglich Entladung (1:1 für diesen Rest).",
           legendSimulatedPrefix: "Simuliert:",
@@ -1259,14 +1259,14 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           netFootnoteSimulated:
             "Netto = strukturelles Netto nach modelliertem BESS (nicht Roh-Gen−Last).",
           socFootnote: "SoC modelliert, kein Messwert.",
-          kpiGross: "Brutto-Ueberschuss (Erz. − Last)",
+          kpiGross: "Brutto-Überschuss (Erz. − Last)",
           kpiAbsorbed: "Theoretisch speicherbar (Kap. + MW)",
           kpiMissed: "Verpasste Ladechance",
-          kpiPracticalCap: "Praktische Tageszyklus-Kapazitaet (P95)",
+          kpiPracticalCap: "Praktische Tageszyklus-Kapazität (P95)",
           kpiRecommendedBalanced: "Empfehlung (12M, Balanced)",
           kpiRecommendedSelected: "Empfehlung (Auswahl, Balanced)",
           kpiRecommendationUnavailable:
-            "12-Monats-Empfehlung aktuell nicht verfuegbar (Upstream-Daten fehlen).",
+            "12-Monats-Empfehlung aktuell nicht verfügbar (Upstream-Daten fehlen).",
           trailingKpiCapacity: "Empfohlene durchschnittliche Tagesgröße",
           trailingKpiDailyPercentileCaption: "P90 der modellierten Kalendertage",
           trailingKpiPayback: "Payback (Indikation)",
@@ -1278,35 +1278,35 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           kpiPracticalCapMax: "Tages-Maximum",
           coverage: (n: number, pct: string, date: string, multi: boolean) =>
             multi
-              ? `${n} Viertelstunden (${pct}% des gewaehlten Fensters) · ${date}`
+              ? `${n} Viertelstunden (${pct}% des gewählten Fensters) · ${date}`
               : `${n} Viertelstunden beobachtet (${pct}% des Tages) · ${date}`,
           axisMw: "MW",
           axisSoc: "SoC (%)",
           unavailable:
-            "Für keine Berlin-Tag-Linie reichenzeitig genug brauchbare Viertelstunden — bitte später erneut laden.",
+            "Für keine Berlin-Tag-Linie reichen zeitlich genug brauchbare Viertelstunden — bitte später erneut laden.",
           timeframe: "Zeitraum",
           dayMode: "Tag",
           weekMode: "Woche",
           monthMode: "Monat",
-          previousRange: "Zurueck",
+          previousRange: "Zurück",
           nextRange: "Weiter",
           dayResetToggleLabel:
             "Tagesstart-SoC in der Simulation bei 0 % (optional)",
           fetchError:
             "Energy-Charts-Zeitreihe konnte nicht geladen werden — bitte Verbindung prüfen und erneut versuchen.",
-          dataNote: "Nur veroeffentlichte Energy-Charts-Viertelstunden; keine interpolierten Werte.",
+          dataNote: "Nur veröffentlichte Energy-Charts-Viertelstunden; keine interpolierten Werte.",
           loadingEyebrow: "Energy-Charts werden geladen",
-          keyMetricsTitle: "Key Metrics",
-          kpiRecommendedP95Eyebrow: "Empfohlene Kapazitaet (P95)",
-          kpiRecommendedP95Subtitle: "Pragmatischer taeglicher Speicherbedarf (95. Perzentil)",
+          keyMetricsTitle: "Kennzahlen",
+          kpiRecommendedP95Eyebrow: "Empfohlene Kapazität (P95)",
+          kpiRecommendedP95Subtitle: "Pragmatischer täglicher Speicherbedarf (95. Perzentil)",
           kpiGrossSurplusEyebrow: "Ladechance",
           kpiGrossSurplusSubtitle: "Zeitraum",
           kpiMissedSurplusEyebrow: "Verpasste Ladechance",
-          kpiMissedSurplusSubtitle: "Nicht aufnehmbar aus Ueberschuss + Abregelung",
+          kpiMissedSurplusSubtitle: "Nicht aufnehmbar aus Überschuss + Abregelung",
           kpiMissedOfGross: (pct: string) => `${pct}% der Ladechance`,
           kpiSelfConsumptionEyebrow: "Eigenverbrauchsquote (optimales BESS)",
           kpiSelfConsumptionSubtitle: "Der erzeugten Energie vor Ort verwendet",
-          kpiFleetRequiredShort: "Flotten-Leistung und -Kapazitaet aus dem Snapshot fuer dieses KPI noetig.",
+          kpiFleetRequiredShort: "Flotten-Leistung und -Kapazität aus dem Snapshot für dieses KPI nötig.",
           profileTitle: "Deutschland-Tagesprofil",
           profileSubtitle:
             "Live-Snapshot, Ausgangslage, Flotte, verpasste Chance, Kurven, modellierte Systemwirkung — zuletzt Fazit und Skalierung (Europa/Berlin).",
@@ -1317,7 +1317,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           timeRangeTapToChange: "Tippen zum Ändern",
           dataCoverageInfoAria: "Was bedeutet die Datenabdeckung?",
           dataCoverageTooltip:
-            "Anteil der erwarteten Viertelstunden im gewaehlten Zeitraum, fuer die Energy-Charts veroeffentlichte Messreihen liefern (keine interpolierten Luecken).",
+            "Anteil der erwarteten Viertelstunden im gewählten Zeitraum, für die Energy-Charts veröffentlichte Messreihen liefern (keine interpolierten Lücken).",
           coverageBadgeSuffix: "Datenabdeckung",
           observedChartTitle: "Netto, Flotten-SoC & Grenzfluss",
           recoImpactEyebrow: "Unter der Kurve",
@@ -1328,15 +1328,15 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           kpiCurtailmentEyebrow: "Abregelung",
           kpiCurtailmentSubtitle: "Zusatzreihe; Nettolinie bleibt roh",
           kpiCapturedSurplusEyebrow: "Ladechance (aufgenommen)",
-          kpiCapturedSurplusSubtitle: "Greedy-Simulation aus Ueberschuss + Abregelung",
-          curtailmentStatusConfigured: "Curtailment geladen",
-          curtailmentStatusMissingConfig: "Curtailment nicht konfiguriert",
-          curtailmentStatusUpstream: "Curtailment-Upstream fehlt",
+          kpiCapturedSurplusSubtitle: "Greedy-Simulation aus Überschuss + Abregelung",
+          curtailmentStatusConfigured: "Abregelung geladen",
+          curtailmentStatusMissingConfig: "Abregelung nicht konfiguriert",
+          curtailmentStatusUpstream: "Abregelungsdaten fehlen",
           kpiDeficitCoveredEyebrow: "Gedecktes Defizit",
           kpiDeficitCoveredSubtitle: "Aus Speicher gefüllt",
           kpiNewSelfConsumptionEyebrow: "Neue Eigenverbrauchsquote",
           kpiNewSelfConsumptionSubtitle: "Mit modelliertem BESS",
-          kpiGridImpactEyebrow: "Daempfung |Netto| je Slot",
+          kpiGridImpactEyebrow: "Dämpfung |Netto| je Slot",
           kpiGridImpactSubtitle: "Vs. Roh-Nettos (Viertelstunden)",
           kpiGridImpactValue: (pct: string) =>
             `Summe der Absolutbeträge ~${pct} % niedriger (nach modelliertem BESS)`,
@@ -1349,15 +1349,15 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             `Beobachtet ${observed} · Δ ${delta} ggü. Ist`,
           observedModeLead:
             "P95 aus diesem Fenster. Simulation zeigt Überschussaufnahme und Netzwirkung.",
-          capacityBadgeUnavailable: "Keine berechenbare Simulationskapazitaet",
-          simulatedCapacityBadgeLabel: (capacity: string) => `Simulierte Kapazitaet: ${capacity}`,
+          capacityBadgeUnavailable: "Keine berechenbare Simulationskapazität",
+          simulatedCapacityBadgeLabel: (capacity: string) => `Simulierte Kapazität: ${capacity}`,
           simulatedCapacityModeAutoWindow: "Automatik · Fenster-P95",
           simulatedCapacityModeAuto12m: "Automatik · 12M balanced",
           simulatedCapacityModeCustom: "Manuell gesetzt",
           simulatedCapacityPowerBadge: (power: string) => `Leistungslimit: ${power}`,
           simulatedCapacityControlEyebrow: "Kapazität überschreiben",
-          simulatedCapacityControlTitle: "Simulierte BESS-Kapazitaet anpassen",
-          simulatedCapacityInputLabel: "Kapazitaet (GWh)",
+          simulatedCapacityControlTitle: "Simulierte BESS-Kapazität anpassen",
+          simulatedCapacityInputLabel: "Kapazität (GWh)",
           simulatedCapacityInputHint: (power: string) =>
             `Das Leistungslimit bleibt bei ${power} (balanced).`,
           simulatedCapacityInputHintUnavailable:
@@ -1373,9 +1373,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           bottomControlsHint:
             "Beobachtete Daten stehen oben; die modellierte BESS-Simulation mit ihren KPIs folgt direkt darunter.",
           chartFullscreenExpand: "Diagramm im Vollbild",
-          chartFullscreenClose: "Schliessen",
+          chartFullscreenClose: "Schließen",
           chartFullscreenTitle: "Tagesprofil",
-          chartFullscreenEscHint: "Escape schliesst die Ansicht.",
+          chartFullscreenEscHint: "Escape schließt die Ansicht.",
           onePagerStructuralEyebrow: "Ausgangslage heute",
           onePagerStructuralLead:
             "Nettobilanz und strukturelle Spannungen fassen das Fenster zusammen; der Grenzhandel zeigt den beobachteten Import- und Exportrahmen.",
@@ -1383,9 +1383,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           onePagerInstalledFleetEyebrow: "Performance der aktuellen Flotte",
           onePagerInstalledFleetLead:
             "So nutzt die installierte DE-BESS-Schicht die Ladechance, wie viel Brutto-Defizit sie deckt, und ein kompakter SoC-Snapshot — direkt aus dem gleichen Slot-Modell wie die Kurven.",
-          onePagerMissedEyebrow: "Verpasste Opportunitaet",
+          onePagerMissedEyebrow: "Verpasste Opportunität",
           onePagerMissedLead:
-            "Was bei der aktuell modellierten Kapazitaet (Slider) nicht mehr in den Speicher passt — Energie, indikativer Marktwert und Anteil der Rest-Chance.",
+            "Was bei der aktuell modellierten Kapazität (Slider) nicht mehr in den Speicher passt — Energie, indikativer Marktwert und Anteil der Rest-Chance.",
           onePagerStructuralDeficitEyebrow: "Brutto-Defizit",
           onePagerStructuralDeficitSubtitle: "Energie in strukturellen Minus-Slots",
           kpiInstalledFleetAbsorbedEyebrow: "Ladechance aufgenommen (Flotte)",
@@ -1396,21 +1396,21 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             "Kurzer Lagebericht aus denselben Viertelstunden — die Kennzahlen darunter quantifizieren dieselbe Fensterrechnung.",
           workspaceChartsEyebrow: "Kurven",
           workspaceChartsLead:
-            "Zwei Panels im gewaehlten Zeitraum: oben beobachtete Flotte (Energy-Charts), darunter modellierte BESS mit einstellbarer Kapazitaet.",
+            "Zwei Panels im gewählten Zeitraum: oben beobachtete Flotte (Energy-Charts), darunter modellierte BESS mit einstellbarer Kapazität.",
           workspaceConclusionEyebrow: "Fazit & Skalierung",
           workspaceConclusionLead:
-            "Ein-Tages-Optimum, 12-Monats-Balanced-Empfehlung und marginale Kapazitaetsschritte greifen dieselbe Flottenlogik.",
+            "Ein-Tages-Optimum, 12-Monats-Balanced-Empfehlung und marginale Kapazitätsschritte greifen dieselbe Flottenlogik.",
           workspaceModeledBorderEyebrow: "Grenzfluss (modelliert)",
           workspaceModeledBorderSubtitle:
-            "Import- und Exportaenderung vs. beobachtet (Grenzproxy: nur grenzkoppelnde BESS-Leistung plus Entladung).",
+            "Import- und Exportänderung vs. beobachtet (Grenzproxy: nur grenzkoppelnde BESS-Leistung plus Entladung).",
           onePagerImpactHeading: "Systemwirkung & Wert",
           onePagerImpactLead:
-            "Nach den Kurven: wie die modellierte Schicht die Netzspur entlastet, Grenzfluesse buendig verschiebt und heute indikativ wirtschaftet — plus Speicherfuellstand am Ende des Fensters.",
+            "Nach den Kurven: wie die modellierte Schicht die Netzspur entlastet, Grenzflüsse buendig verschiebt und heute indikativ wirtschaftet — plus Speicherfuellstand am Ende des Fensters.",
           onePagerNetPeakEyebrow: "Netzentlastung & Peak-Shaving",
           onePagerNetPeakPeakLine: (peak: string) => `Peak-Reduktion ${peak}`,
           onePagerFinalActionHint:
             "Kurz: verbleibende Ladechance sinkt mit mehr Energie oder Leistungskopf; die Kurven oben zeigen slotweise, wo die Flotte und die Simulation greifen.",
-          onePagerDetailsSummary: "Preisbasis fuer Euro-Werte",
+          onePagerDetailsSummary: "Preisbasis für Euro-Werte",
           twelveMonthSectionEyebrow: "Langfristige Balanced-Empfehlung",
           twelveMonthSectionTitle: "Empfohlene BESS-Größe für die letzten 12 Monate",
           twelveMonthBalancedTag: "(Balanced)",
@@ -1435,22 +1435,22 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           onePagerExportHint:
             "Bildexport: beide Kurven-Panels (Beobachtung und Simulation) aus diesem Bereich — kein Bezug zu Strom-Exporten.",
           marketBasisIntro:
-            "Indikative Euro-Betraege auf dieser Seite (z. B. Wert bei der Systemwirkung oder verpasste Chance) stammen aus SMARD-Spotviertelstunden und — wo die Logik es nutzt — Netztransparenz-Redispatch. Es ist ein repraesentatives Marktbild ueber die angezeigte Stichprobe — nicht der einzelne Energy-Charts-Tag Ihrer Kurven oben.",
+            "Indikative Euro-Beträge auf dieser Seite (z. B. Wert bei der Systemwirkung oder verpasste Chance) stammen aus SMARD-Spotviertelstunden und — wo die Logik es nutzt — Netztransparenz-Redispatch. Es ist ein repräsentatives Marktbild über die angezeigte Stichprobe — nicht der einzelne Energy-Charts-Tag Ihrer Kurven oben.",
           marketBasisSpreadDetail:
-            "Pro Kalendertag: hoechster minus niedrigster durchschnittlicher Viertelstunden-Spotpreis. Ueber alle SMARD-Tage der Stichprobe gemittelt — grobe Groesse fuer Spread-/Arbitrage-Raum im Modell.",
+            "Pro Kalendertag: höchster minus niedrigster durchschnittlicher Viertelstunden-Spotpreis. Über alle SMARD-Tage der Stichprobe gemittelt — grobe Größe für Spread-/Arbitrage-Raum im Modell.",
           marketBasisEveningDetail:
-            "Differenz: mittlerer Spotpreis im Abendfenster minus mittlerer Preis am Mittag. Positiv, wenn der Abend teurer ist — grober Indikator fuer Guenstigkeit von Zeitverlagerung.",
+            "Differenz: mittlerer Spotpreis im Abendfenster minus mittlerer Preis am Mittag. Positiv, wenn der Abend teurer ist — grober Indikator für Günstigkeit von Zeitverlagerung.",
           marketBasisRedispatchDetail:
-            "Positiver Mittel der berechneten Redispatch-Preise als €/MWh-Ansatz, wenn Abregelung in die Bewertung fliesst. Der Energiewert darunter schaetzt die durchschnittliche taegliche Abregel-Menge im Referenzfenster.",
+            "Positiver Mittel der berechneten Redispatch-Preise als €/MWh-Ansatz, wenn Abregelung in die Bewertung fließt. Der Energiewert darunter schätzt die durchschnittliche tägliche Abregel-Menge im Referenzfenster.",
           marketBasisChartHeading: "Typischer Tagespreis (vier Buckets)",
           marketBasisChartExplainer:
-            "Die vier Balken sind jeweils der mittlere Spot €/MWh in Niedrig-, Mittag-, Abend- und Hoch-Last-Slots — gemittelt ueber die SMARD-Stichprobe. So sieht man die Tagesform des Marktes im Referenzfenster, unabhaengig vom gewaehlten Kurven-Datum.",
+            "Die vier Balken sind jeweils der mittlere Spot €/MWh in Niedrig-, Mittag-, Abend- und Hoch-Last-Slots — gemittelt über die SMARD-Stichprobe. So sieht man die Tagesform des Marktes im Referenzfenster, unabhängig vom gewählten Kurven-Datum.",
           kpiStoredEndEyebrow: "Energie im Speicher (Ende Fenster)",
           kpiSimAbsorbedEyebrow: "Eingelagert (Simulation, Fenster)",
           kpiSimAbsorbedSubtitle:
-            "Summe der im Modell aufgenommenen Ladechance (struktureller Ueberschuss + zuordenbare Abregelung), nicht der Speicherstand am Ende.",
+            "Summe der im Modell aufgenommenen Ladechance (struktureller Überschuss + zuordenbare Abregelung), nicht der Speicherstand am Ende.",
           kpiSimVsFleetMissing:
-            "Keine hinterlegte installierte Flotten-Kapazitaet — nur Simulationswert oben.",
+            "Keine hinterlegte installierte Flotten-Kapazität — nur Simulationswert oben.",
           kpiSimVsFleetLine: (p: {
             fleetStored: string;
             simStored: string;
@@ -1459,9 +1459,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             simCap: string;
             instCap: string;
           }) =>
-            `Flotte (gleiches Fenster): ${p.fleetStored} eingelagert · Simulationskapazitaet ${p.simCap} zu installiert ${p.instCap} (${p.capMult}) · eingelagerte Energie ${p.simStored} zu ${p.fleetStored} (${p.energyMult})`,
+            `Flotte (gleiches Fenster): ${p.fleetStored} eingelagert · Simulationskapazität ${p.simCap} zu installiert ${p.instCap} (${p.capMult}) · eingelagerte Energie ${p.simStored} zu ${p.fleetStored} (${p.energyMult})`,
           aiInsightPlaceholder:
-            "Keine Zahlenbasis fuer diese Kurzfassung. Nach Anbindung eines LLM kann zusätzlicher Text uber die Prop simulationAiInsight kommen.",
+            "Keine Zahlenbasis für diese Kurzfassung. Nach Anbindung eines LLM kann zusätzlicher Text uber die Prop simulationAiInsight kommen.",
           observedCtaSimulated: "Zu Simulation wechseln",
           technicalDisclaimer: "Illustratives Modell, keine Beschaffungsempfehlung.",
         }
@@ -2497,10 +2497,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           : "Discharging"
         : currentFleetMode === "idle"
           ? language === "de"
-            ? "Leerlauf"
+            ? "Stillstand"
             : "Idle"
           : language === "de"
-            ? "k. A."
+            ? "n. v."
             : "n/a";
   const currentFleetSocStatusValue =
     chartRows.length > 0
@@ -3230,7 +3230,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                     })
                   ) : language === "de" ? (
                     <>
-                      Simulationskapazitaet {formatEnergyFromMwh(effectivePracticalCapacityMwh)} vs installiert{" "}
+                      Simulationskapazität {formatEnergyFromMwh(effectivePracticalCapacityMwh)} vs. installiert{" "}
                       {formatEnergyFromMwh(fleetEnergyCapacityMwh)} ({formatGrowthRatio(energyCapacityRatio)}).
                       Eingelagerte Energie Simulation {formatEnergyFromMwh(simAbsorbedMwh)} — Flotte fast ohne
                       Aufnahme im Fenster ({formatEnergyFromMwh(fleetAbsorbedMwh ?? 0)}).
@@ -3299,7 +3299,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       >
         <div className="space-y-1.5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            {language === "de" ? "Marginal Impact of More Capacity" : "Marginal Impact of More Capacity"}
+            {language === "de" ? "Grenznutzen zusätzlicher Kapazität" : "Marginal Impact of More Capacity"}
           </p>
           <h3
             id="marginal-capacity-heading"
@@ -3322,7 +3322,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               <thead>
                 <tr>
                   <th className="sticky left-0 z-10 rounded-l-2xl border border-border/70 bg-background/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-400">
-                    {language === "de" ? "Metric" : "Metric"}
+                    {language === "de" ? "Kennzahl" : "Metric"}
                   </th>
                   {scalingScenarioColumns.map((column, index) => (
                     <th
@@ -3337,12 +3337,12 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               <tbody>
                 {[
                   {
-                    label: language === "de" ? "Absorbed Energy" : "Absorbed Energy",
+                    label: language === "de" ? "Aufgenommene Energie" : "Absorbed Energy",
                     render: (scenario: ScenarioImpactSnapshot) =>
                       formatEnergyFromMwh(scenario.coverage.absorbedSurplusEnergyMwh),
                   },
                   {
-                    label: language === "de" ? "Curtailment Avoided" : "Curtailment Avoided",
+                    label: language === "de" ? "Vermiedene Abregelung" : "Curtailment Avoided",
                     render: (scenario: ScenarioImpactSnapshot) =>
                       scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
                         ? "—"
@@ -3357,14 +3357,14 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                       formatCurrencyCompact(scenario.chargeOpportunityValueEur ?? null),
                   },
                   {
-                    label: language === "de" ? "Avoided Costs" : "Avoided Costs",
+                    label: language === "de" ? "Vermiedene Kosten" : "Avoided Costs",
                     render: (scenario: ScenarioImpactSnapshot) =>
                       scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
                         ? "—"
                         : formatCurrencyCompact(scenario.avoidedRedispatchCostsEur),
                   },
                   {
-                    label: language === "de" ? "Grid Relief" : "Grid Relief",
+                    label: language === "de" ? "Netzentlastung" : "Grid Relief",
                     render: (scenario: ScenarioImpactSnapshot) =>
                       scenario.gridReliefScore !== null ? `${scenario.gridReliefScore}/100` : "—",
                   },
@@ -3505,7 +3505,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                     }`
                   : "—"
               }
-              hint={language === "de" ? "Installierte Schicht" : "Installed layer"}
+              hint={language === "de" ? "Installierte Kapazität" : "Installed layer"}
               tone="sky"
             />
             <WindowMetricCell
@@ -3648,7 +3648,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-1">
               <div className="min-w-0">
                 <p className="text-[9px] font-semibold tracking-[0.16em] text-slate-500 uppercase dark:text-slate-400">
-                  {language === "de" ? "Analyst Workspace" : "Analyst workspace"}
+                  {language === "de" ? "Analyse-Arbeitsplatz" : "Analyst workspace"}
                 </p>
                 <h2 className="mt-0.5 text-xl font-semibold leading-tight tracking-tight text-slate-950 md:text-2xl dark:text-white [font-family:var(--font-heading)]">
                   {t.profileTitle}
@@ -4042,7 +4042,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               <div className="mt-5 max-w-4xl rounded-2xl border border-dashed border-slate-300/70 bg-white/50 px-4 py-3 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
                 {revenueModelLoadError
                   ? language === "de"
-                    ? "Preisbasis derzeit nicht verfuegbar."
+                    ? "Preisbasis derzeit nicht verfügbar."
                     : "Price basis unavailable right now."
                   : language === "de"
                     ? "Preisbasis derzeit ohne Daten."

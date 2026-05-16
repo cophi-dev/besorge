@@ -234,7 +234,7 @@ export default function BessAiChatOverlay({
             </div>
           ))}
           {sending ? (
-            <p className="text-sm text-slate-500 dark:text-slate-300">{language === "de" ? "KI denkt nach..." : "AI is thinking..."}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-300">{language === "de" ? "Antwort wird erstellt…" : "AI is thinking..."}</p>
           ) : null}
           {error ? (
             <p className="rounded-lg border border-red-400/45 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">

@@ -113,7 +113,7 @@ export function buildFlowShareFallback(payload: FlowSharePayload): string {
 
     const line = en
       ? `Germany · ${payload.windowLabel} (${cov} qh coverage). Net structural ${net} GWh vs modeled ~${cap} GWh/${gw} GW BESS — Σ|slot| damping ~${damp}, surplus captured ${pctFromShare(payload.absorbedSurplusPct)}, deficit covered ${pctFromShare(payload.servedDeficitPct)}. ${titleShort}. Energy-Charts heuristics.`
-      : `DE · ${payload.windowLabel} (${cov} VH). Netto strukturell ${net} GWh mit ~${cap} GWh/${gw} GW BESS — Daempfung ~${damp}, Aufnahme ${pctFromShare(payload.absorbedSurplusPct)}, Defizit ${pctFromShare(payload.servedDeficitPct)}. ${titleShort}. Energy-Charts-Heuristik.`;
+      : `DE · ${payload.windowLabel} (${cov} VH). Netto strukturell ${net} GWh mit ~${cap} GWh/${gw} GW BESS — Dämpfung ~${damp}, Aufnahme ${pctFromShare(payload.absorbedSurplusPct)}, Defizit ${pctFromShare(payload.servedDeficitPct)}. ${titleShort}. Energy-Charts-Heuristik.`;
     return clipPost(line);
   }
 
@@ -124,10 +124,10 @@ export function buildFlowShareFallback(payload: FlowSharePayload): string {
   const grossPart = grossGwh
     ? en
       ? `${grossGwh} GWh gross surplus in window`
-      : `${grossGwh} GWh Brutto-Ueberschuss`
+      : `${grossGwh} GWh Brutto-Überschuss`
     : en
       ? "gross surplus n/a"
-      : "Brutto-Ueberschuss n/a";
+      : "Brutto-Überschuss n/a";
   const baseLineRounded =
     payload.baselineSelfConsumptionPct !== undefined &&
     Number.isFinite(payload.baselineSelfConsumptionPct)

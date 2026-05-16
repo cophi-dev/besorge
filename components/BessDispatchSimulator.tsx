@@ -360,21 +360,21 @@ const copy = {
       "You kept the identical market tape as the profile above but isolated how much incremental BESS could extract—use the scaled line to sanity-check sizing.",
   },
   de: {
-    eyebrow: "Zusaetzliche Kapazitaet – gleicher Tag",
+    eyebrow: "Zusätzliche Kapazität – gleicher Tag",
     title: "SpeicherPilot Dispatch Simulator",
     flowBridge:
-      "Bezugspunkt ist das Deutschland-Tagesprofil direkt darueber — dieselben Zeitstempel, Viertelstunden und Energy-Charts-Totale. Hier legen wir nur modellierte zusaetzliche Nennleistung und -energie obenauf, die das Chart fuer die heutige Flotte nicht annimmt.",
+      "Bezugspunkt ist das Deutschland-Tagesprofil direkt darüber — dieselben Zeitstempel, Viertelstunden und Energy-Charts-Totale. Hier legen wir nur modellierte zusätzliche Nennleistung und -energie obenauf, die das Chart für die heutige Flotte nicht annimmt.",
     dataMatchNote:
       "Gleiche Datenpipeline wie das Tagesprofil: identische Berliner Viertelstunden und Summen. Der Dispatch ist hypothetischer Zubau-Speicher auf genau diesem Pfad (keine komplette Markt-Neu-Simulation).",
     intro:
-      "Stellen Sie zusaetzliche Leistung und Kapazitaet ein und sehen Sie, wie dieser marginale Block heute geladen, entladen und am Evening-Gap-Proxy beteiligt gewesen waere — mit derselben Restlast-Proxy und Policy wie im Backend-Lauf.",
+      "Stellen Sie zusätzliche Leistung und Kapazität ein und sehen Sie, wie dieser marginale Block heute geladen, entladen und am Abendlücken-Proxy beteiligt gewesen wäre — mit derselben Restlast-Proxy und Policy wie im Backend-Lauf.",
     powerLabel: "Leistung (MW)",
     powerHint: "AC-Nennleistung, symmetrisch für Lade- und Entladevorgang.",
     capacityLabel: "Kapazität (MWh)",
     capacityHint: "Nutzbare Energiekapazität. Default 2.000 MWh ≈ 4h bei 500 MW.",
     megapackRefTitle: "Megapack-Referenz",
     megapackRefHeadline: (packs: string) =>
-      `Diese Simulator-Groesse entspricht grob ${packs} Megapack 2 XL Einheiten.`,
+      `Diese Simulator-Größe entspricht grob ${packs} Megapack 2 XL Einheiten.`,
     megapackRefDetail: (powerPacks: string, energyPacks: string) =>
       `Leistungsbasis ${powerPacks} Packs · Energiebasis ${energyPacks} Packs.`,
     rteLabel: "Round-Trip Efficiency (%)",
@@ -382,11 +382,11 @@ const copy = {
     strategyLabel: "Strategie",
     strategyOption: "Auto Policy v1 (forecast-aware)",
     strategyDescription:
-      "Waehlt Laden/Entladen/Leerlauf je Slot automatisch anhand von Ueberschuss, Abendrisiko und Restlast-Preisregime.",
+      "Wählt Laden/Entladen/Stillstand je Slot automatisch anhand von Überschuss, Abendrisiko und Restlast-Preisregime.",
     runButton: "Dispatch simulieren",
     runButtonLoading: "Simulation läuft...",
     sourceNote:
-      "Heute Energy-Charts Viertelstunden — gleiche Datenpipeline wie beim grossen Deutschland-Tagesprofil.",
+      "Heute Energy-Charts Viertelstunden — gleiche Datenpipeline wie beim großen Deutschland-Tagesprofil.",
     durationLabel: "Dauer",
     cyclesLabel: "Zyklen",
     placeholderTitle: "Zubau konfigurieren und Dispatch starten.",
@@ -412,8 +412,8 @@ const copy = {
     datasetSamples: (n: number, pct: number) =>
       `${n} Viertelstunden beobachtet (${INTEGER_FORMATTER.format(pct)}% des Tages)`,
     invalidInputs: "Eingaben außerhalb des Bereichs. Bitte anpassen und erneut versuchen.",
-    kpiEstimatedRevenueToday: "Geschaetzter Gesamtwert heute",
-    kpiEveningGapCoverage: "Evening-Gap-Abdeckung",
+    kpiEstimatedRevenueToday: "Geschätzter Gesamtwert heute",
+    kpiEveningGapCoverage: "Abendlücken-Abdeckung",
     kpiCyclesToday: "Zyklen heute",
     kpiMaxReachableEveningSoc: "Max. erreichbarer SoC bis 17:00",
     kpiImportsAfterBess: "Importe nach BESS",
@@ -422,24 +422,24 @@ const copy = {
       `Beobachtet ${observed} · Δ ${delta} ggü. Ist`,
     kpiCurrentMode: "Aktueller BESS-Modus",
     kpiPriceProxyHint:
-      "SMARD Viertelstunden-Spotpreis soweit verfuegbar, sonst Restlast-Proxy als Fallback.",
+      "SMARD Viertelstunden-Spotpreis soweit verfügbar, sonst Restlast-Proxy als Fallback.",
     chartSocTitle: "SoC-Verlauf",
-    chartSocTrajectoryTitle: "SoC-Verlauf ueber den Tag",
+    chartSocTrajectoryTitle: "SoC-Verlauf über den Tag",
     chartSocTrajectorySubtitle:
-      "Simulierte gespeicherte Energie fuer Ihre konfigurierte Batterie — Viertelstundenbasis.",
+      "Simulierte gespeicherte Energie für Ihre konfigurierte Batterie — Viertelstundenbasis.",
     chartAxisStoredEnergy: "Gespeicherte Energie (MWh)",
     chartLegendSocStored: "Gespeicherte Energie",
     socStatStart: "Start",
     socStatEnd: "Jetzt / Ende",
     socStatMin: "Min",
     socStatMax: "Max",
-    chartResidualTitle: "Residuale Ueber-/Unterdeckung",
+    chartResidualTitle: "Residuale Über-/Unterdeckung",
     chartDispatchTitle: "Dispatch-Zeitleiste",
     chartAxisTime: "Uhrzeit (Berlin)",
     chartAxisSoc: "SoC",
     chartAxisPowerDispatch: "Laden / Entladen (MW)",
     chartLegendResidualOverlay: "Restlast",
-    chartLegendResidualDeficit: "Restlast (+Defizit / -Ueberschuss)",
+    chartLegendResidualDeficit: "Restlast (+Defizit / -Überschuss)",
     tooltipTotalGeneration: "Inlands-Erzeugung",
     tooltipLoad: "Last",
     tooltipRenewables: "Erneuerbare",
@@ -448,42 +448,42 @@ const copy = {
     tooltipDischargeHeadroom: "Entlade-Spielraum",
     tooltipChargeAction: "Laden",
     tooltipDischargeAction: "Entladen",
-    tooltipIdleAction: "Leerlauf",
+    tooltipIdleAction: "Stillstand",
     modeCharging: "Laden",
     modeDischarge: "Entladen",
-    modeIdle: "Leerlauf",
+    modeIdle: "Stillstand",
     resultsMetaEyebrow: "Simulationsergebnis",
     kpiEveningGapFootnote: "Anteil am Proxy Σ Restlast⁺ · ¼ h (17–21 Uhr, Berlin).",
     kpiMaxReachableEveningSocHint:
       "Best-Case nur aus Intraday-Überschuss (begrenzt durch Leistung/Kapazität/RTE).",
     chartLegendMaxReachableSoc: "Max. erreichbarer SoC",
     resultsHeadline: (powerMw: number, capMwh: number, revenueEur: string, covPct: string) =>
-      `Dein virtuelles ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS haette heute rund ${revenueEur} Gesamtwert erzeugt und ${covPct}% des Evening-Gap-Proxys (17–21, Berlin) abgedeckt.`,
-    socExplainTitle: "Warum der SoC so verlaeuft",
+      `Ihr virtuelles ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS hätte heute rund ${revenueEur} Gesamtwert erzeugt und ${covPct}% des Abendlücken-Proxys (17–21, Berlin) abgedeckt.`,
+    socExplainTitle: "Warum der SoC so verläuft",
     socNarrativeLow:
-      "Die Batterie bewegt sich kaum — es gab relativ wenige lohnende Lade-/Entlade-Fenster gegenueber Ihrer Leistung und RTE, die gespeicherte Energie bleibt in einem schmalen Band.",
+      "Die Batterie bewegt sich kaum — es gab relativ wenige lohnende Lade-/Entlade-Fenster gegenüber Ihrer Leistung und RTE, die gespeicherte Energie bleibt in einem schmalen Band.",
     socNarrativeArbitrage:
-      "Die gespeicherte Energie steigt Ueber tagsueber in Ueberschuss-Slots und faellt im gelben Abendfenster ab — typisches aggressives Arbitrage-/Abend-Entlastungs-Muster auf diesem Proxy.",
+      "Die gespeicherte Energie steigt Über tagsüber in Überschuss-Slots und fällt im gelben Abendfenster ab — typisches aggressives Arbitrage-/Abend-Entlastungs-Muster auf diesem Proxy.",
     socNarrativeEveningHeavy:
-      "Entladung konzentriert sich im Abendfenster, Laden ist begrenzt; der SoC zielt staerker auf 17–21 als auf breite Tageszyklen.",
+      "Entladung konzentriert sich im Abendfenster, Laden ist begrenzt; der SoC zielt stärker auf 17–21 als auf breite Tageszyklen.",
     socNarrativeMixed:
-      "Laden und Entladen wechseln mit der Restlast — der SoC spiegelt Policy-Kompromisse zwischen Ueberschussaufnahme, Spielraum und Abendlieferung statt eines einzelnen linearen Ramps.",
+      "Laden und Entladen wechseln mit der Restlast — der SoC spiegelt Policy-Kompromisse zwischen Überschussaufnahme, Spielraum und Abendlieferung statt eines einzelnen linearen Ramps.",
     insightsTitle: "Simulator-Insights",
     insightEveningAvgMw: (mw: string) =>
       `Mittlere Entladeleistung in Abend-Entlade-Slots: ${mw} MW (Proxy-Fenster 17–21).`,
     insightEveningAvgNone:
       "In diesem Lauf keine Abend-Entlade-Viertelstunden — die Policy hat in diese 17–21-Proxy-Slots keine Entladepower geschoben.",
     insightActiveHours: (h: string) =>
-      `Batterie aktiv (Laden oder Entladen) fuer rund ${h} Stunden in der beobachteten Serie.`,
+      `Batterie aktiv (Laden oder Entladen) für rund ${h} Stunden in der beobachteten Serie.`,
     insightSpread: (eur: string) =>
       `Realisierter Kauf-Verkauf-Spread (Proxy): ${eur} /MWh (energiegewichtet Entladen minus Laden).`,
-    keyLearningTitle: "Key Learning",
+    keyLearningTitle: "Kernaussage",
     keyLearningScaled: (cur: string, refMw: string, scaled: string) =>
-      `Mit dieser Konfiguration haettest du rund ${cur}% des heutigen Evening-Gap-Proxys abgedeckt — bei ${refMw} MW Nennleistung (gleiche Dauer & RTE, illustratives lineares MW-Skalieren) laege der Anteil am Proxy bei etwa ${scaled}%.`,
+      `Mit dieser Konfiguration hätten Sie rund ${cur}% des heutigen Abendlücken-Proxys abgedeckt — bei ${refMw} MW Nennleistung (gleiche Dauer & RTE, illustratives lineares MW-Skalieren) läge der Anteil am Proxy bei etwa ${scaled}%.`,
     keyLearningScaledNote:
-      "Illustration: zulaessige Abendenergie skaliert mit Entlade-Nennleistung, bis die Luecke saettigt — kein vollstaendiges Re-Optimizing.",
+      "Illustration: zulässige Abendenergie skaliert mit Entlade-Nennleistung, bis die Lücke sättigt — kein vollständiges Re-Optimizing.",
     worthItClosing:
-      "Gleiche Marktspur wie oben, aber isoliert, wie viel Zubau-Speicher heute geholt haette — die Skalierungszeile ist ein schneller Groessen-Check.",
+      "Gleiche Marktspur wie oben, aber isoliert, wie viel Zubau-Speicher heute geholt hätte — die Skalierungszeile ist ein schneller Größen-Check.",
   },
 } as const;
 
@@ -1797,7 +1797,7 @@ function ResultsPanel({
                   {language === "de" ? "abends geliefert" : "evening delivered"}:{" "}
                   {MWH_DETAIL_FORMATTER.format(animEveningMwh)} MWh ·{" "}
                   {NUMBER_FORMATTER.format(animCoverage)}%
-                  {language === "de" ? " Proxys-Abdeckung" : " of proxy"})
+                  {language === "de" ? " Proxy-Abdeckung" : " of proxy"})
                 </span>
               </span>
             </li>

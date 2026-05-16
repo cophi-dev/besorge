@@ -18,15 +18,15 @@ export function MethodologySection({ language }: MethodologySectionProps) {
             "Greedy-Simulation: Viertelstunden in Reihenfolge; struktureller Überschuss lädt den Speicher bis Kapazität/Leistungsgrenze, Defizit entlädt priorisiert. Falls Curtailment-Daten vorliegen, zählt abgeregelte Energie zusätzlich als Ladechance, ohne die veröffentlichte Netto-Spur umzuschreiben.",
           losses: "Verluste (RTE) können in dieser Ansicht idealisiert aus sein — siehe Einzel-Karten/Disclaimer.",
           netVsGross:
-            "Netto vs. Brutto: Die strukturelle Tages-Nettobilanz ist die Summe vorzeichen-behafteter Viertelstunden (Generation − Last). Ladechance = struktureller Ueberschuss plus abgeregelte Energie (falls verfuegbar); Brutto-Defizitenergie bleibt die Summe ueber Zeitscheiben mit negativem strukturellen Netto.",
+            "Netto vs. Brutto: Die strukturelle Tages-Nettobilanz ist die Summe vorzeichenbehafteter Viertelstunden (Erzeugung − Last). Ladechance = struktureller Überschuss plus abgeregelte Energie (falls verfügbar); Brutto-Defizitenergie bleibt die Summe über Zeitscheiben mit negativem strukturellen Netto.",
           gridL1:
-            "Daempfungsquote (Σ|slot|): Prozentualer Rueckgang der Summe der Absolutbeträge struktureller Viertelstunden-Nettos nach der modellierten Greedy-BESS-Schicht gegenueber Rohdaten gleicher Reihenfolge.",
+            "Dämpfungsquote (Σ|slot|): Prozentualer Rückgang der Summe der Absolutbeträge struktureller Viertelstunden-Nettos nach der modellierten Greedy-BESS-Schicht gegenüber Rohdaten gleicher Reihenfolge.",
           storyVsWindow:
-            "Taegliche Story-/Briefing-Zahlen beziehen sich auf den gesamten Berlin-Kalendertag; KPIs unterhalb des Deutschland-Charts verwenden das aktuell gewaehlte Chart-Fenster (Auswahl).",
+            "Tägliche Story-/Briefing-Zahlen beziehen sich auf den gesamten Berlin-Kalendertag; KPIs unterhalb des Deutschland-Charts verwenden das aktuell gewählte Chart-Fenster (Auswahl).",
           kpiVsChart:
             "Anteile im simulierten Modus nutzen dieselbe Greedy-Schicht wie die Chart-Simulation (Leistungsgrenze: 12M-balanced im Tagesmodus sobald die Jahres-Empfehlung geladen ist, sonst Balanced aus dem Chart-Fenster; Start-SoC aus verketteten Vortagen soweit Daten da sind). Die Aufnahmequote bezieht sich auf die gesamte Ladechance, also Überschuss plus Curtailment, wenn diese Zusatzreihe vorhanden ist.",
           sources:
-            "Quellen: Energy-Charts.info (Fraunhofer ISE) fuer die strukturelle Viertelstunden-Spur und Netztransparenz.de fuer Abregelungs-/Redispatch-Zusatzdaten — siehe Footer.",
+            "Quellen: Energy-Charts.info (Fraunhofer ISE) für die strukturelle Viertelstunden-Spur und Netztransparenz.de für Abregelungs-/Redispatch-Zusatzdaten — siehe Footer.",
         }
       : {
           title: "Methodology & assumptions",

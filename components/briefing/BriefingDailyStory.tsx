@@ -181,7 +181,7 @@ const labels = {
     windowInsightsLabel: "Signale im Fenster",
     keyInsightsLabel: "Wichtigste Erkenntnisse",
     snapshotLabel: "Datensnapshot",
-    howToReadLabel: "So liest du das Fenster",
+    howToReadLabel: "So lesen Sie das Fenster",
     analysisLabel: "SpeicherPilot-Analyse",
     counterfactualLabel: "Was ein optimaler BESS bewirkt hätte",
     counterfactualDayTitle: (date: string) => `Optimaler BESS für diesen Tag (${date})`,
@@ -207,7 +207,7 @@ const labels = {
     kpiHintGrid:
       "Anteil, um den das modellierte BESS die Summe der Absolutbetr\u00e4ge der Viertelstunden-Nettos gegen\u00fcber der Rohspur im Fenster senkt.",
     kpiHintAbsorbed:
-      "Modellierter Anteil der Ladechance in diesem Fenster: struktureller \u00dcberschuss plus abgeregelte erneuerbare Energie, sofern Curtailment-Daten vorliegen.",
+      "Modellierter Anteil der Ladechance in diesem Fenster: struktureller \u00dcberschuss plus abgeregelte erneuerbare Energie, sofern Abregelungsdaten vorliegen.",
     kpiHintServed:
       "Modellierter Anteil der Brutto-Defizitenergie (Slots Last > Erzeugung), der aus dem modellierten Speicher gedeckt werden k\u00f6nnte.",
     netBalanceLabel: "Nettobilanz",
@@ -220,7 +220,7 @@ const labels = {
     curtailedUnavailable: "Nicht konfiguriert",
     curtailedUpstream: "Upstream fehlt",
     coverageLabel: "Abdeckung",
-    curtailedSubtitle: (pct: string) => `${pct} mit Curtailment-MW`,
+    curtailedSubtitle: (pct: string) => `${pct} mit Abregelungs-MW`,
     renewableCoverageSubtitle: (pct: string) => `${pct} mit EE-MW`,
     fleetSubtitle: (power: string, capacity: string) => `${power} GW / ${capacity} GWh`,
     modelCapacityLabel: "Modell-BESS",

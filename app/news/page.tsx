@@ -12,7 +12,7 @@ export default function NewsPage() {
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-8 pb-24 pt-16 lg:px-12">
       <section className="space-y-3">
         <p className="text-xs tracking-[0.12em] text-slate-500 uppercase dark:text-slate-300">
-          {language === "de" ? "SpeicherPilot Newsfeed" : "SpeicherPilot Newsfeed"}
+          {language === "de" ? "SpeicherPilot-Newsfeed" : "SpeicherPilot Newsfeed"}
         </p>
         <h1 className="text-4xl text-slate-900 dark:text-white md:text-5xl [font-family:var(--font-heading)]">
           {language === "de" ? "BESS-Marktupdates" : "BESS Market Updates"}

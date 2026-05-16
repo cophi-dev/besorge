@@ -102,10 +102,10 @@ export function LiveSnapshotHeader({
     estSoc: language === "de" ? "Flotten-SoC (Modell)" : "Fleet SoC (model)",
     berlinTz: language === "de" ? "Europa/Berlin" : "Europe/Berlin",
     livePrefix: language === "de" ? "Live" : "Live",
-    unavailable: language === "de" ? "k. A." : "n/a",
+    unavailable: language === "de" ? "n. v." : "n/a",
     charging: language === "de" ? "Laden" : "Charging",
     discharging: language === "de" ? "Entladen" : "Discharging",
-    idle: language === "de" ? "Leerlauf" : "Idle",
+    idle: language === "de" ? "Stillstand" : "Idle",
     fleetUnavailable:
       language === "de" ? "vorübergehend nicht verfügbar" : "temporarily unavailable",
   };
