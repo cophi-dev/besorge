@@ -36,6 +36,7 @@ import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   addBerlinCalendarDays,
+  countBerlinCalendarDaysInclusive,
   formatBerlinDateKeyFromUtcDate,
   mondayBerlinIsoWeekContaining,
 } from "@/lib/berlinCalendar";
@@ -44,7 +45,10 @@ import {
   defaultEconomicsAssumptions,
 } from "@/lib/bessEconomics";
 import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
-import { berlinDateKeySchema } from "@/lib/germanyEnergyFlowPeriod";
+import {
+  BERLIN_CUSTOM_RANGE_MAX_DAYS,
+  berlinDateKeySchema,
+} from "@/lib/germanyEnergyFlowPeriod";
 import { createLogger } from "@/lib/debug";
 import type { GermanyDispatchSlotsResponse } from "@/lib/energyChartsApi";
 import { germanyEnergyFlowPeriodSchema } from "@/lib/germanyEnergyFlowPeriod";
@@ -67,6 +71,7 @@ import {
   type ChartRowTailForFleetMode,
 } from "@/lib/chartFleetSocSnapshot";
 import { BerlinDayCalendarButton } from "@/components/briefing/BerlinDayCalendarButton";
+import { BerlinDateRangeCalendarButton } from "@/components/briefing/BerlinDateRangeCalendarButton";
 import { BriefingDailyStory, type BriefingStoryDayOptimalContext } from "@/components/briefing/BriefingDailyStory";
 import { FlowExportButtons } from "@/components/briefing/FlowExportButtons";
 import { Button } from "@/components/ui/button";
@@ -221,7 +226,7 @@ const revenueModelApiSchema = z.object({
   marketContext: revenueMarketContextSchema.nullable(),
 });
 
-type SelectorMode = "day" | "week" | "month";
+type SelectorMode = "day" | "week" | "month" | "custom";
 type BessRecommendation = z.infer<typeof bessRecommendationApiSchema>;
 type RevenueModelPayload = z.infer<typeof revenueModelApiSchema>;
 
@@ -243,9 +248,39 @@ function formatTimeRangeCenterLabel(options: {
   selectedDate: string;
   selectedWeek: string;
   selectedMonth: string;
+  customRangeStart: string;
+  customRangeEnd: string;
 }): string {
-  const { language, selectorMode, selectedDate, selectedWeek, selectedMonth } = options;
+  const {
+    language,
+    selectorMode,
+    selectedDate,
+    selectedWeek,
+    selectedMonth,
+    customRangeStart,
+    customRangeEnd,
+  } = options;
   const locale = language === "de" ? "de-DE" : "en-US";
+  if (selectorMode === "custom") {
+    const startLabel = new Intl.DateTimeFormat(locale, {
+      timeZone: "Europe/Berlin",
+      month: "short",
+      day: "numeric",
+      year: customRangeStart.slice(0, 4) === customRangeEnd.slice(0, 4) ? undefined : "numeric",
+    }).format(new Date(`${customRangeStart}T12:00:00.000Z`));
+    const endLabel = new Intl.DateTimeFormat(locale, {
+      timeZone: "Europe/Berlin",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(`${customRangeEnd}T12:00:00.000Z`));
+    if (language === "de") {
+      return customRangeStart === customRangeEnd
+        ? endLabel
+        : `${startLabel} – ${endLabel}`;
+    }
+    return customRangeStart === customRangeEnd ? endLabel : `${startLabel} – ${endLabel}`;
+  }
   if (selectorMode === "day") {
     return new Intl.DateTimeFormat(locale, {
       timeZone: "Europe/Berlin",
@@ -871,6 +906,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const [selectedDate, setSelectedDate] = useState(resolvedSeedKey);
   const [selectedWeek, setSelectedWeek] = useState(dateKeyToIsoWeekKey(resolvedSeedKey));
   const [selectedMonth, setSelectedMonth] = useState(resolvedSeedKey.slice(0, 7));
+  const [customRangeStart, setCustomRangeStart] = useState(() =>
+    addBerlinCalendarDays(resolvedSeedKey, -6)
+  );
+  const [customRangeEnd, setCustomRangeEnd] = useState(resolvedSeedKey);
   const [dayModeResetAtStart] = useState(false);
   const [customSimulatedCapacityGwhApplied, setCustomSimulatedCapacityGwhApplied] = useState("");
   const [customSimulatedCapacityGwhDraft, setCustomSimulatedCapacityGwhDraft] = useState("");
@@ -966,7 +1005,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             ? `date=${selectedDate}`
             : selectorMode === "week"
               ? `week=${selectedWeek}`
-              : `month=${selectedMonth}`;
+              : selectorMode === "month"
+                ? `month=${selectedMonth}`
+                : `start=${customRangeStart}&end=${customRangeEnd}`;
         const response = await fetch(`/api/market/de/energy-flow?${query}`, {
           cache: "no-store",
           signal: controller.signal,
@@ -983,6 +1024,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             selectedDate,
             selectedWeek,
             selectedMonth,
+            customRangeStart,
+            customRangeEnd,
           });
           throw new Error("schema");
         }
@@ -993,7 +1036,15 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         if (controller.signal.aborted) {
           return;
         }
-        log("energy flow fetch failed %o", { selectorMode, selectedDate, selectedWeek, selectedMonth, error });
+        log("energy flow fetch failed %o", {
+          selectorMode,
+          selectedDate,
+          selectedWeek,
+          selectedMonth,
+          customRangeStart,
+          customRangeEnd,
+          error,
+        });
         setFlow(null);
         setFlowLoadError(true);
       } finally {
@@ -1004,7 +1055,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     };
     void load();
     return () => controller.abort();
-  }, [selectorMode, selectedDate, selectedWeek, selectedMonth]);
+  }, [selectorMode, selectedDate, selectedWeek, selectedMonth, customRangeStart, customRangeEnd]);
 
   const skipBerlinUrlNotifyRef = useRef(true);
   useEffect(() => {
@@ -1025,8 +1076,11 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     if (selectorMode === "week") {
       return { type: "week", weekKey: selectedWeek };
     }
-    return { type: "month", monthKey: selectedMonth };
-  }, [selectorMode, selectedDate, selectedWeek, selectedMonth]);
+    if (selectorMode === "month") {
+      return { type: "month", monthKey: selectedMonth };
+    }
+    return { type: "custom", start: customRangeStart, end: customRangeEnd };
+  }, [selectorMode, selectedDate, selectedWeek, selectedMonth, customRangeStart, customRangeEnd]);
 
   useEffect(() => {
     if (!onBriefingStoryWindowChange) {
@@ -1288,6 +1342,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           dayMode: "Tag",
           weekMode: "Woche",
           monthMode: "Monat",
+          customMode: "Zeitraum",
           previousRange: "Zurück",
           nextRange: "Weiter",
           dayResetToggleLabel:
@@ -1313,7 +1368,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           modeObserved: "Beobachtet",
           modeSimulated: "Simuliertes BESS",
           timeframeLabelShort: "Zeitraum",
-          timeRangeControlTitle: "Tag, Woche oder Monat wählen",
+          timeRangeControlTitle: "Tag, Woche, Monat oder Zeitraum wählen",
           timeRangeTapToChange: "Tippen zum Ändern",
           dataCoverageInfoAria: "Was bedeutet die Datenabdeckung?",
           dataCoverageTooltip:
@@ -1530,6 +1585,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           dayMode: "Day",
           weekMode: "Week",
           monthMode: "Month",
+          customMode: "Range",
           previousRange: "Previous",
           nextRange: "Next",
           dayResetToggleLabel:
@@ -1554,7 +1610,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           modeObserved: "Observed",
           modeSimulated: "Simulated BESS",
           timeframeLabelShort: "Period",
-          timeRangeControlTitle: "Choose day, week, or month",
+          timeRangeControlTitle: "Choose day, week, month, or custom range",
           timeRangeTapToChange: "Tap to change",
           dataCoverageInfoAria: "What does data coverage mean?",
           dataCoverageTooltip:
@@ -2284,9 +2340,11 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     if (chartRenderCompact) {
       if (selectorMode === "month") return 8;
       if (selectorMode === "week") return 7;
+      if (selectorMode === "custom") return 8;
       return 8;
     }
     if (selectorMode === "month") return 12;
+    if (selectorMode === "custom") return 10;
     return 10;
   })();
   const xAxisInterval =
@@ -2351,19 +2409,25 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             isoWeekKeyToStartKey(selectedWeek),
             6
           )})`
-        : monthLabelFormatter.format(new Date(`${selectedMonth}-01T00:00:00.000Z`));
+        : selectorMode === "month"
+          ? monthLabelFormatter.format(new Date(`${selectedMonth}-01T00:00:00.000Z`))
+          : `${customRangeStart} – ${customRangeEnd}`;
   const nextDisabled =
     selectorMode === "day"
       ? selectedDate >= todayKey
       : selectorMode === "week"
         ? selectedWeek >= currentWeekKey
-        : selectedMonth >= currentMonthKey;
+        : selectorMode === "month"
+          ? selectedMonth >= currentMonthKey
+          : customRangeEnd >= todayKey;
   const timeRangeCenterLabel = formatTimeRangeCenterLabel({
     language,
     selectorMode,
     selectedDate,
     selectedWeek,
     selectedMonth,
+    customRangeStart,
+    customRangeEnd,
   });
   const timeRangeNavButtonClass =
     "inline-flex size-11 shrink-0 items-center justify-center rounded-xl border-2 border-slate-200/90 bg-white text-slate-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-600/55 dark:bg-slate-900/90 dark:text-slate-100 dark:hover:border-sky-500/45 dark:hover:bg-sky-950/45";
@@ -2860,7 +2924,13 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       setSelectedWeek(dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, -7)));
       return;
     }
-    setSelectedMonth((current) => shiftMonthKey(current, -1));
+    if (selectorMode === "month") {
+      setSelectedMonth((current) => shiftMonthKey(current, -1));
+      return;
+    }
+    const spanDays = countBerlinCalendarDaysInclusive(customRangeStart, customRangeEnd);
+    setCustomRangeStart((current) => addBerlinCalendarDays(current, -spanDays));
+    setCustomRangeEnd((current) => addBerlinCalendarDays(current, -spanDays));
   };
 
   const handleNextWindow = () => {
@@ -2877,10 +2947,22 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       setSelectedWeek(nextWeek > currentWeekKey ? currentWeekKey : nextWeek);
       return;
     }
-    setSelectedMonth((current) => {
-      const next = shiftMonthKey(current, 1);
-      return next > currentMonthKey ? currentMonthKey : next;
-    });
+    if (selectorMode === "month") {
+      setSelectedMonth((current) => {
+        const next = shiftMonthKey(current, 1);
+        return next > currentMonthKey ? currentMonthKey : next;
+      });
+      return;
+    }
+    const spanDays = countBerlinCalendarDaysInclusive(customRangeStart, customRangeEnd);
+    const shiftedEnd = addBerlinCalendarDays(customRangeEnd, spanDays);
+    if (shiftedEnd > todayKey) {
+      setCustomRangeEnd(todayKey);
+      setCustomRangeStart(addBerlinCalendarDays(todayKey, -(spanDays - 1)));
+      return;
+    }
+    setCustomRangeStart((current) => addBerlinCalendarDays(current, spanDays));
+    setCustomRangeEnd(shiftedEnd);
   };
 
   const renderSimulatedCapacityOverridePanel = () => (
@@ -3715,6 +3797,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                           { mode: "day", label: t.dayMode },
                           { mode: "week", label: t.weekMode },
                           { mode: "month", label: t.monthMode },
+                          { mode: "custom", label: t.customMode },
                         ] as const
                       ).map((option) => (
                         <button
@@ -3750,6 +3833,26 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                       value={selectedDate}
                       max={todayKey}
                       onChange={setSelectedDate}
+                      language={language}
+                      prominent
+                    />
+                  ) : selectorMode === "custom" ? (
+                    <BerlinDateRangeCalendarButton
+                      start={customRangeStart}
+                      end={customRangeEnd}
+                      max={todayKey}
+                      onChange={({ start, end }) => {
+                        const spanDays = countBerlinCalendarDaysInclusive(start, end);
+                        if (spanDays > BERLIN_CUSTOM_RANGE_MAX_DAYS) {
+                          setCustomRangeStart(
+                            addBerlinCalendarDays(end, -(BERLIN_CUSTOM_RANGE_MAX_DAYS - 1))
+                          );
+                          setCustomRangeEnd(end);
+                          return;
+                        }
+                        setCustomRangeStart(start);
+                        setCustomRangeEnd(end);
+                      }}
                       language={language}
                       prominent
                     />

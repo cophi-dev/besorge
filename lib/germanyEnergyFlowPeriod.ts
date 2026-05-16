@@ -190,3 +190,41 @@ export function resolveGermanyEnergyFlowBerlinRangeForMonth(
     capSlotsAtNow: endKey >= todayKey,
   };
 }
+
+/** Inclusive Berlin calendar days allowed in a user-picked custom range. */
+export const BERLIN_CUSTOM_RANGE_MAX_DAYS = 62;
+
+export function normalizeBerlinCustomDateRange(
+  startKey: string,
+  endKey: string
+): { startKey: string; endKey: string } {
+  if (startKey <= endKey) {
+    return { startKey, endKey };
+  }
+  return { startKey: endKey, endKey: startKey };
+}
+
+export function resolveGermanyEnergyFlowBerlinRangeForCustomRange(
+  startKey: string,
+  endKey: string,
+  now: Date
+): GermanyEnergyFlowBerlinRange {
+  const todayKey = formatBerlinDateKeyFromUtcDate(now);
+  const { startKey: normalizedStart, endKey: normalizedEnd } = normalizeBerlinCustomDateRange(
+    startKey,
+    endKey
+  );
+  const cappedEnd = normalizedEnd > todayKey ? todayKey : normalizedEnd;
+  const days = countBerlinCalendarDaysInclusive(normalizedStart, cappedEnd);
+  if (days > BERLIN_CUSTOM_RANGE_MAX_DAYS) {
+    throw new RangeError(
+      `Custom Berlin date range spans ${days} days; maximum is ${BERLIN_CUSTOM_RANGE_MAX_DAYS}.`
+    );
+  }
+  return {
+    period: normalizedStart === cappedEnd && cappedEnd === todayKey ? "today" : "this_week",
+    startKey: normalizedStart,
+    endKey: cappedEnd,
+    capSlotsAtNow: cappedEnd === todayKey,
+  };
+}

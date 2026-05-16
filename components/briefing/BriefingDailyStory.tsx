@@ -107,8 +107,11 @@ async function fetchStory(
     params.set("date", storyWindow.date);
   } else if (storyWindow.type === "week") {
     params.set("week", storyWindow.weekKey);
-  } else {
+  } else if (storyWindow.type === "month") {
     params.set("month", storyWindow.monthKey);
+  } else {
+    params.set("start", storyWindow.start);
+    params.set("end", storyWindow.end);
   }
   const res = await fetch(`/api/briefing/story?${params.toString()}`, {
     cache: "no-store",

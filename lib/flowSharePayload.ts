@@ -9,7 +9,7 @@ export const flowSharePayloadSchema = z.object({
   language: z.enum(["en", "de"]),
   /** Primary Energy-Charts day key for metadata (Berlin calendar). */
   dateBerlin: z.string(),
-  selectorMode: z.enum(["day", "week", "month"]),
+  selectorMode: z.enum(["day", "week", "month", "custom"]),
   windowLabel: z.string(),
   /** 0–100 data coverage estimate for plotted quarter-hours */
   dataCoveragePct: z.number(),

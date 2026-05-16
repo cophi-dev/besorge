@@ -14,6 +14,7 @@ import {
   berlinMonthKeySchema,
   GERMANY_ENERGY_FLOW_PERIODS,
   germanyEnergyFlowPeriodSchema,
+  resolveGermanyEnergyFlowBerlinRangeForCustomRange,
   resolveGermanyEnergyFlowBerlinRangeForDate,
   resolveGermanyEnergyFlowBerlinRangeForMonth,
   resolveGermanyEnergyFlowBerlinRangeForWeek,
@@ -42,7 +43,12 @@ export async function GET(request: Request) {
   const dateQuery = url.searchParams.get("date");
   const weekQuery = url.searchParams.get("week");
   const monthQuery = url.searchParams.get("month");
-  const customSelectors = [dateQuery, weekQuery, monthQuery].filter((entry) => entry !== null);
+  const startQuery = url.searchParams.get("start");
+  const endQuery = url.searchParams.get("end");
+  const hasCustomRange = startQuery !== null || endQuery !== null;
+  const customSelectors = [dateQuery, weekQuery, monthQuery, hasCustomRange ? "range" : null].filter(
+    (entry) => entry !== null
+  );
 
   if (recommendationQuery !== null) {
     if (recommendationQuery !== "trailing_12m") {
@@ -71,9 +77,67 @@ export async function GET(request: Request) {
 
   if (customSelectors.length > 1) {
     return NextResponse.json(
-      { message: "Use only one custom selector: date, week, or month." },
+      { message: "Use only one custom selector: date, week, month, or start+end range." },
       { status: 400 }
     );
+  }
+
+  if (hasCustomRange) {
+    if (startQuery === null || endQuery === null) {
+      return NextResponse.json(
+        { message: "Custom range requires both start and end (Berlin YYYY-MM-DD)." },
+        { status: 400 }
+      );
+    }
+    const parsedStart = berlinDateKeySchema.safeParse(startQuery);
+    const parsedEnd = berlinDateKeySchema.safeParse(endQuery);
+    if (!parsedStart.success || !parsedEnd.success) {
+      return NextResponse.json(
+        { message: "Invalid start or end date. Use Berlin date format YYYY-MM-DD." },
+        { status: 400 }
+      );
+    }
+    let range;
+    try {
+      range = resolveGermanyEnergyFlowBerlinRangeForCustomRange(
+        parsedStart.data,
+        parsedEnd.data,
+        now
+      );
+    } catch (error) {
+      const message =
+        error instanceof RangeError
+          ? error.message
+          : "Invalid custom Berlin date range.";
+      return NextResponse.json({ message }, { status: 400 });
+    }
+    try {
+      const flow = await getGermanyEnergyFlowForBerlinRange(range, now);
+      if (!flow) {
+        return NextResponse.json(
+          { message: "Not enough usable Energy-Charts quarter-hours for this date range yet." },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json(flow, { headers: { "Cache-Control": "no-store" } });
+    } catch (error) {
+      log("failed to load Germany energy flow by custom range %o", {
+        request: {
+          method: "GET",
+          route: "/api/market/de/energy-flow",
+          start: parsedStart.data,
+          end: parsedEnd.data,
+        },
+        response: { status: 502 },
+        error,
+      });
+      return NextResponse.json(
+        {
+          message: "Unable to load Germany energy flow right now.",
+        },
+        { status: 502 }
+      );
+    }
   }
 
   if (dateQuery !== null) {

@@ -8,6 +8,8 @@ import {
   berlinDateKeySchema,
   berlinIsoWeekKeySchema,
   berlinMonthKeySchema,
+  normalizeBerlinCustomDateRange,
+  resolveGermanyEnergyFlowBerlinRangeForCustomRange,
   resolveGermanyEnergyFlowBerlinRangeForMonth,
   resolveGermanyEnergyFlowBerlinRangeForWeek,
 } from "@/lib/germanyEnergyFlowPeriod";
@@ -25,14 +27,28 @@ const querySchema = z
     date: berlinDateKeySchema.optional(),
     week: berlinIsoWeekKeySchema.optional(),
     month: berlinMonthKeySchema.optional(),
+    start: berlinDateKeySchema.optional(),
+    end: berlinDateKeySchema.optional(),
     language: z.enum(["en", "de"]).default("en"),
   })
   .superRefine((data, ctx) => {
-    const n = Number(Boolean(data.date)) + Number(Boolean(data.week)) + Number(Boolean(data.month));
+    const hasRange = Boolean(data.start) || Boolean(data.end);
+    const n =
+      Number(Boolean(data.date)) +
+      Number(Boolean(data.week)) +
+      Number(Boolean(data.month)) +
+      Number(hasRange);
     if (n > 1) {
       ctx.addIssue({
         code: "custom",
-        message: "Specify at most one of date, week, or month.",
+        message: "Specify at most one of date, week, month, or start+end range.",
+      });
+    }
+    if (hasRange && (!data.start || !data.end)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Custom range requires both start and end.",
+        path: ["start"],
       });
     }
   });
@@ -43,6 +59,10 @@ function serializedStoryFromQuery(data: z.infer<typeof querySchema>): string {
   }
   if (data.month) {
     return `m:${data.month}`;
+  }
+  if (data.start && data.end) {
+    const { startKey, endKey } = normalizeBerlinCustomDateRange(data.start, data.end);
+    return `r:${startKey}:${endKey}`;
   }
   if (data.date) {
     return `d:${data.date}`;
@@ -65,6 +85,20 @@ async function loadBriefingContext(serialized: string): Promise<MorningBriefingC
       resolveGermanyEnergyFlowBerlinRangeForMonth(monthKey, now),
       now
     );
+  }
+  if (serialized.startsWith("r:")) {
+    const [, startKey, endKey] = serialized.split(":");
+    if (!startKey || !endKey) {
+      return null;
+    }
+    try {
+      return buildMorningBriefingContextForBerlinRange(
+        resolveGermanyEnergyFlowBerlinRangeForCustomRange(startKey, endKey, now),
+        now
+      );
+    } catch {
+      return null;
+    }
   }
   const rest = serialized.slice(2);
   const dateKey = rest === "__yesterday__" ? yesterdayBerlinDateKey(now) : rest;
@@ -535,6 +569,8 @@ export async function GET(request: Request) {
     date: url.searchParams.get("date") ?? undefined,
     week: url.searchParams.get("week") ?? undefined,
     month: url.searchParams.get("month") ?? undefined,
+    start: url.searchParams.get("start") ?? undefined,
+    end: url.searchParams.get("end") ?? undefined,
     language: url.searchParams.get("language") ?? undefined,
   });
   if (!parsed.success) {
