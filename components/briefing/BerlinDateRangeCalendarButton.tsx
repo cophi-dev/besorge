@@ -1,9 +1,8 @@
 "use client";
 
-import { format, parseISO } from "date-fns";
+import { format, isSameDay, isWithinInterval, parseISO } from "date-fns";
 import { CalendarDays } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { DateRange } from "react-day-picker";
+import { useEffect, useMemo, useState } from "react";
 
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -20,13 +19,19 @@ type BerlinDateRangeCalendarButtonProps = {
   prominent?: boolean;
 };
 
+type PickStep = "start" | "end";
+
 function toDateKey(date: Date): string {
   return format(date, "yyyy-MM-dd");
 }
 
+function parseBerlinDateKey(key: string): Date {
+  return parseISO(`${key}T12:00:00.000Z`);
+}
+
 function formatRangeLabel(start: string, end: string, language: "en" | "de"): string {
-  const startDate = parseISO(`${start}T12:00:00.000Z`);
-  const endDate = parseISO(`${end}T12:00:00.000Z`);
+  const startDate = parseBerlinDateKey(start);
+  const endDate = parseBerlinDateKey(end);
   const sameYear = start.slice(0, 4) === end.slice(0, 4);
   const sameMonth = start.slice(0, 7) === end.slice(0, 7);
   const locale = language === "de" ? "de-DE" : "en-US";
@@ -58,6 +63,17 @@ function formatRangeLabel(start: string, end: string, language: "en" | "de"): st
   return `${startFmt} – ${endFmt}`;
 }
 
+function formatDayLabel(date: Date, language: "en" | "de"): string {
+  const locale = language === "de" ? "de-DE" : "en-US";
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: "Europe/Berlin",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
 export function BerlinDateRangeCalendarButton({
   start,
   end,
@@ -68,20 +84,69 @@ export function BerlinDateRangeCalendarButton({
   prominent = false,
 }: BerlinDateRangeCalendarButtonProps) {
   const [open, setOpen] = useState(false);
-  const maxDate = parseISO(`${max}T12:00:00.000Z`);
+  const [pickStep, setPickStep] = useState<PickStep>("start");
+  const [pendingStart, setPendingStart] = useState<Date | null>(null);
+  const maxDate = parseBerlinDateKey(max);
+  const priorFrom = parseBerlinDateKey(start);
+  const priorTo = parseBerlinDateKey(end);
 
-  const selected: DateRange = useMemo(
-    () => ({
-      from: parseISO(`${start}T12:00:00.000Z`),
-      to: parseISO(`${end}T12:00:00.000Z`),
-    }),
-    [start, end]
-  );
+  const resetPicker = () => {
+    setPickStep("start");
+    setPendingStart(null);
+  };
+
+  useEffect(() => {
+    if (open) {
+      resetPicker();
+    }
+  }, [open]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      resetPicker();
+    }
+  };
+
+  const handleDaySelect = (day: Date | undefined) => {
+    if (!day) {
+      return;
+    }
+    if (pickStep === "start") {
+      setPendingStart(day);
+      setPickStep("end");
+      return;
+    }
+    if (!pendingStart) {
+      setPendingStart(day);
+      setPickStep("end");
+      return;
+    }
+    let from = pendingStart;
+    let to = day;
+    if (to < from) {
+      [from, to] = [to, from];
+    }
+    onChange({ start: toDateKey(from), end: toDateKey(to) });
+    setOpen(false);
+    resetPicker();
+  };
+
+  const calendarSelected = pendingStart ?? undefined;
+
+  const showPriorRange = pickStep === "start" && pendingStart === null;
+
+  const stepHint = useMemo(() => {
+    if (pickStep === "start") {
+      return language === "de" ? "Schritt 1: Startdatum antippen" : "Step 1: Tap your start date";
+    }
+    return language === "de" ? "Schritt 2: Enddatum antippen" : "Step 2: Tap your end date";
+  }, [language, pickStep]);
 
   const label = formatRangeLabel(start, end, language);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         type="button"
         className={cn(
@@ -104,31 +169,42 @@ export function BerlinDateRangeCalendarButton({
         <span className="min-w-0 truncate">{label}</span>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="end" sideOffset={8}>
-        <div className="border-b border-border/60 px-3 py-2 text-center text-[11px] font-medium text-muted-foreground">
-          {language === "de"
-            ? "Start- und Enddatum wählen"
-            : "Pick a start and end date"}
+        <div className="space-y-0 border-b border-border/60 px-3 py-2.5 text-center">
+          <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{stepHint}</p>
+          {pickStep === "end" && pendingStart ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {language === "de" ? "Start:" : "Start:"}{" "}
+              <span className="font-medium text-sky-800 dark:text-sky-200">
+                {formatDayLabel(pendingStart, language)}
+              </span>
+            </p>
+          ) : showPriorRange ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {language === "de" ? "Aktuell:" : "Current:"}{" "}
+              <span className="font-medium">{formatRangeLabel(start, end, language)}</span>
+            </p>
+          ) : null}
         </div>
         <Calendar
-          mode="range"
-          selected={selected}
-          defaultMonth={selected.to ?? selected.from}
+          mode="single"
+          selected={calendarSelected}
+          defaultMonth={pendingStart ?? priorTo}
           disabled={{ after: maxDate }}
           numberOfMonths={2}
-          onSelect={(range) => {
-            if (!range?.from) {
-              return;
-            }
-            const nextStart = toDateKey(range.from);
-            const nextEnd = toDateKey(range.to ?? range.from);
-            onChange({ start: nextStart, end: nextEnd });
-            if (range.to) {
-              setOpen(false);
-            }
+          onSelect={handleDaySelect}
+          modifiers={{
+            prior_range: (date) =>
+              showPriorRange && isWithinInterval(date, { start: priorFrom, end: priorTo }),
+            range_start: (date) => pendingStart !== null && isSameDay(date, pendingStart),
+          }}
+          modifiersClassNames={{
+            prior_range: "bg-sky-100/70 text-slate-700 dark:bg-sky-950/50 dark:text-slate-200",
+            range_start:
+              "rounded-md bg-emerald-500/15 font-semibold text-emerald-900 dark:text-emerald-100",
           }}
           classNames={{
             day_button:
-              "inline-flex size-9 items-center justify-center rounded-md text-sm font-medium hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&[data-selected-single=true]]:!bg-emerald-500 [&[data-selected-single=true]]:!text-white [&[data-range-start=true]]:!bg-emerald-500 [&[data-range-start=true]]:!text-white [&[data-range-end=true]]:!bg-emerald-500 [&[data-range-end=true]]:!text-white [&[data-range-middle=true]]:!bg-emerald-500/20 dark:[&[data-selected-single=true]]:!bg-emerald-500",
+              "inline-flex size-9 items-center justify-center rounded-md text-sm font-medium hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&[data-selected-single=true]]:!bg-emerald-500 [&[data-selected-single=true]]:!text-white dark:[&[data-selected-single=true]]:!bg-emerald-500",
           }}
         />
       </PopoverContent>

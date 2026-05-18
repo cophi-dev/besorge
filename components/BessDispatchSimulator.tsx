@@ -288,7 +288,7 @@ const copy = {
     datasetSamples: (n: number, pct: number) =>
       `${n} quarter-hours observed (${INTEGER_FORMATTER.format(pct)}% of day)`,
     invalidInputs: "Inputs are out of range. Adjust and retry.",
-    kpiEstimatedRevenueToday: "Estimated total value today",
+    kpiEstimatedRevenueToday: "Modeled benefit (indic.)",
     kpiEveningGapCoverage: "Evening gap coverage",
     kpiCyclesToday: "Cycles today",
     kpiMaxReachableEveningSoc: "Max reachable SoC by 17:00",
@@ -298,7 +298,7 @@ const copy = {
       `Observed ${observed} · Δ ${delta} vs observed`,
     kpiCurrentMode: "Current BESS mode",
     kpiPriceProxyHint:
-      "SMARD quarter-hour spot price when available; otherwise residual-load proxy fallback.",
+      "Indicative proxy from SMARD spread + curtailment/redispatch weights — not contract or forecast revenue.",
     chartSocTitle: "State of charge",
     chartSocTrajectoryTitle: "SoC through the day",
     chartSocTrajectorySubtitle:
@@ -333,7 +333,7 @@ const copy = {
     kpiMaxReachableEveningSocHint: "Best-case from intraday surplus only (power/capacity/RTE constrained).",
     chartLegendMaxReachableSoc: "Max reachable SoC",
     resultsHeadline: (powerMw: number, capMwh: number, revenueEur: string, covPct: string) =>
-      `Your virtual ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS would have created about ${revenueEur} of total value today and covered ${covPct}% of the evening-gap proxy (17–21, Berlin).`,
+      `Your virtual ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS shows about ${revenueEur} modeled indicative benefit this day and ${covPct}% evening-gap proxy coverage (17–21, Berlin) — illustrative, not expected cash revenue.`,
     socExplainTitle: "Why the SoC looks like this",
     socNarrativeLow:
       "The battery barely moved—few lucrative charge/discharge windows versus your power and RTE, so stored energy stays in a narrow band.",
@@ -412,7 +412,7 @@ const copy = {
     datasetSamples: (n: number, pct: number) =>
       `${n} Viertelstunden beobachtet (${INTEGER_FORMATTER.format(pct)}% des Tages)`,
     invalidInputs: "Eingaben außerhalb des Bereichs. Bitte anpassen und erneut versuchen.",
-    kpiEstimatedRevenueToday: "Geschätzter Gesamtwert heute",
+    kpiEstimatedRevenueToday: "Modellierter Nutzen (indik.)",
     kpiEveningGapCoverage: "Abendlücken-Abdeckung",
     kpiCyclesToday: "Zyklen heute",
     kpiMaxReachableEveningSoc: "Max. erreichbarer SoC bis 17:00",
@@ -422,7 +422,7 @@ const copy = {
       `Beobachtet ${observed} · Δ ${delta} ggü. Ist`,
     kpiCurrentMode: "Aktueller BESS-Modus",
     kpiPriceProxyHint:
-      "SMARD Viertelstunden-Spotpreis soweit verfügbar, sonst Restlast-Proxy als Fallback.",
+      "Indikativer Proxy aus SMARD-Spread + Abregelung/Redispatch — kein Vertrags- oder Prognoseerlös.",
     chartSocTitle: "SoC-Verlauf",
     chartSocTrajectoryTitle: "SoC-Verlauf über den Tag",
     chartSocTrajectorySubtitle:
@@ -458,7 +458,7 @@ const copy = {
       "Best-Case nur aus Intraday-Überschuss (begrenzt durch Leistung/Kapazität/RTE).",
     chartLegendMaxReachableSoc: "Max. erreichbarer SoC",
     resultsHeadline: (powerMw: number, capMwh: number, revenueEur: string, covPct: string) =>
-      `Ihr virtuelles ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS hätte heute rund ${revenueEur} Gesamtwert erzeugt und ${covPct}% des Abendlücken-Proxys (17–21, Berlin) abgedeckt.`,
+      `Ihr virtuelles ${INTEGER_FORMATTER.format(powerMw)} MW / ${INTEGER_FORMATTER.format(capMwh)} MWh BESS zeigt rund ${revenueEur} modellierten indikativen Nutzen an diesem Tag und ${covPct}% Abdeckung des Abendlücken-Proxys (17–21, Berlin) — illustrativ, kein erwarteter Bargelderlös.`,
     socExplainTitle: "Warum der SoC so verläuft",
     socNarrativeLow:
       "Die Batterie bewegt sich kaum — es gab relativ wenige lohnende Lade-/Entlade-Fenster gegenüber Ihrer Leistung und RTE, die gespeicherte Energie bleibt in einem schmalen Band.",
