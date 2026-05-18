@@ -53,6 +53,7 @@ import {
   presentIndicativeEurTotal,
 } from "@/lib/indicativeEconomicsDisplay";
 import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
+import { energyFlowSelectorStateFromStoryWindow } from "@/lib/briefingStoryWindow";
 import {
   BERLIN_CUSTOM_RANGE_MAX_DAYS,
   berlinDateKeySchema,
@@ -394,13 +395,15 @@ export type GermanyDayEnergyFlowProps = {
   initialEnergyFlow?: GermanyDispatchSlotsResponse | null;
   /** Berlin `YYYY-MM-DD` for `initialEnergyFlow`. */
   initialBerlinDateKey?: string | null;
-  /** Optional deep-link / share param (`?date=`) to pre-select a Berlin day. */
+  /** Optional deep-link / share params (`?date=`, `?week=`, `?month=`, `?start=&end=`). */
+  seedStoryWindow?: BriefingStoryWindow | null;
+  /** @deprecated Use `seedStoryWindow` — kept for tests that only pass a day. */
   seedDateKey?: string | null;
-  /** Sync selected Berlin day back to the URL or parent state. */
-  onBerlinDateChange?: (dateKey: string) => void;
+  /** Sync the active chart window back to the URL. */
+  onStoryWindowUrlChange?: (window: BriefingStoryWindow) => void;
   /**
    * Which window the homepage hero story should narrate — aligned with the chart
-   * selector (day / ISO week / calendar month). Does not replace `onBerlinDateChange`.
+   * selector (day / ISO week / calendar month). Does not replace `onStoryWindowUrlChange`.
    */
   onBriefingStoryWindowChange?: (window: BriefingStoryWindow) => void;
   /** Story window rendered inline with the chart area. */
@@ -948,8 +951,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     simulationAiInsight = null,
     initialEnergyFlow = null,
     initialBerlinDateKey = null,
+    seedStoryWindow = null,
     seedDateKey = null,
-    onBerlinDateChange,
+    onStoryWindowUrlChange,
     onBriefingStoryWindowChange,
     briefingStoryWindow: _briefingStoryWindow = null,
     briefingStoryRefreshNonce: _briefingStoryRefreshNonce = 0,
@@ -957,21 +961,27 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     onSimulatedModeChange,
   } = props;
   const resolvedSeedKey = resolveSeedDateKey(seedDateKey ?? undefined);
-  const [selectorMode, setSelectorMode] = useState<SelectorMode>("day");
-  const [selectedDate, setSelectedDate] = useState(resolvedSeedKey);
-  const [selectedWeek, setSelectedWeek] = useState(berlinDateKeyToIsoWeekKey(resolvedSeedKey));
-  const [selectedMonth, setSelectedMonth] = useState(resolvedSeedKey.slice(0, 7));
-  const [customRangeStart, setCustomRangeStart] = useState(() =>
-    addBerlinCalendarDays(resolvedSeedKey, -6)
-  );
-  const [customRangeEnd, setCustomRangeEnd] = useState(resolvedSeedKey);
+  const initialSelector = useMemo(() => {
+    const fallbackDay: BriefingStoryWindow = { type: "day", date: resolvedSeedKey };
+    const window =
+      seedStoryWindow ??
+      (seedDateKey ? { type: "day", date: seedDateKey } : fallbackDay);
+    return energyFlowSelectorStateFromStoryWindow(window, resolvedSeedKey);
+  }, [seedStoryWindow, seedDateKey, resolvedSeedKey]);
+  const [selectorMode, setSelectorMode] = useState<SelectorMode>(initialSelector.mode);
+  const [selectedDate, setSelectedDate] = useState(initialSelector.selectedDate);
+  const [selectedWeek, setSelectedWeek] = useState(initialSelector.selectedWeek);
+  const [selectedMonth, setSelectedMonth] = useState(initialSelector.selectedMonth);
+  const [customRangeStart, setCustomRangeStart] = useState(initialSelector.customRangeStart);
+  const [customRangeEnd, setCustomRangeEnd] = useState(initialSelector.customRangeEnd);
   const [dayModeResetAtStart] = useState(false);
   const [customSimulatedCapacityGwhApplied, setCustomSimulatedCapacityGwhApplied] = useState("");
   const [customSimulatedCapacityGwhDraft, setCustomSimulatedCapacityGwhDraft] = useState("");
   const serverHydratedFirstLoad =
     initialEnergyFlow !== null &&
     initialBerlinDateKey !== null &&
-    initialBerlinDateKey === resolvedSeedKey;
+    initialSelector.mode === "day" &&
+    initialSelector.selectedDate === initialBerlinDateKey;
   const softFirstLoadRef = useRef(serverHydratedFirstLoad);
 
   const [flow, setFlow] = useState<GermanyDispatchSlotsResponse | null>(() =>
@@ -1114,18 +1124,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     return () => controller.abort();
   }, [selectorMode, selectedDate, selectedWeek, selectedMonth, customRangeStart, customRangeEnd]);
 
-  const skipBerlinUrlNotifyRef = useRef(true);
-  useEffect(() => {
-    if (selectorMode !== "day" || !onBerlinDateChange) {
-      return;
-    }
-    if (skipBerlinUrlNotifyRef.current) {
-      skipBerlinUrlNotifyRef.current = false;
-      return;
-    }
-    onBerlinDateChange(selectedDate);
-  }, [selectedDate, selectorMode, onBerlinDateChange]);
-
   const currentBriefingStoryWindow = useMemo((): BriefingStoryWindow => {
     if (selectorMode === "day") {
       return { type: "day", date: selectedDate };
@@ -1138,6 +1136,18 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     }
     return { type: "custom", start: customRangeStart, end: customRangeEnd };
   }, [selectorMode, selectedDate, selectedWeek, selectedMonth, customRangeStart, customRangeEnd]);
+
+  const skipStoryWindowUrlNotifyRef = useRef(true);
+  useEffect(() => {
+    if (!onStoryWindowUrlChange) {
+      return;
+    }
+    if (skipStoryWindowUrlNotifyRef.current) {
+      skipStoryWindowUrlNotifyRef.current = false;
+      return;
+    }
+    onStoryWindowUrlChange(currentBriefingStoryWindow);
+  }, [currentBriefingStoryWindow, onStoryWindowUrlChange]);
 
   useEffect(() => {
     if (!onBriefingStoryWindowChange) {

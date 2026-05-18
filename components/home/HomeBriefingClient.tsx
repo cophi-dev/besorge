@@ -14,8 +14,11 @@ import { createLogger } from "@/lib/debug";
 import type { HomeBriefingInitialData } from "@/lib/homeBriefingData";
 import type { ChartFleetSocSnapshot } from "@/lib/chartFleetSocSnapshot";
 import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
-import { serializeBriefingStoryWindow } from "@/lib/briefingStoryWindow";
-import { berlinDateKeySchema } from "@/lib/germanyEnergyFlowPeriod";
+import {
+  applyBriefingStoryWindowToSearchParams,
+  parseBriefingStoryWindowFromSearchParams,
+  serializeBriefingStoryWindow,
+} from "@/lib/briefingStoryWindow";
 import { formatBerlinDateKeyFromUtcDate } from "@/lib/berlinCalendar";
 import { estimateFleetSocAtMoment, computeSlotSurplusFraction } from "@/lib/socEstimator";
 
@@ -179,16 +182,16 @@ type HomeBriefingClientProps = {
 };
 
 /**
- * Owns daily-story state that can diverge from the URL when the chart is in
- * week/month mode. Remounting this block (via `key={url date}` on the parent)
- * clears the override so a new route `?date=` wins without a sync effect.
+ * Owns daily-story state that can diverge from the URL when the chart selector
+ * changes before the URL sync effect runs. Remounting (via `key` on the parent)
+ * clears the override so a new shared link wins without a sync effect.
  */
 function GermanyFlowStoryBridge({
-  urlAnchoredBerlinDateKey,
+  urlAnchoredStoryWindow,
   storyRefreshNonce,
   children,
 }: {
-  urlAnchoredBerlinDateKey: string;
+  urlAnchoredStoryWindow: BriefingStoryWindow;
   storyRefreshNonce: number;
   children: (args: {
     briefingStoryWindow: BriefingStoryWindow;
@@ -196,10 +199,7 @@ function GermanyFlowStoryBridge({
     onBriefingStoryWindowChange: (window: BriefingStoryWindow) => void;
   }) => ReactNode;
 }) {
-  const defaultStoryWindow = useMemo<BriefingStoryWindow>(
-    () => ({ type: "day", date: urlAnchoredBerlinDateKey }),
-    [urlAnchoredBerlinDateKey]
-  );
+  const defaultStoryWindow = urlAnchoredStoryWindow;
   const defaultSerialized = useMemo(
     () => serializeBriefingStoryWindow(defaultStoryWindow),
     [defaultStoryWindow]
@@ -229,9 +229,6 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const urlDate = searchParams.get("date");
-  const seedDateKey =
-    urlDate && berlinDateKeySchema.safeParse(urlDate).success ? urlDate : null;
   const simQuery = searchParams.get("sim");
   const initialSimulatedNet = simQuery === "1" || simQuery === "true";
 
@@ -324,11 +321,24 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
     }
   }, [pathname, searchParams]);
 
-  const handleBerlinDateChange = useCallback(
-    (dateKey: string) => {
+  const defaultBerlinDateKey =
+    initial.defaultBerlinDateKey ?? formatBerlinDateKeyFromUtcDate(new Date());
+
+  const urlAnchoredStoryWindow = useMemo((): BriefingStoryWindow => {
+    return (
+      parseBriefingStoryWindowFromSearchParams(searchParams) ?? {
+        type: "day",
+        date: defaultBerlinDateKey,
+      }
+    );
+  }, [searchParams, defaultBerlinDateKey]);
+
+  const handleStoryWindowUrlChange = useCallback(
+    (window: BriefingStoryWindow) => {
       const next = new URLSearchParams(searchParams.toString());
-      next.set("date", dateKey);
-      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+      applyBriefingStoryWindowToSearchParams(window, next);
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
     [pathname, router, searchParams]
   );
@@ -382,8 +392,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         })
       : null;
 
-  const effectiveSeedDateKey =
-    seedDateKey ?? initial.defaultBerlinDateKey ?? formatBerlinDateKeyFromUtcDate(new Date());
+  const seedStoryWindow = urlAnchoredStoryWindow;
 
   return (
     <div
@@ -421,8 +430,8 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
 
       <section id="overview" className="border-t border-border/50 pt-8 md:pt-10">
         <GermanyFlowStoryBridge
-          key={effectiveSeedDateKey}
-          urlAnchoredBerlinDateKey={effectiveSeedDateKey}
+          key={serializeBriefingStoryWindow(urlAnchoredStoryWindow)}
+          urlAnchoredStoryWindow={urlAnchoredStoryWindow}
           storyRefreshNonce={storyRefreshNonce}
         >
           {({ briefingStoryWindow, briefingStoryRefreshNonce, onBriefingStoryWindowChange }) => (
@@ -440,8 +449,8 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
               onChartFleetSocSnapshot={handleChartFleetSoc}
               initialEnergyFlow={initial.initialEnergyFlow}
               initialBerlinDateKey={initial.defaultBerlinDateKey}
-              seedDateKey={effectiveSeedDateKey}
-              onBerlinDateChange={handleBerlinDateChange}
+              seedStoryWindow={seedStoryWindow}
+              onStoryWindowUrlChange={handleStoryWindowUrlChange}
               onBriefingStoryWindowChange={onBriefingStoryWindowChange}
               briefingStoryWindow={briefingStoryWindow}
               briefingStoryRefreshNonce={briefingStoryRefreshNonce}
