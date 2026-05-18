@@ -5,6 +5,7 @@ import {
   berlinElapsedQuarterHoursInDayFromNow,
   countBerlinCalendarDaysInclusive,
   formatBerlinDateKeyFromUtcDate,
+  isoWeekKeyToBerlinStartKey,
   mondayBerlinIsoWeekContaining,
   prevBerlinDateKey,
 } from "@/lib/berlinCalendar";
@@ -129,17 +130,6 @@ function toDateKeyUtc(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function isoWeekStartDateKey(isoWeekKey: string): string {
-  const [yearRaw, weekRaw] = isoWeekKey.split("-W");
-  const year = Number(yearRaw);
-  const week = Number(weekRaw);
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const jan4IsoWeekday = ((jan4.getUTCDay() + 6) % 7) + 1;
-  const mondayWeek1 = new Date(Date.UTC(year, 0, 4 - (jan4IsoWeekday - 1)));
-  mondayWeek1.setUTCDate(mondayWeek1.getUTCDate() + (week - 1) * 7);
-  return toDateKeyUtc(mondayWeek1);
-}
-
 function nextMonthFirstDateKey(monthKey: string): string {
   const [year, month] = monthKey.split("-").map(Number);
   if (month === 12) {
@@ -165,7 +155,7 @@ export function resolveGermanyEnergyFlowBerlinRangeForWeek(
   isoWeekKey: string,
   now: Date
 ): GermanyEnergyFlowBerlinRange {
-  const startKey = isoWeekStartDateKey(isoWeekKey);
+  const startKey = isoWeekKeyToBerlinStartKey(isoWeekKey);
   const endKey = addBerlinCalendarDays(startKey, 6);
   const todayKey = formatBerlinDateKeyFromUtcDate(now);
   return {

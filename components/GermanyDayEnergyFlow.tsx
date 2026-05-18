@@ -36,9 +36,10 @@ import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   addBerlinCalendarDays,
+  berlinDateKeyToIsoWeekKey,
   countBerlinCalendarDaysInclusive,
   formatBerlinDateKeyFromUtcDate,
-  mondayBerlinIsoWeekContaining,
+  isoWeekKeyToBerlinStartKey,
 } from "@/lib/berlinCalendar";
 import {
   computeEconomics,
@@ -296,7 +297,7 @@ function formatTimeRangeCenterLabel(options: {
     }).format(new Date(`${selectedDate}T12:00:00.000Z`));
   }
   if (selectorMode === "week") {
-    const start = isoWeekKeyToStartKey(selectedWeek);
+    const start = isoWeekKeyToBerlinStartKey(selectedWeek);
     const end = addBerlinCalendarDays(start, 6);
     const match = selectedWeek.match(/^\d{4}-W(\d{2})$/);
     const weekNum = match ? Number(match[1]) : null;
@@ -333,33 +334,8 @@ function resolveSeedDateKey(seed: string | null | undefined): string {
   return berlinTodayKey();
 }
 
-function dateKeyToIsoWeekKey(dateKey: string): string {
-  const mondayKey = mondayBerlinIsoWeekContaining(dateKey);
-  const mondayDate = new Date(`${mondayKey}T00:00:00.000Z`);
-  const thursdayDate = new Date(mondayDate);
-  thursdayDate.setUTCDate(mondayDate.getUTCDate() + 3);
-  const year = thursdayDate.getUTCFullYear();
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const jan4Iso = ((jan4.getUTCDay() + 6) % 7) + 1;
-  const mondayWeek1 = new Date(Date.UTC(year, 0, 4 - (jan4Iso - 1)));
-  const diffDays = Math.round((mondayDate.getTime() - mondayWeek1.getTime()) / 86_400_000);
-  const week = Math.floor(diffDays / 7) + 1;
-  return `${year}-W${String(week).padStart(2, "0")}`;
-}
-
-function isoWeekKeyToStartKey(weekKey: string): string {
-  const [yearRaw, weekRaw] = weekKey.split("-W");
-  const year = Number(yearRaw);
-  const week = Number(weekRaw);
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const jan4Iso = ((jan4.getUTCDay() + 6) % 7) + 1;
-  const mondayWeek1 = new Date(Date.UTC(year, 0, 4 - (jan4Iso - 1)));
-  mondayWeek1.setUTCDate(mondayWeek1.getUTCDate() + (week - 1) * 7);
-  return mondayWeek1.toISOString().slice(0, 10);
-}
-
 function previousIsoWeekKey(weekKey: string): string {
-  return dateKeyToIsoWeekKey(addBerlinCalendarDays(isoWeekKeyToStartKey(weekKey), -7));
+  return berlinDateKeyToIsoWeekKey(addBerlinCalendarDays(isoWeekKeyToBerlinStartKey(weekKey), -7));
 }
 
 /** Berlin window immediately before `start` with the same inclusive span as `start`–`end`. */
@@ -983,7 +959,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const resolvedSeedKey = resolveSeedDateKey(seedDateKey ?? undefined);
   const [selectorMode, setSelectorMode] = useState<SelectorMode>("day");
   const [selectedDate, setSelectedDate] = useState(resolvedSeedKey);
-  const [selectedWeek, setSelectedWeek] = useState(dateKeyToIsoWeekKey(resolvedSeedKey));
+  const [selectedWeek, setSelectedWeek] = useState(berlinDateKeyToIsoWeekKey(resolvedSeedKey));
   const [selectedMonth, setSelectedMonth] = useState(resolvedSeedKey.slice(0, 7));
   const [customRangeStart, setCustomRangeStart] = useState(() =>
     addBerlinCalendarDays(resolvedSeedKey, -6)
@@ -2622,14 +2598,14 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
 
   const showMissedKpis = fleetEnergyCapacityMwh !== null && absorption !== null;
   const todayKey = berlinTodayKey();
-  const currentWeekKey = dateKeyToIsoWeekKey(todayKey);
+  const currentWeekKey = berlinDateKeyToIsoWeekKey(todayKey);
   const currentMonthKey = todayKey.slice(0, 7);
   const selectorLabel =
     selectorMode === "day"
       ? selectedDate
       : selectorMode === "week"
-        ? `${selectedWeek} (${isoWeekKeyToStartKey(selectedWeek)} - ${addBerlinCalendarDays(
-            isoWeekKeyToStartKey(selectedWeek),
+        ? `${selectedWeek} (${isoWeekKeyToBerlinStartKey(selectedWeek)} - ${addBerlinCalendarDays(
+            isoWeekKeyToBerlinStartKey(selectedWeek),
             6
           )})`
         : selectorMode === "month"
@@ -3131,8 +3107,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       return;
     }
     if (selectorMode === "week") {
-      const currentStart = isoWeekKeyToStartKey(selectedWeek);
-      setSelectedWeek(dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, -7)));
+      const currentStart = isoWeekKeyToBerlinStartKey(selectedWeek);
+      setSelectedWeek(berlinDateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, -7)));
       return;
     }
     if (selectorMode === "month") {
@@ -3153,8 +3129,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       return;
     }
     if (selectorMode === "week") {
-      const currentStart = isoWeekKeyToStartKey(selectedWeek);
-      const nextWeek = dateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, 7));
+      const currentStart = isoWeekKeyToBerlinStartKey(selectedWeek);
+      const nextWeek = berlinDateKeyToIsoWeekKey(addBerlinCalendarDays(currentStart, 7));
       setSelectedWeek(nextWeek > currentWeekKey ? currentWeekKey : nextWeek);
       return;
     }

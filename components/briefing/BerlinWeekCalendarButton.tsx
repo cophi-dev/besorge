@@ -1,10 +1,17 @@
 "use client";
 
+import { format, isWithinInterval, parseISO } from "date-fns";
 import { CalendarDays } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
+import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  addBerlinCalendarDays,
+  berlinDateKeyToIsoWeekKey,
+  isoWeekKeyToBerlinStartKey,
+} from "@/lib/berlinCalendar";
 import { cn } from "@/lib/utils";
 
 type BerlinWeekCalendarButtonProps = {
@@ -17,6 +24,14 @@ type BerlinWeekCalendarButtonProps = {
   prominent?: boolean;
 };
 
+function parseBerlinDateKey(key: string): Date {
+  return parseISO(`${key}T12:00:00.000Z`);
+}
+
+function pickerDayToBerlinDateKey(day: Date): string {
+  return format(day, "yyyy-MM-dd");
+}
+
 export function BerlinWeekCalendarButton({
   value,
   max,
@@ -27,30 +42,40 @@ export function BerlinWeekCalendarButton({
   prominent = false,
 }: BerlinWeekCalendarButtonProps) {
   const [open, setOpen] = useState(false);
-  const inputId = useId();
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const openPicker = () => {
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      try {
-        inputRef.current?.showPicker?.();
-      } catch {
-        // showPicker may be unsupported or blocked outside a direct gesture
-      }
-    });
+  const weekStartKey = isoWeekKeyToBerlinStartKey(value);
+  const weekEndKey = addBerlinCalendarDays(weekStartKey, 6);
+  const weekStart = parseBerlinDateKey(weekStartKey);
+  const weekEnd = parseBerlinDateKey(weekEndKey);
+
+  const maxWeekStartKey = isoWeekKeyToBerlinStartKey(max);
+  const maxWeekEndKey = addBerlinCalendarDays(maxWeekStartKey, 6);
+  const maxDate = parseBerlinDateKey(maxWeekEndKey);
+
+  const stepHint =
+    language === "de"
+      ? "Beliebigen Tag in der Kalenderwoche antippen"
+      : "Tap any day in the calendar week";
+
+  const handleDaySelect = (day: Date | undefined) => {
+    if (!day) {
+      return;
+    }
+    const weekKey = berlinDateKeyToIsoWeekKey(pickerDayToBerlinDateKey(day));
+    if (weekKey > max) {
+      return;
+    }
+    onChange(weekKey);
+    setOpen(false);
   };
 
+  const isInSelectedWeek = useMemo(
+    () => (date: Date) => isWithinInterval(date, { start: weekStart, end: weekEnd }),
+    [weekStart, weekEnd]
+  );
+
   return (
-    <Popover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (nextOpen) {
-          openPicker();
-        }
-      }}
-    >
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         type="button"
         className={cn(
@@ -72,28 +97,32 @@ export function BerlinWeekCalendarButton({
         />
         <span className="min-w-0 truncate">{label}</span>
       </PopoverTrigger>
-      <PopoverContent className="w-auto min-w-[14rem] p-3" align="center" sideOffset={8}>
-        <label
-          htmlFor={inputId}
-          className="block text-center text-xs font-semibold text-slate-800 dark:text-slate-100"
-        >
-          {language === "de" ? "Kalenderwoche wählen" : "Choose calendar week"}
-        </label>
-        <input
-          id={inputId}
-          ref={inputRef}
-          type="week"
-          value={value}
-          max={max}
-          onChange={(event) => {
-            const next = event.target.value;
-            if (!next) {
-              return;
-            }
-            onChange(next);
-            setOpen(false);
+      <PopoverContent className="w-auto p-0" align="center" sideOffset={8}>
+        <div className="border-b border-border/60 px-3 py-2.5 text-center">
+          <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{stepHint}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {language === "de" ? "Aktuell:" : "Current:"}{" "}
+            <span className="font-medium">{label}</span>
+          </p>
+        </div>
+        <Calendar
+          mode="single"
+          selected={weekStart}
+          defaultMonth={weekStart}
+          disabled={{ after: maxDate }}
+          numberOfMonths={2}
+          onSelect={handleDaySelect}
+          modifiers={{
+            selected_week: isInSelectedWeek,
           }}
-          className="mt-2 block w-full min-h-10 cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold tabular-nums text-slate-900 dark:text-white"
+          modifiersClassNames={{
+            selected_week:
+              "bg-sky-100/80 text-sky-950 font-medium dark:bg-sky-950/55 dark:text-sky-100 [&_.rdp-day_button]:bg-sky-200/60 dark:[&_.rdp-day_button]:bg-sky-900/50",
+          }}
+          classNames={{
+            day_button:
+              "inline-flex size-9 items-center justify-center rounded-md text-sm font-medium hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&[data-selected-single=true]]:!bg-emerald-500 [&[data-selected-single=true]]:!text-white dark:[&[data-selected-single=true]]:!bg-emerald-500",
+          }}
         />
       </PopoverContent>
     </Popover>

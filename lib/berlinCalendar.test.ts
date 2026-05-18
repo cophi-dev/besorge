@@ -1,8 +1,10 @@
 import {
   addBerlinCalendarDays,
+  berlinDateKeyToIsoWeekKey,
   findFirstUnixSecondForBerlinDateKey,
   formatBerlinDateKeyFromUtcDate,
   getBerlinDateKeyFromUnixSeconds,
+  isoWeekKeyToBerlinStartKey,
   nextBerlinDateKey,
   prevBerlinDateKey,
 } from "@/lib/berlinCalendar";
@@ -27,5 +29,11 @@ describe("berlinCalendar", () => {
 
   it("adds Berlin calendar days across a DST boundary month", () => {
     expect(addBerlinCalendarDays("2024-03-28", 5)).toBe("2024-04-02");
+  });
+
+  it("round-trips Berlin ISO week keys", () => {
+    const weekKey = berlinDateKeyToIsoWeekKey("2026-05-11");
+    expect(weekKey).toMatch(/^2026-W\d{2}$/);
+    expect(isoWeekKeyToBerlinStartKey(weekKey)).toBe("2026-05-11");
   });
 });

@@ -130,6 +130,33 @@ export function mondayBerlinIsoWeekContaining(dateKey: string): string {
   return addBerlinCalendarDays(dateKey, -daysFromMonday);
 }
 
+/** ISO week key `YYYY-Www` (ISO 8601) for the Berlin week containing `dateKey`. */
+export function berlinDateKeyToIsoWeekKey(dateKey: string): string {
+  const mondayKey = mondayBerlinIsoWeekContaining(dateKey);
+  const mondayDate = new Date(`${mondayKey}T00:00:00.000Z`);
+  const thursdayDate = new Date(mondayDate);
+  thursdayDate.setUTCDate(mondayDate.getUTCDate() + 3);
+  const year = thursdayDate.getUTCFullYear();
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Iso = ((jan4.getUTCDay() + 6) % 7) + 1;
+  const mondayWeek1 = new Date(Date.UTC(year, 0, 4 - (jan4Iso - 1)));
+  const diffDays = Math.round((mondayDate.getTime() - mondayWeek1.getTime()) / 86_400_000);
+  const week = Math.floor(diffDays / 7) + 1;
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}
+
+/** Berlin Monday (`YYYY-MM-DD`) at the start of ISO week `isoWeekKey`. */
+export function isoWeekKeyToBerlinStartKey(isoWeekKey: string): string {
+  const [yearRaw, weekRaw] = isoWeekKey.split("-W");
+  const year = Number(yearRaw);
+  const week = Number(weekRaw);
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Iso = ((jan4.getUTCDay() + 6) % 7) + 1;
+  const mondayWeek1 = new Date(Date.UTC(year, 0, 4 - (jan4Iso - 1)));
+  mondayWeek1.setUTCDate(mondayWeek1.getUTCDate() + (week - 1) * 7);
+  return mondayWeek1.toISOString().slice(0, 10);
+}
+
 /** Number of Berlin quarter-hours from local midnight through the current slot (1..96). */
 export function berlinElapsedQuarterHoursInDayFromNow(now: Date): number {
   const parts = berlinHourMinuteFormatter.formatToParts(now);
