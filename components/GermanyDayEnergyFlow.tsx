@@ -80,6 +80,8 @@ import {
 } from "@/lib/chartFleetSocSnapshot";
 import { BerlinDayCalendarButton } from "@/components/briefing/BerlinDayCalendarButton";
 import { BerlinDateRangeCalendarButton } from "@/components/briefing/BerlinDateRangeCalendarButton";
+import { BerlinMonthCalendarButton } from "@/components/briefing/BerlinMonthCalendarButton";
+import { BerlinWeekCalendarButton } from "@/components/briefing/BerlinWeekCalendarButton";
 import { Button } from "@/components/ui/button";
 
 const log = createLogger("germany-day-energy-flow");
@@ -358,6 +360,14 @@ function isoWeekKeyToStartKey(weekKey: string): string {
 
 function previousIsoWeekKey(weekKey: string): string {
   return dateKeyToIsoWeekKey(addBerlinCalendarDays(isoWeekKeyToStartKey(weekKey), -7));
+}
+
+/** Berlin window immediately before `start` with the same inclusive span as `start`–`end`. */
+function priorWindowMatchingSpan(start: string, end: string): { warmupStart: string; warmupEnd: string } {
+  const spanDays = Math.max(1, countBerlinCalendarDaysInclusive(start, end));
+  const warmupEnd = addBerlinCalendarDays(start, -1);
+  const warmupStart = addBerlinCalendarDays(warmupEnd, -(spanDays - 1));
+  return { warmupStart, warmupEnd };
 }
 
 function shiftMonthKey(monthKey: string, delta: number): string {
@@ -996,8 +1006,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const [previousDaySlots, setPreviousDaySlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
   /** Berlin day D−2 slots; used only in day mode with carry-in to seed D−1’s starting SoC instead of forcing 0%. */
   const [dayBeforePreviousSlots, setDayBeforePreviousSlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
-  /** Prior ISO week slots; week mode warm-starts SoC via a 12M-balanced simulation on this window. */
-  const [previousWeekSlots, setPreviousWeekSlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
+  /** Slots for the window before the selected range; warm-starts multi-day SoC (week/custom). */
+  const [socWarmupSlots, setSocWarmupSlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
   /**
    * Modeled end-of-day SOC (MWh) for the last Berlin day the user actually viewed, used when stepping
    * the date forward by one day — matches the chart the user saw instead of re-deriving from API-only chains.
@@ -1160,7 +1170,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     onBriefingStoryWindowChange(currentBriefingStoryWindow);
   }, [currentBriefingStoryWindow, onBriefingStoryWindowChange]);
 
-  /** Loads trail windows for SoC carry-in (D−1/D−2 in day mode, prior week in week mode). */
+  /** Loads trail windows for SoC carry-in (D−1/D−2 in day mode, prior week/custom span otherwise). */
   useEffect(() => {
     const controller = new AbortController();
     const loadTrail = async () => {
@@ -1179,13 +1189,47 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             throw new Error("prior week schema");
           }
           if (!controller.signal.aborted) {
-            setPreviousWeekSlots(parsed.data.slots);
+            setSocWarmupSlots(parsed.data.slots);
             setPreviousDaySlots([]);
             setDayBeforePreviousSlots([]);
           }
         } catch {
           if (!controller.signal.aborted) {
-            setPreviousWeekSlots([]);
+            setSocWarmupSlots([]);
+            setPreviousDaySlots([]);
+            setDayBeforePreviousSlots([]);
+          }
+        }
+        return;
+      }
+      if (selectorMode === "custom") {
+        try {
+          const { warmupStart, warmupEnd } = priorWindowMatchingSpan(
+            customRangeStart,
+            customRangeEnd
+          );
+          const resp = await fetch(
+            `/api/market/de/energy-flow?start=${warmupStart}&end=${warmupEnd}`,
+            {
+              cache: "no-store",
+              signal: controller.signal,
+            }
+          );
+          if (!resp.ok) {
+            throw new Error(`energy flow prior custom window ${resp.status}`);
+          }
+          const parsed = germanyEnergyFlowApiSchema.safeParse(await resp.json());
+          if (!parsed.success) {
+            throw new Error("prior custom window schema");
+          }
+          if (!controller.signal.aborted) {
+            setSocWarmupSlots(parsed.data.slots);
+            setPreviousDaySlots([]);
+            setDayBeforePreviousSlots([]);
+          }
+        } catch {
+          if (!controller.signal.aborted) {
+            setSocWarmupSlots([]);
             setPreviousDaySlots([]);
             setDayBeforePreviousSlots([]);
           }
@@ -1194,7 +1238,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       }
       if (selectorMode !== "day") {
         if (!controller.signal.aborted) {
-          setPreviousWeekSlots([]);
+          setSocWarmupSlots([]);
           setPreviousDaySlots([]);
           setDayBeforePreviousSlots([]);
         }
@@ -1202,7 +1246,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       }
       try {
         if (!controller.signal.aborted) {
-          setPreviousWeekSlots([]);
+          setSocWarmupSlots([]);
         }
         const previousDate = addBerlinCalendarDays(selectedDate, -1);
         const prevResp = await fetch(`/api/market/de/energy-flow?date=${previousDate}`, {
@@ -1250,7 +1294,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     };
     void loadTrail();
     return () => controller.abort();
-  }, [selectorMode, selectedDate, selectedWeek]);
+  }, [selectorMode, selectedDate, selectedWeek, customRangeStart, customRangeEnd]);
 
   useLayoutEffect(() => {
     const resetChanged = prevDayModeResetAtStartRef.current !== dayModeResetAtStart;
@@ -2096,8 +2140,11 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     ) {
       return 0;
     }
-    if (selectorMode === "week" && previousWeekSlots.length > 0) {
-      const endMwh = computeEndPracticalSocMwh(previousWeekSlots, fleetEnergyCapacityMwh, {
+    if (
+      (selectorMode === "week" || selectorMode === "custom") &&
+      socWarmupSlots.length > 0
+    ) {
+      const endMwh = computeEndPracticalSocMwh(socWarmupSlots, fleetEnergyCapacityMwh, {
         initialSocMwh: 0,
         maxPowerMw: fleetPowerMw,
         resetDailyByBerlin: false,
@@ -2145,7 +2192,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     selectorMode,
     dayModeResetAtStart,
     fleetNavigateInitialMwh,
-    previousWeekSlots,
+    socWarmupSlots,
     previousDaySlots,
     dayBeforePreviousSlots,
     fleetEnergyCapacityMwh,
@@ -2182,9 +2229,13 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     if (effectivePracticalCapacityMwh <= 0) {
       return 0;
     }
-    if (selectorMode === "week" && previousWeekSlots.length > 0 && twelveMonthBalancedSizing !== null) {
+    if (
+      (selectorMode === "week" || selectorMode === "custom") &&
+      socWarmupSlots.length > 0 &&
+      twelveMonthBalancedSizing !== null
+    ) {
       const endMwh = computeEndPracticalSocMwh(
-        previousWeekSlots,
+        socWarmupSlots,
         twelveMonthBalancedSizing.energyMwh,
         {
           initialSocMwh: 0,
@@ -2211,7 +2262,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     dayModeResetAtStart,
     practicalNavigateInitialMwh,
     effectivePracticalCapacityMwh,
-    previousWeekSlots,
+    socWarmupSlots,
     twelveMonthBalancedSizing,
     previousDaySlots,
     dayBeforePreviousSlots,
@@ -3951,27 +4002,24 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                       language={language}
                       prominent
                     />
+                  ) : selectorMode === "week" ? (
+                    <BerlinWeekCalendarButton
+                      value={selectedWeek}
+                      max={currentWeekKey}
+                      onChange={setSelectedWeek}
+                      label={timeRangeCenterLabel}
+                      language={language}
+                      prominent
+                    />
                   ) : (
-                    <label className="group relative flex h-12 min-h-12 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-sky-300/75 bg-white px-3 text-center shadow-inner transition hover:border-sky-400 hover:bg-sky-50/80 focus-within:ring-4 focus-within:ring-sky-400/30 dark:border-sky-500/40 dark:bg-slate-950/90 dark:hover:border-sky-400/55 dark:hover:bg-sky-950/50">
-                      <span className="pointer-events-none text-sm font-bold leading-snug text-slate-900 sm:text-base dark:text-white">
-                        {timeRangeCenterLabel}
-                      </span>
-                      <span className="pointer-events-none mt-0.5 text-[10px] font-semibold tracking-wide text-sky-700 uppercase dark:text-sky-300">
-                        {t.timeRangeTapToChange}
-                      </span>
-                      <input
-                        type={selectorMode === "week" ? "week" : "month"}
-                        value={selectorMode === "week" ? selectedWeek : selectedMonth}
-                        max={selectorMode === "week" ? currentWeekKey : currentMonthKey}
-                        onChange={(event) =>
-                          selectorMode === "week"
-                            ? setSelectedWeek(event.target.value)
-                            : setSelectedMonth(event.target.value)
-                        }
-                        className="absolute inset-0 cursor-pointer opacity-0"
-                        aria-label={t.timeRangeControlTitle}
-                      />
-                    </label>
+                    <BerlinMonthCalendarButton
+                      value={selectedMonth}
+                      max={currentMonthKey}
+                      onChange={setSelectedMonth}
+                      label={timeRangeCenterLabel}
+                      language={language}
+                      prominent
+                    />
                   )}
                 </div>
 
