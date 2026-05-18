@@ -44,6 +44,13 @@ import {
   computeEconomics,
   defaultEconomicsAssumptions,
 } from "@/lib/bessEconomics";
+import {
+  assessCapacityCredibility,
+  formatPaybackYears,
+  buildValueBreakdownLines,
+  extractValueBreakdown,
+  presentIndicativeEurTotal,
+} from "@/lib/indicativeEconomicsDisplay";
 import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
 import {
   BERLIN_CUSTOM_RANGE_MAX_DAYS,
@@ -72,8 +79,6 @@ import {
 } from "@/lib/chartFleetSocSnapshot";
 import { BerlinDayCalendarButton } from "@/components/briefing/BerlinDayCalendarButton";
 import { BerlinDateRangeCalendarButton } from "@/components/briefing/BerlinDateRangeCalendarButton";
-import { BriefingDailyStory, type BriefingStoryDayOptimalContext } from "@/components/briefing/BriefingDailyStory";
-import { FlowExportButtons } from "@/components/briefing/FlowExportButtons";
 import { Button } from "@/components/ui/button";
 
 const log = createLogger("germany-day-energy-flow");
@@ -84,9 +89,6 @@ const QUARTER_HOUR_H = 0.25;
 
 /** LLM live snapshot (STORY DES TAGES) — off while structural KPIs + charts carry the page. */
 const WORKSPACE_LIVE_SNAPSHOT_ENABLED = false;
-
-/** Fazit / 12M sizing / marginal table — off; overlaps Systemwirkung KPIs and simulated chart badges. */
-const WORKSPACE_CONCLUSION_ENABLED = false;
 
 /**
  * Simulated chart palette: net (structural MW) vs BESS charge bars must not share the same hue.
@@ -498,11 +500,13 @@ function WindowMetricCell({
   label,
   value,
   hint,
+  detail,
   tone = "slate",
 }: {
   label: string;
   value: string;
   hint?: string;
+  detail?: string;
   tone?: SectionKpiTone;
 }) {
   const accentBar =
@@ -528,6 +532,66 @@ function WindowMetricCell({
       {hint ? (
         <p className="mt-0.5 text-[10px] leading-snug text-slate-500 dark:text-slate-400">{hint}</p>
       ) : null}
+      {detail ? (
+        <p className="mt-1 text-[10px] leading-relaxed text-slate-600 dark:text-slate-400">{detail}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function WorkspaceSection({
+  eyebrow,
+  title,
+  lead,
+  children,
+  className = "",
+  headingId,
+}: {
+  eyebrow: string;
+  title?: string;
+  lead?: string;
+  children: ReactNode;
+  className?: string;
+  headingId: string;
+}) {
+  return (
+    <section
+      className={`rounded-2xl border border-border/70 bg-background/45 p-3 shadow-sm dark:border-slate-600/40 dark:bg-slate-950/30 md:p-5 ${className}`}
+      aria-labelledby={headingId}
+    >
+      <p
+        id={headingId}
+        className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400"
+      >
+        {eyebrow}
+      </p>
+      {title ? (
+        <h3 className="mt-1.5 text-base font-semibold text-slate-900 dark:text-white md:text-lg [font-family:var(--font-heading)]">
+          {title}
+        </h3>
+      ) : null}
+      {lead ? (
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">{lead}</p>
+      ) : null}
+      <motion.div layout className={title || lead ? "mt-4" : "mt-3"}>
+        {children}
+      </motion.div>
+    </section>
+  );
+}
+
+function IndicativeDisclaimerBanner({ title, body }: { title: string; body: string }) {
+  return (
+    <div
+      role="note"
+      className="rounded-xl border-2 border-amber-400/80 bg-amber-50 px-3.5 py-3 dark:border-amber-500/45 dark:bg-amber-950/50"
+    >
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-950 dark:text-amber-100">
+        {title}
+      </p>
+      <p className="mt-1.5 text-sm font-medium leading-snug text-amber-950/95 dark:text-amber-50/95">
+        {body}
+      </p>
     </div>
   );
 }
@@ -896,8 +960,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     seedDateKey = null,
     onBerlinDateChange,
     onBriefingStoryWindowChange,
-    briefingStoryWindow = null,
-    briefingStoryRefreshNonce = 0,
+    briefingStoryWindow: _briefingStoryWindow = null,
+    briefingStoryRefreshNonce: _briefingStoryRefreshNonce = 0,
     initialSimulatedNet = false,
     onSimulatedModeChange,
   } = props;
@@ -1452,20 +1516,42 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           workspaceChartsEyebrow: "Kurven",
           workspaceChartsLead:
             "Zwei Panels im gewählten Zeitraum: oben beobachtete Flotte (Energy-Charts), darunter modellierte BESS mit einstellbarer Kapazität.",
-          workspaceConclusionEyebrow: "Fazit & Skalierung",
+          workspaceConclusionEyebrow: "Fazit & Empfehlungen",
           workspaceConclusionLead:
-            "Ein-Tages-Optimum, 12-Monats-Balanced-Empfehlung und marginale Kapazitätsschritte greifen dieselbe Flottenlogik.",
+            "Ein-Tages-Optimum und 12-Monats-Balanced nutzen dieselbe Flottenlogik — der Zeithorizont unterscheidet die Größe.",
+          workspaceTechnicalImpactEyebrow: "Systemwirkung (Technisch)",
+          workspaceIndicativeEconomicsEyebrow: "Indikativer wirtschaftlicher Nutzen",
+          kpiIndicativeDisclaimerTitle: "Indikativer Nutzen — keine Erlösprognose",
+          kpiIndicativeValueDisclaimerProminent:
+            "Kein Vertrags-, Prognose- oder Handelserlös. Vereinfachtes Proxy-Modell (SMARD-Spread, Abregelung/Redispatch) für die Einordnung im gewählten Fenster.",
           workspaceModeledBorderEyebrow: "Grenzfluss (modelliert)",
           workspaceModeledBorderSubtitle:
             "Import- und Exportänderung vs. beobachtet (Grenzproxy: nur grenzkoppelnde BESS-Leistung plus Entladung).",
           onePagerImpactHeading: "Systemwirkung & Wert",
           onePagerImpactLead:
-            "Nach den Kurven: wie die modellierte Schicht die Netzspur entlastet, Grenzflüsse buendig verschiebt und heute indikativ wirtschaftet — plus Speicherfuellstand am Ende des Fensters.",
+            "Was die Simulation im gewählten Fenster leistet — technisch und als indikativer Euro-Proxy (SMARD-Spread, keine Garantie).",
+          onePagerImpactTechTitle: "Technische Wirkung",
+          onePagerImpactValueTitle: "Indikativer Nutzen",
+          onePagerImpactEnergyTitle: "Eingelagerte Energie",
+          onePagerImpactBorderTitle: "Grenzfluss (modelliert)",
+          kpiIndicativeValueDisclaimer:
+            "Indikativ = vereinfachtes Modell (Spread + Abregelung), nicht Vertrags- oder Prognoseerlös.",
+          kpiValueBreakdownTitle: "Zusammensetzung des modellierten Nutzens",
+          kpiValueBreakdownFootnote:
+            "Details per Zeile im Tooltip. Abregelung/Redispatch nur für aufgenommene Abregel-MWh.",
+          twelveMonthKpiPaybackDetail:
+            "Vereinfachte Amortisation: geschätzte Investitionskosten ÷ modellierter Jahreserlös (12M-Balanced, illustrative CAPEX-Annahmen). Keine Finanzierungs-, Steuer- oder Netzentgeltlogik.",
+          twelveMonthKpiRevenueDetail:
+            "Jahreserlös aus dem gleichen Vorverkaufsmodell wie der Konfigurator — nicht der Tageswert oben.",
+          marginalImpactInterpretation:
+            "Lesen Sie die Spalten als „was passiert, wenn die installierte Flotte wächst“. Steigt die aufgenommene Energie kaum, ist die Ladechance im Fenster fast erschöpft. Die Umsatzzeile ist ein Proxy pro eingelagerter MWh — kein Börsenerlös. Der größte Sprung liegt oft zwischen Flotte und +30 %.",
+          simulatedCapacityExtrapolationWarning:
+            "Sehr hohe GWh-Werte erzeugen oft unrealistisch hohe Euro-Summen, weil der Proxy linear mit eingelagerter MWh skaliert.",
           onePagerNetPeakEyebrow: "Netzentlastung & Peak-Shaving",
           onePagerNetPeakPeakLine: (peak: string) => `Peak-Reduktion ${peak}`,
           onePagerFinalActionHint:
             "Kurz: verbleibende Ladechance sinkt mit mehr Energie oder Leistungskopf; die Kurven oben zeigen slotweise, wo die Flotte und die Simulation greifen.",
-          onePagerDetailsSummary: "Preisbasis für Euro-Werte",
+          onePagerDetailsSummary: "Hintergrund & Methodik",
           twelveMonthSectionEyebrow: "Langfristige Balanced-Empfehlung",
           twelveMonthSectionTitle: "Empfohlene BESS-Größe für die letzten 12 Monate",
           twelveMonthBalancedTag: "(Balanced)",
@@ -1475,7 +1561,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             "Dies ist die empfohlene durchschnittliche Tagesgröße über die letzten 12 Monate (P90 der modellierten Kalendertage). Sie liegt etwas über der optimalen Ein-Tages-Größe oben, weil ein einzelner ruhiger Tag weniger strukturelle Speicherarbeit verlangt als der Jahres-P90.",
           twelveMonthExplainerNeutral:
             "Dies ist die empfohlene durchschnittliche Tagesgröße über die letzten 12 Monate (P90 der modellierten Kalendertage). Sie liegt in derselben Größenordnung wie die Ein-Tages-Optimallösung.",
-          twelveMonthKpiPayback: "Payback",
+          twelveMonthKpiPayback: "Amortisation (indik.)",
           twelveMonthKpiCoverage: "Abdeckung",
           twelveMonthKpiRevenue: "12M Balanced · Erlös",
           twelveMonthKpiPeakSoc: "Peak SoC über das Jahr",
@@ -1694,20 +1780,42 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           workspaceChartsEyebrow: "Charts",
           workspaceChartsLead:
             "Two panels for the selected window: observed fleet (Energy-Charts) above, modeled BESS with adjustable capacity below.",
-          workspaceConclusionEyebrow: "Conclusion & scaling",
+          workspaceConclusionEyebrow: "Conclusion & recommendations",
           workspaceConclusionLead:
-            "Single-day optimum, 12‑month balanced recommendation, and marginal capacity steps share the same fleet scaling logic.",
+            "Single-day optimum and 12‑month balanced use the same fleet logic — the time horizon drives the size difference.",
+          workspaceTechnicalImpactEyebrow: "System impact (technical)",
+          workspaceIndicativeEconomicsEyebrow: "Indicative economic benefit",
+          kpiIndicativeDisclaimerTitle: "Indicative benefit — not a revenue forecast",
+          kpiIndicativeValueDisclaimerProminent:
+            "Not contract, forecast, or trading revenue. Simplified proxy model (SMARD spread, curtailment/redispatch) for context in the selected window only.",
           workspaceModeledBorderEyebrow: "Border flow (modeled)",
           workspaceModeledBorderSubtitle:
             "Import and export change vs observed (border proxy: border-coupled BESS power plus discharge).",
           onePagerImpactHeading: "System impact & value",
           onePagerImpactLead:
-            "After the charts: how the modeled layer smooths the net trace, bundles border-flow shifts, and indicative economics today—plus stored energy at the end of the window.",
+            "What the simulation does in the selected window — technical effect and an indicative € proxy (SMARD spread, not guaranteed revenue).",
+          onePagerImpactTechTitle: "Technical impact",
+          onePagerImpactValueTitle: "Indicative benefit",
+          onePagerImpactEnergyTitle: "Energy stored",
+          onePagerImpactBorderTitle: "Border flow (modeled)",
+          kpiIndicativeValueDisclaimer:
+            "Indicative = simplified model (spread + curtailment), not contract or forecast revenue.",
+          kpiValueBreakdownTitle: "What makes up the modeled benefit",
+          kpiValueBreakdownFootnote:
+            "Hover a row for detail. Curtailment/redispatch rows use absorbed curtailment MWh only.",
+          twelveMonthKpiPaybackDetail:
+            "Simple payback: illustrative capex ÷ modeled annual revenue (12M balanced tier, pre-sales assumptions). Excludes financing, tax, and grid charges.",
+          twelveMonthKpiRevenueDetail:
+            "Annual revenue from the same pre-sales model as the configurator — not the window total above.",
+          marginalImpactInterpretation:
+            "Read columns as “what changes if the installed fleet grows”. Flat absorbed energy means charge opportunity in this window is nearly exhausted. Revenue is a per-MWh-stored proxy — not exchange revenue. The largest step is often fleet → +30%.",
+          simulatedCapacityExtrapolationWarning:
+            "Very large GWh inputs often produce unrealistic € totals because the proxy scales almost linearly with stored MWh.",
           onePagerNetPeakEyebrow: "Grid relief & peak shaving",
           onePagerNetPeakPeakLine: (peak: string) => `Peak reduction ${peak}`,
           onePagerFinalActionHint:
             "In short: add energy or power headroom to capture more of the remaining charge opportunity—the charts above show where the fleet and simulation engage slot by slot.",
-          onePagerDetailsSummary: "Price basis for € values",
+          onePagerDetailsSummary: "Background & methodology",
           twelveMonthSectionEyebrow: "Long-term balanced recommendation",
           twelveMonthSectionTitle: "Recommended BESS size over the last 12 months",
           twelveMonthBalancedTag: "(Balanced)",
@@ -1717,7 +1825,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             "This is the recommended average daily size over the trailing 12 months (P90 across modeled calendar days). It can sit above the single-day optimum when today’s profile carries less structural storage work than the annual P90.",
           twelveMonthExplainerNeutral:
             "This is the recommended average daily size over the trailing 12 months (P90 across modeled calendar days). It is in the same ballpark as the single-day optimum.",
-          twelveMonthKpiPayback: "Payback",
+          twelveMonthKpiPayback: "Payback (indic.)",
           twelveMonthKpiCoverage: "Coverage",
           twelveMonthKpiRevenue: "12M balanced revenue",
           twelveMonthKpiPeakSoc: "Peak SoC over the year",
@@ -1885,30 +1993,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       defaultEconomicsAssumptions
     );
   }, [recommendationByTier, revenueModel]);
-
-  const liveMarketPriceChartData = useMemo(() => {
-    if (revenueModel?.marketContext === null || revenueModel?.marketContext === undefined) {
-      return [];
-    }
-    return [
-      {
-        label: language === "de" ? "Niedrig" : "Low",
-        value: revenueModel.marketContext.averageLowPriceEurPerMwh,
-      },
-      {
-        label: language === "de" ? "Mittag" : "Midday",
-        value: revenueModel.marketContext.averageMiddayPriceEurPerMwh,
-      },
-      {
-        label: language === "de" ? "Abend" : "Evening",
-        value: revenueModel.marketContext.averageEveningPriceEurPerMwh,
-      },
-      {
-        label: language === "de" ? "Hoch" : "High",
-        value: revenueModel.marketContext.averageHighPriceEurPerMwh,
-      },
-    ];
-  }, [language, revenueModel]);
 
   const balancedRevenueTileValue =
     liveBalancedEconomics?.annualRevenue ??
@@ -2454,9 +2538,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const balancedRecommendation = recommendationByTier?.balanced ?? null;
   const trailingPaybackLabel =
     recommendation?.indicativeEconomicsAtBalancedTier
-      ? language === "de"
-        ? `${pctFormatter.format(recommendation.indicativeEconomicsAtBalancedTier.paybackYears)} J`
-        : `${pctFormatter.format(recommendation.indicativeEconomicsAtBalancedTier.paybackYears)} yr`
+      ? formatPaybackYears(
+          recommendation.indicativeEconomicsAtBalancedTier.paybackYears,
+          language
+        )
       : "—";
   const trailingImpactLabel =
     recommendation?.impactAtBalancedTier
@@ -2476,6 +2561,23 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           language === "de" ? "Tage" : "days"
         }`
       : "—";
+  const economicsReferenceCapacityMwh =
+    autoSimulatedBaselineMwh > 0
+      ? autoSimulatedBaselineMwh
+      : balancedRecommendation && balancedRecommendation.recommendedEnergyMwh > 0
+        ? balancedRecommendation.recommendedEnergyMwh
+        : null;
+  const simulatedCapacityCredibility = assessCapacityCredibility(
+    effectivePracticalCapacityMwh,
+    economicsReferenceCapacityMwh
+  );
+  const flowWindowDays =
+    flow !== null
+      ? countBerlinCalendarDaysInclusive(
+          flow.rangeStartBerlin ?? flow.dateBerlin,
+          flow.rangeEndBerlin ?? flow.dateBerlin
+        )
+      : 1;
 
   const marketReference = revenueModel?.marketReference ?? null;
   const currentFleetScenario =
@@ -2519,36 +2621,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     modeledScenario?.coverage.totalSurplusEnergyMwh ??
     currentFleetScenario?.coverage.totalSurplusEnergyMwh ??
     slotStructuralTotalsForKpis.totalSurplusEnergyMwh;
-
-  const scalingScenarioColumns =
-    flow?.slots.length &&
-    fleetEnergyCapacityMwh !== null &&
-    fleetEnergyCapacityMwh > 0 &&
-    fleetPowerMw !== null &&
-    fleetPowerMw > 0
-      ? [
-          { label: language === "de" ? "Aktuelle Flotte" : "Current fleet", multiplier: 1 },
-          { label: "+30%", multiplier: 1.3 },
-          { label: "+50%", multiplier: 1.5 },
-          { label: "+100%", multiplier: 2 },
-        ].map((entry) => {
-          const initialSocRatio =
-            fleetEnergyCapacityMwh > 0 ? estimatedInitialFleetSocMwh / fleetEnergyCapacityMwh : 0;
-          const capacityMwh = fleetEnergyCapacityMwh * entry.multiplier;
-          const powerMw = fleetPowerMw * entry.multiplier;
-          return {
-            ...entry,
-            scenario: evaluateBessScenario({
-              slots: flow.slots,
-              capacityMwh,
-              maxPowerMw: powerMw,
-              initialSocMwh: capacityMwh * initialSocRatio,
-              resetDailyByBerlin: visualizationResetDailyByBerlin,
-              marketReference,
-            }),
-          };
-        })
-      : [];
 
   const currentFleetStatusLabel =
     currentFleetMode === "charging"
@@ -3082,6 +3154,11 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               : "Change not applied yet — press Apply to update the simulation below."}
           </p>
         ) : null}
+        {simulatedCapacityCredibility.isExtrapolated ? (
+          <p className="rounded-lg border border-amber-300/70 bg-amber-50/85 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-500/35 dark:bg-amber-950/40 dark:text-amber-100">
+            {t.simulatedCapacityExtrapolationWarning}
+          </p>
+        ) : null}
       </motion.div>
     </section>
   );
@@ -3236,24 +3313,50 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         minimumFractionDigits: 0,
       }).format(r)}×`;
 
-    const systemImpactSection = (
-      <div className="space-y-3">
-        <section
-          className="rounded-2xl border border-border/70 bg-background/45 p-3 shadow-sm dark:border-slate-600/40 dark:bg-slate-950/30 md:p-4"
-          aria-labelledby="workspace-impact-heading"
+    const indicativeValuePresentation =
+      modeledScenario !== null
+        ? presentIndicativeEurTotal({
+            language,
+            valueEur: modeledScenario.totalValueCreatedEur,
+            windowDays: flowWindowDays,
+            absorbedMwh: modeledScenario.coverage.absorbedSurplusEnergyMwh,
+            capacityMwh: effectivePracticalCapacityMwh,
+            referenceCapacityMwh: economicsReferenceCapacityMwh,
+          })
+        : null;
+    const valueBreakdownLines =
+      modeledScenario !== null
+        ? buildValueBreakdownLines(
+            extractValueBreakdown(modeledScenario),
+            language,
+            formatCurrencyCompact
+          )
+        : [];
+
+    const valueBreakdownTotalEur = modeledScenario?.totalValueCreatedEur ?? null;
+    const fleetComparisonDetail =
+      fleetEnergyCapacityMwh != null &&
+      fleetEnergyCapacityMwh > 0 &&
+      currentFleetScenario != null &&
+      energyCapacityRatio != null &&
+      simAbsorbedMwh != null
+        ? absorbedEnergyRatio != null
+          ? language === "de"
+            ? `Flotte ${formatEnergyFromMwh(fleetAbsorbedMwh ?? 0)} · Simulation ${formatEnergyFromMwh(simAbsorbedMwh)} (${formatGrowthRatio(absorbedEnergyRatio)} Energie, ${formatGrowthRatio(energyCapacityRatio)} Kapazität)`
+            : `Fleet ${formatEnergyFromMwh(fleetAbsorbedMwh ?? 0)} · simulation ${formatEnergyFromMwh(simAbsorbedMwh)} (${formatGrowthRatio(absorbedEnergyRatio)} energy, ${formatGrowthRatio(energyCapacityRatio)} capacity)`
+          : language === "de"
+            ? `Kapazität ×${formatGrowthRatio(energyCapacityRatio)} — Flotte nimmt im Fenster kaum Energie auf (${formatEnergyFromMwh(fleetAbsorbedMwh ?? 0)}).`
+            : `Capacity ×${formatGrowthRatio(energyCapacityRatio)} — fleet stores almost nothing this window (${formatEnergyFromMwh(fleetAbsorbedMwh ?? 0)}).`
+        : t.kpiSimVsFleetMissing;
+
+    const lowerWorkspaceImpactSections = (
+      <motion.div className="space-y-4">
+        <WorkspaceSection
+          eyebrow={t.workspaceTechnicalImpactEyebrow}
+          headingId="workspace-technical-impact-heading"
         >
-          <p
-            id="workspace-impact-heading"
-            className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400"
-          >
-            {t.onePagerImpactHeading}
-          </p>
-          <div
-            className="mt-3 flex flex-col divide-y divide-border/55 dark:divide-slate-600/40 sm:flex-row sm:divide-x sm:divide-y-0"
-            role="group"
-            aria-label={t.onePagerImpactHeading}
-          >
-            <WindowMetricCell
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <CompactDetailStat
               label={t.onePagerNetPeakEyebrow}
               value={
                 modeledScenario?.gridImpactReductionPct !== null &&
@@ -3261,107 +3364,147 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                   ? `${pctFormatter.format(modeledScenario.gridImpactReductionPct)}%`
                   : "—"
               }
-              hint={
+              subtitle={
                 modeledScenario !== null
-                  ? `${language === "de" ? "Σ|Netto|" : "Σ|net|"} · ${formatPowerFromMw(modeledScenario.peakReductionMw)}`
+                  ? t.onePagerNetPeakPeakLine(formatPowerFromMw(modeledScenario.peakReductionMw))
                   : undefined
               }
-              tone="sky"
             />
-            <WindowMetricCell
-              label={language === "de" ? "Wert (indik.)" : "Value (indic.)"}
-              value={formatCurrencyCompact(modeledScenario?.totalValueCreatedEur ?? null)}
-              hint={language === "de" ? "Shift + Curtailment + Redispatch" : "Shift + curtailment + redispatch"}
-              tone="emerald"
-            />
-            <WindowMetricCell
+            <CompactDetailStat
               label={t.kpiStoredEndEyebrow}
               value={storedPracticalEndMwh !== null ? formatEnergyFromMwh(storedPracticalEndMwh) : "—"}
-              hint={simulatedCapacityGwhLabel ?? undefined}
-              tone="emerald"
+              subtitle={simulatedCapacityGwhLabel ?? undefined}
+            />
+            <CompactDetailStat
+              label="Δ Import"
+              value={
+                borderTradeTotals !== null
+                  ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)
+                  : "—"
+              }
+              subtitle={language === "de" ? "vs. beobachtet" : "vs. observed"}
+            />
+            <CompactDetailStat
+              label="Δ Export"
+              value={
+                borderTradeTotals !== null
+                  ? formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh)
+                  : "—"
+              }
+              subtitle={language === "de" ? "vs. beobachtet" : "vs. observed"}
             />
           </div>
-          {modeledScenario !== null && simAbsorbedMwh !== null ? (
-            <div
-              className="mt-3 rounded-xl border border-slate-200/85 bg-slate-50/90 px-3 py-3 dark:border-slate-600/45 dark:bg-slate-950/50 md:px-4"
-              role="region"
-              aria-label={t.kpiSimAbsorbedEyebrow}
-            >
-              <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-400">
-                {t.kpiSimAbsorbedEyebrow}
-              </p>
-              <p className="mt-1 text-2xl font-extrabold tabular-nums text-slate-950 dark:text-white">
-                {formatEnergyFromMwh(simAbsorbedMwh)}
-              </p>
-              <p className="mt-1 text-[11px] leading-snug text-slate-600 dark:text-slate-400">
-                {t.kpiSimAbsorbedSubtitle}
-              </p>
-              <p className="mt-2 border-t border-border/50 pt-2 text-[11px] leading-relaxed text-slate-700 dark:border-slate-600/35 dark:text-slate-300">
-                {fleetEnergyCapacityMwh != null &&
-                fleetEnergyCapacityMwh > 0 &&
-                currentFleetScenario != null &&
-                energyCapacityRatio != null ? (
-                  absorbedEnergyRatio != null ? (
-                    t.kpiSimVsFleetLine({
-                      fleetStored: formatEnergyFromMwh(fleetAbsorbedMwh ?? 0),
-                      simStored: formatEnergyFromMwh(simAbsorbedMwh),
-                      capMult: formatGrowthRatio(energyCapacityRatio),
-                      energyMult: formatGrowthRatio(absorbedEnergyRatio),
-                      simCap: formatEnergyFromMwh(effectivePracticalCapacityMwh),
-                      instCap: formatEnergyFromMwh(fleetEnergyCapacityMwh),
-                    })
-                  ) : language === "de" ? (
-                    <>
-                      Simulationskapazität {formatEnergyFromMwh(effectivePracticalCapacityMwh)} vs. installiert{" "}
-                      {formatEnergyFromMwh(fleetEnergyCapacityMwh)} ({formatGrowthRatio(energyCapacityRatio)}).
-                      Eingelagerte Energie Simulation {formatEnergyFromMwh(simAbsorbedMwh)} — Flotte fast ohne
-                      Aufnahme im Fenster ({formatEnergyFromMwh(fleetAbsorbedMwh ?? 0)}).
-                    </>
-                  ) : (
-                    <>
-                      Simulated capacity {formatEnergyFromMwh(effectivePracticalCapacityMwh)} vs installed{" "}
-                      {formatEnergyFromMwh(fleetEnergyCapacityMwh)} ({formatGrowthRatio(energyCapacityRatio)}).
-                      Stored energy at simulation size {formatEnergyFromMwh(simAbsorbedMwh)} — fleet captures almost
-                      none this window ({formatEnergyFromMwh(fleetAbsorbedMwh ?? 0)}).
-                    </>
-                  )
-                ) : (
-                  t.kpiSimVsFleetMissing
-                )}
-              </p>
-            </div>
-          ) : null}
-          <p className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-border/50 pt-3 text-sm dark:border-slate-600/35">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-              {language === "de" ? "Grenzfluss (modelliert)" : "Border (modeled)"}
-            </span>
-            <span className="tabular-nums text-slate-800 dark:text-slate-100">
-              <span className="font-semibold text-amber-900/90 dark:text-amber-100/90">Δ Import</span>{" "}
-              {borderTradeTotals !== null
-                ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)
-                : "—"}
-            </span>
-            <span className="text-slate-400 dark:text-slate-500" aria-hidden>
-              ·
-            </span>
-            <span className="tabular-nums text-slate-800 dark:text-slate-100">
-              <span className="font-semibold text-slate-600 dark:text-slate-300">Δ Export</span>{" "}
-              {borderTradeTotals !== null
-                ? formatSignedEnergyFromMwh(borderTradeTotals.exportDeltaEnergyMwh)
-                : "—"}
-            </span>
-          </p>
           <p className="mt-2 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
             {t.workspaceModeledBorderSubtitle}
           </p>
-        </section>
+        </WorkspaceSection>
+
+        <WorkspaceSection
+          eyebrow={t.workspaceIndicativeEconomicsEyebrow}
+          headingId="workspace-indicative-economics-heading"
+        >
+          <div
+            className="space-y-3"
+            role="region"
+            aria-label={t.workspaceIndicativeEconomicsEyebrow}
+          >
+            <motion.div className="rounded-2xl border-2 border-emerald-300/70 bg-gradient-to-br from-emerald-50/90 via-white to-emerald-50/40 px-4 py-4 dark:border-emerald-500/35 dark:from-emerald-950/40 dark:via-slate-950/80 dark:to-emerald-950/20 md:px-5 md:py-5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-900/85 dark:text-emerald-200/85">
+                {indicativeValuePresentation?.primaryLabel ??
+                  (language === "de" ? "Modellierter Nutzen (indik.)" : "Modeled benefit (indic.)")}
+              </p>
+              <p className="mt-1 text-4xl font-black tabular-nums leading-none text-slate-950 dark:text-white md:text-[2.75rem]">
+                {indicativeValuePresentation?.primaryValue ?? "—"}
+              </p>
+              {indicativeValuePresentation?.perMwhValue ? (
+                <p className="mt-2 text-base font-bold tabular-nums text-emerald-900 dark:text-emerald-200">
+                  {indicativeValuePresentation.perMwhValue}
+                </p>
+              ) : null}
+              {indicativeValuePresentation?.secondaryValue ? (
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  {indicativeValuePresentation.secondaryValue}
+                </p>
+              ) : null}
+            </motion.div>
+
+            <IndicativeDisclaimerBanner
+              title={t.kpiIndicativeDisclaimerTitle}
+              body={t.kpiIndicativeValueDisclaimerProminent}
+            />
+
+            {indicativeValuePresentation?.warning ? (
+              <p className="rounded-lg border border-amber-300/70 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-500/35 dark:bg-amber-950/40 dark:text-amber-100">
+                {indicativeValuePresentation.warning}
+              </p>
+            ) : simulatedCapacityCredibility.isExtrapolated ? (
+              <p className="rounded-lg border border-amber-300/70 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-500/35 dark:bg-amber-950/40 dark:text-amber-100">
+                {t.simulatedCapacityExtrapolationWarning}
+              </p>
+            ) : null}
+
+            {modeledScenario !== null && simAbsorbedMwh !== null ? (
+              <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {t.kpiSimAbsorbedEyebrow}:
+                </span>{" "}
+                {formatEnergyFromMwh(simAbsorbedMwh)}
+                {fleetComparisonDetail !== t.kpiSimVsFleetMissing ? ` · ${fleetComparisonDetail}` : null}
+              </p>
+            ) : null}
+
+            {valueBreakdownLines.length > 0 ? (
+              <div className="rounded-xl border border-border/70 bg-white/70 px-3.5 py-3 dark:border-slate-600/45 dark:bg-slate-950/50">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                  {t.kpiValueBreakdownTitle}
+                </p>
+                <table className="mt-2 w-full text-sm">
+                  <tbody>
+                    {valueBreakdownLines.map((line) => {
+                      const sharePct =
+                        valueBreakdownTotalEur !== null &&
+                        line.amountEur !== null &&
+                        valueBreakdownTotalEur > 1e-6
+                          ? Math.round((line.amountEur / valueBreakdownTotalEur) * 100)
+                          : null;
+                      return (
+                        <tr
+                          key={line.id}
+                          className="border-b border-border/50 last:border-0 dark:border-slate-600/35"
+                        >
+                          <th
+                            scope="row"
+                            className="py-1.5 pr-2 text-left font-medium text-slate-800 dark:text-slate-100"
+                            title={line.hint}
+                          >
+                            {line.label}
+                          </th>
+                          <td className="py-1.5 text-right tabular-nums font-semibold text-slate-950 dark:text-white">
+                            {line.value}
+                          </td>
+                          <td className="w-10 py-1.5 pl-2 text-right text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
+                            {sharePct !== null ? `${sharePct}%` : ""}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  {t.kpiValueBreakdownFootnote}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </WorkspaceSection>
+
         {resolvedLlmInsightText.length > 0 ? (
           <div className="rounded-2xl border border-indigo-200/60 bg-card px-4 py-4 shadow-sm dark:border-indigo-500/35 dark:bg-indigo-950/35">
             <div className="flex items-center gap-2">
-            <span
-              className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.65)]"
-              aria-hidden
-            />
+              <span
+                className="inline-flex h-2 w-2 shrink-0 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.65)]"
+                aria-hidden
+              />
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-800 dark:text-indigo-200">
                 {t.aiInsightTitle}
               </p>
@@ -3371,113 +3514,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             </p>
           </div>
         ) : null}
-      </div>
-    );
-
-    const renderMarginalScalingTableSection = () => (
-      <section
-        className="rounded-[28px] border border-border/75 bg-background/35 p-5 dark:border-slate-600/40 dark:bg-slate-950/25"
-        aria-labelledby="marginal-capacity-heading"
-      >
-        <div className="space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            {language === "de" ? "Grenznutzen zusätzlicher Kapazität" : "Marginal Impact of More Capacity"}
-          </p>
-          <h3
-            id="marginal-capacity-heading"
-            className="text-lg font-semibold text-slate-900 dark:text-white md:text-xl [font-family:var(--font-heading)]"
-          >
-            {language === "de"
-              ? "Wie mehr DE-BESS den Tageseffekt verschiebt"
-              : "How more German BESS shifts the daily effect"}
-          </h3>
-          <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-            {language === "de"
-              ? "Alle Szenarien skalieren Energie und Leistung der aktuellen Flotte gemeinsam. Die Umsatzzeile wertet eingelagerte MWh mit dem gleichen Spot-/Redispatch-Gewicht wie die Rest-Chance (kein reiner Entlade-Deckel — der kann saturieren, sobald alle strukturellen Defizite bedient sind). Abregelung: \"—\" wenn die Slots keine Abregelenergie führen."
-              : "All scenarios scale current fleet energy and power together. The revenue row values stored MWh with the same spot/redispatch blend as the remaining opportunity (not discharge-only, which plateaus once structural deficits are fully served). Curtailment: “—” when slots carry no curtailed-energy signal."}
-          </p>
-        </div>
-
-        {scalingScenarioColumns.length > 0 ? (
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full border-separate border-spacing-0 text-sm">
-              <thead>
-                <tr>
-                  <th className="sticky left-0 z-10 rounded-l-2xl border border-border/70 bg-background/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-400">
-                    {language === "de" ? "Kennzahl" : "Metric"}
-                  </th>
-                  {scalingScenarioColumns.map((column, index) => (
-                    <th
-                      key={column.label}
-                      className={`border border-border/70 bg-background/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-400 ${index === scalingScenarioColumns.length - 1 ? "rounded-r-2xl" : ""}`}
-                    >
-                      {column.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  {
-                    label: language === "de" ? "Aufgenommene Energie" : "Absorbed Energy",
-                    render: (scenario: ScenarioImpactSnapshot) =>
-                      formatEnergyFromMwh(scenario.coverage.absorbedSurplusEnergyMwh),
-                  },
-                  {
-                    label: language === "de" ? "Vermiedene Abregelung" : "Curtailment Avoided",
-                    render: (scenario: ScenarioImpactSnapshot) =>
-                      scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
-                        ? "—"
-                        : formatEnergyFromMwh(scenario.absorbedCurtailmentEnergyMwh),
-                  },
-                  {
-                    label:
-                      language === "de"
-                        ? "Umsatz (Spread auf Einlagerung)"
-                        : "Revenue (spread on stored energy)",
-                    render: (scenario: ScenarioImpactSnapshot) =>
-                      formatCurrencyCompact(scenario.chargeOpportunityValueEur ?? null),
-                  },
-                  {
-                    label: language === "de" ? "Vermiedene Kosten" : "Avoided Costs",
-                    render: (scenario: ScenarioImpactSnapshot) =>
-                      scenario.coverage.totalCurtailmentEnergyMwh <= 1e-6
-                        ? "—"
-                        : formatCurrencyCompact(scenario.avoidedRedispatchCostsEur),
-                  },
-                  {
-                    label: language === "de" ? "Netzentlastung" : "Grid Relief",
-                    render: (scenario: ScenarioImpactSnapshot) =>
-                      scenario.gridReliefScore !== null ? `${scenario.gridReliefScore}/100` : "—",
-                  },
-                ].map((row, rowIndex, rows) => (
-                  <tr key={row.label}>
-                    <th
-                      className={`sticky left-0 z-[1] border border-border/70 bg-background/95 px-4 py-3 text-left font-medium text-slate-700 dark:border-slate-600/40 dark:bg-slate-950/95 dark:text-slate-200 ${rowIndex === rows.length - 1 ? "rounded-bl-2xl" : ""}`}
-                    >
-                      {row.label}
-                    </th>
-                    {scalingScenarioColumns.map((column, columnIndex) => (
-                      <td
-                        key={`${row.label}-${column.label}`}
-                        className={`border border-border/70 bg-background/60 px-4 py-3 text-slate-900 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-100 ${rowIndex === rows.length - 1 && columnIndex === scalingScenarioColumns.length - 1 ? "rounded-br-2xl" : ""}`}
-                      >
-                        {row.render(column.scenario)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="mt-4 rounded-2xl border border-dashed border-slate-300/70 bg-white/60 p-5 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
-            {language === "de"
-              ? "Skalierungstabelle derzeit nicht berechenbar."
-              : "Scaling table is not computable right now."}
-          </div>
-        )}
-      </section>
+      </motion.div>
     );
 
     const workspaceStructuralFleetMissedBlock = (
@@ -3606,51 +3643,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       </div>
     );
 
-    const renderDayYearBridge = (dayOptimalContext: BriefingStoryDayOptimalContext | null) => {
-      if (!dayOptimalContext || !balancedRecommendation || briefingStoryWindow?.type !== "day") {
-        return null;
-      }
-      const dayLabel = `${energyFormatter.format(dayOptimalContext.dayCapacityGwh)} GWh`;
-      const yearLabel = `${energyFormatter.format(balancedRecommendation.recommendedEnergyMwh / 1_000)} GWh`;
-      const dayv = dayOptimalContext.dayCapacityGwh;
-      const yearv = balancedRecommendation.recommendedEnergyMwh / 1_000;
-      const rel = yearv > 0 ? dayv / yearv : 1;
-      const text =
-        rel > 1.002
-          ? t.bridgeDayOptimalAboveYear(dayLabel, yearLabel)
-          : rel < 0.998
-            ? t.bridgeDayOptimalBelowYear(dayLabel, yearLabel)
-            : t.bridgeDayOptimalNearYear(dayLabel, yearLabel);
-      return (
-        <p className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3 text-sm leading-relaxed text-slate-800 dark:border-slate-600/40 dark:bg-slate-950/45 dark:text-slate-100">
-          {text}
-        </p>
-      );
-    };
-
-    const resolveTwelveMonthExplainer = (dayOptimalContext: BriefingStoryDayOptimalContext | null) => {
-      if (!balancedRecommendation) {
-        return "";
-      }
-      if (!dayOptimalContext || briefingStoryWindow?.type !== "day") {
-        return t.twelveMonthExplainerNeutral;
-      }
-      const dayv = dayOptimalContext.dayCapacityGwh;
-      const yearv = balancedRecommendation.recommendedEnergyMwh / 1_000;
-      if (!(yearv > 0)) {
-        return t.twelveMonthExplainerNeutral;
-      }
-      const rel = dayv / yearv;
-      if (rel > 1.005) {
-        return t.twelveMonthExplainerSmallerThanDay;
-      }
-      if (rel < 0.995) {
-        return t.twelveMonthExplainerLargerThanDay;
-      }
-      return t.twelveMonthExplainerNeutral;
-    };
-
-    const renderTwelveMonthBalancedSection = (dayOptimalContext: BriefingStoryDayOptimalContext | null) => {
+    const renderTwelveMonthBalancedSection = () => {
       if (isRecommendationLoading) {
         return <Skeleton className="h-56 w-full rounded-2xl" />;
       }
@@ -3661,7 +3654,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           </div>
         );
       }
-      const explainer = resolveTwelveMonthExplainer(dayOptimalContext);
       const revenueDisplay =
         balancedRevenueTileValue !== null
           ? euroCurrencyFormatter.format(Math.round(balancedRevenueTileValue))
@@ -3703,21 +3695,36 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             <p className="mt-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
               {t.twelveMonthBalancedTag}
             </p>
-            <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{explainer}</p>
-            <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">{t.trailingKpiDailyPercentileCaption}</p>
+            <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+              {t.twelveMonthExplainerNeutral}
+            </p>
+            <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+              {t.trailingKpiDailyPercentileCaption}
+            </p>
           </div>
 
           <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-            <CompactDetailStat label={t.twelveMonthKpiPayback} value={trailingPaybackLabel} />
+            <CompactDetailStat
+              label={t.twelveMonthKpiPayback}
+              value={trailingPaybackLabel}
+              detail={t.twelveMonthKpiPaybackDetail}
+            />
             <CompactDetailStat label={t.twelveMonthKpiCoverage} value={trailingImpactLabel} />
-            <CompactDetailStat label={t.twelveMonthKpiRevenue} value={revenueDisplay} subtitle={revenueSubtitle} />
+            <CompactDetailStat
+              label={t.twelveMonthKpiRevenue}
+              value={revenueDisplay}
+              subtitle={revenueSubtitle}
+              detail={t.twelveMonthKpiRevenueDetail}
+            />
             <CompactDetailStat label={t.twelveMonthKpiPeakSoc} value={trailingChainPeakValue} />
           </div>
 
           <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
             {t.twelveMonthHeuristicNote(trailingWindowLabel)}
           </p>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">{t.trailingNotAuditedNote}</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
+            {t.trailingNotAuditedNote}
+          </p>
         </section>
       );
     };
@@ -3900,259 +3907,35 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             </section>
           </div>
 
-          {briefingStoryWindow && WORKSPACE_CONCLUSION_ENABLED ? (
-            <BriefingDailyStory
-              language={language}
-              storyWindow={briefingStoryWindow}
-              refreshNonce={briefingStoryRefreshNonce}
-              hideIntroHeroStats
-              hideIntroSection={!WORKSPACE_LIVE_SNAPSHOT_ENABLED}
+          <div className="space-y-10 pt-4 md:pt-5">
+            {workspaceStructuralFleetMissedBlock}
+
+            <section
+              className="space-y-3 border-t border-border/40 pt-8 dark:border-slate-600/30"
+              aria-labelledby="workspace-charts-heading"
             >
-              {({ introSection, counterfactualSection, footerSection, dayOptimalContext }) => (
-                <div className="space-y-10 pt-4 md:pt-5">
-                  {WORKSPACE_LIVE_SNAPSHOT_ENABLED ? (
-                    <section className="space-y-3" aria-labelledby="workspace-live-snapshot-heading">
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-                          {t.workspaceLiveSnapshotEyebrow}
-                        </p>
-                        <p
-                          id="workspace-live-snapshot-heading"
-                          className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
-                        >
-                          {t.workspaceLiveSnapshotLead}
-                        </p>
-                      </div>
-                      {introSection}
-                    </section>
-                  ) : null}
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
+                  {t.workspaceChartsEyebrow}
+                </p>
+                <p
+                  id="workspace-charts-heading"
+                  className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
+                >
+                  {t.workspaceChartsLead}
+                </p>
+              </div>
+              {renderDualFlowChartsBlock(workspaceMissedOpportunityBlock)}
+            </section>
 
-                  <div
-                    className={
-                      WORKSPACE_LIVE_SNAPSHOT_ENABLED
-                        ? "border-t border-border/40 pt-8 dark:border-slate-600/30"
-                        : undefined
-                    }
-                  >
-                    {workspaceStructuralFleetMissedBlock}
-                  </div>
-
-                  <section
-                    className="space-y-3 border-t border-border/40 pt-8 dark:border-slate-600/30"
-                    aria-labelledby="workspace-charts-heading"
-                  >
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-                        {t.workspaceChartsEyebrow}
-                      </p>
-                      <p
-                        id="workspace-charts-heading"
-                        className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
-                      >
-                        {t.workspaceChartsLead}
-                      </p>
-                    </div>
-                    {renderDualFlowChartsBlock(workspaceMissedOpportunityBlock)}
-                  </section>
-
-                  <div className="border-t border-border/40 pt-8 dark:border-slate-600/30">{systemImpactSection}</div>
-
-                  {WORKSPACE_CONCLUSION_ENABLED ? (
-                  <section
-                    className="space-y-5 border-t border-border/40 pt-8 dark:border-slate-600/30"
-                    aria-labelledby="workspace-conclusion-heading"
-                  >
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-                        {t.workspaceConclusionEyebrow}
-                      </p>
-                      <p
-                        id="workspace-conclusion-heading"
-                        className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
-                      >
-                        {t.workspaceConclusionLead}
-                      </p>
-                    </div>
-                    <div className="space-y-5">
-                      {counterfactualSection}
-                      {renderDayYearBridge(dayOptimalContext)}
-                      {renderTwelveMonthBalancedSection(dayOptimalContext)}
-                      {renderMarginalScalingTableSection()}
-                      <p className="rounded-xl border border-emerald-200/70 bg-emerald-50/40 px-4 py-3 text-sm leading-relaxed text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/25 dark:text-emerald-50/95">
-                        {t.onePagerFinalActionHint}
-                      </p>
-                      {footerSection}
-                    </div>
-                  </section>
-                  ) : null}
-                </div>
-              )}
-            </BriefingDailyStory>
-          ) : (
-            <div className="space-y-10 pt-4 md:pt-5">
-              {workspaceStructuralFleetMissedBlock}
-
-              <section
-                className="space-y-3 border-t border-border/40 pt-8 dark:border-slate-600/30"
-                aria-labelledby="workspace-charts-heading-nb"
-              >
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-                    {t.workspaceChartsEyebrow}
-                  </p>
-                  <p
-                    id="workspace-charts-heading-nb"
-                    className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
-                  >
-                    {t.workspaceChartsLead}
-                  </p>
-                </div>
-                {renderDualFlowChartsBlock(workspaceMissedOpportunityBlock)}
-              </section>
-
-              <div className="border-t border-border/40 pt-8 dark:border-slate-600/30">{systemImpactSection}</div>
-
-              {WORKSPACE_CONCLUSION_ENABLED ? (
-              <section
-                className="space-y-5 border-t border-border/40 pt-8 dark:border-slate-600/30"
-                aria-labelledby="workspace-conclusion-heading-nb"
-              >
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">
-                    {t.workspaceConclusionEyebrow}
-                  </p>
-                  <p
-                    id="workspace-conclusion-heading-nb"
-                    className="max-w-4xl text-xs leading-relaxed text-slate-600 dark:text-slate-400"
-                  >
-                    {t.workspaceConclusionLead}
-                  </p>
-                </div>
-                <div className="space-y-5">
-                  {renderTwelveMonthBalancedSection(null)}
-                  {renderMarginalScalingTableSection()}
-                  <p className="rounded-xl border border-emerald-200/70 bg-emerald-50/40 px-4 py-3 text-sm leading-relaxed text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/25 dark:text-emerald-50/95">
-                    {t.onePagerFinalActionHint}
-                  </p>
-                </div>
-              </section>
-              ) : null}
+            <div className="border-t border-border/40 pt-8 dark:border-slate-600/30">
+              {lowerWorkspaceImpactSections}
             </div>
-          )}
 
-          <div className="flex flex-col gap-3 border-t border-border/50 pt-4 dark:border-slate-600/35">
-            <FlowExportButtons language={language} flow={flow} captureElementId="speicherpilot-germany-flow-capture" />
-            <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{t.onePagerExportHint}</p>
+            <div className="border-t border-border/40 pt-8 dark:border-slate-600/30">
+              {renderTwelveMonthBalancedSection()}
+            </div>
           </div>
-
-          <section
-            className="rounded-[28px] border border-border/75 bg-background/35 p-5 shadow-sm dark:border-slate-600/40 dark:bg-slate-950/25 md:p-6"
-            aria-labelledby="workspace-market-basis-heading"
-          >
-            <p
-              id="workspace-market-basis-heading"
-              className="text-[10px] font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400"
-            >
-              {t.onePagerDetailsSummary}
-            </p>
-            <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              {t.marketBasisIntro}
-            </p>
-
-            {isRevenueModelLoading ? (
-              <Skeleton className="mt-5 h-48 w-full max-w-4xl rounded-2xl" />
-            ) : revenueModel && revenueModel.marketContext ? (
-              <div className="mt-5 max-w-4xl space-y-6">
-                <div className="grid gap-3 md:grid-cols-3">
-                  <CompactDetailStat
-                    label={language === "de" ? "Spread-Basis" : "Spread basis"}
-                    value={`${priceFormatter.format(revenueModel.marketReference.derivedSpotSpreadEurPerMwh)} EUR/MWh`}
-                    subtitle={
-                      language === "de"
-                        ? `${revenueModel.marketReference.sampledDays} SMARD-Tage in der Stichprobe`
-                        : `${revenueModel.marketReference.sampledDays} SMARD days in sample`
-                    }
-                    detail={t.marketBasisSpreadDetail}
-                  />
-                  <CompactDetailStat
-                    label={language === "de" ? "Abend-Aufschlag" : "Evening premium"}
-                    value={`${priceFormatter.format(revenueModel.marketContext.eveningPeakPremiumEurPerMwh)} EUR/MWh`}
-                    subtitle={language === "de" ? "Ø Abendfenster − Ø Mittag" : "Avg evening window − avg midday"}
-                    detail={t.marketBasisEveningDetail}
-                  />
-                  <CompactDetailStat
-                    label={language === "de" ? "Redispatch-Basis" : "Redispatch basis"}
-                    value={`${priceFormatter.format(revenueModel.marketReference.positiveRedispatchCostEurPerMwh)} EUR/MWh`}
-                    subtitle={
-                      language === "de"
-                        ? `~${formatEnergyFromMwh(revenueModel.marketReference.averageDailyCurtailmentOpportunityMwh)} Abregel-Menge / Tag (Mittel)`
-                        : `~${formatEnergyFromMwh(revenueModel.marketReference.averageDailyCurtailmentOpportunityMwh)} curtailment energy / day (mean)`
-                    }
-                    detail={t.marketBasisRedispatchDetail}
-                  />
-                </div>
-
-                <div className="rounded-2xl border border-slate-200/85 bg-white/85 p-4 shadow-sm dark:border-slate-600/50 dark:bg-slate-950/60 md:p-5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                    {t.marketBasisChartHeading}
-                  </p>
-                  <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                    {t.marketBasisChartExplainer}
-                  </p>
-                  <div className="mt-4 h-[11rem] w-full md:h-[13.5rem]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={liveMarketPriceChartData} margin={{ top: 8, right: 8, bottom: 6, left: 4 }}>
-                        <CartesianGrid stroke="rgba(148,163,184,0.18)" strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="label"
-                          tick={{ fontSize: 11, fill: "rgb(100,116,139)" }}
-                          axisLine={{ stroke: "rgba(148,163,184,0.35)" }}
-                          tickLine={false}
-                          interval={0}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 11, fill: "rgb(100,116,139)" }}
-                          tickFormatter={(value) => `${priceFormatter.format(typeof value === "number" ? value : 0)}`}
-                          width={56}
-                        />
-                        <Tooltip
-                          formatter={(value) => [
-                            `${priceFormatter.format(typeof value === "number" ? value : Number(value ?? 0))} EUR/MWh`,
-                            language === "de" ? "Preis" : "Price",
-                          ]}
-                          contentStyle={{
-                            background: "rgba(255,255,255,0.97)",
-                            border: "1px solid rgba(148,163,184,0.45)",
-                            borderRadius: 12,
-                            fontSize: 12,
-                          }}
-                        />
-                        <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={40} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                    {language === "de" ? "Zusammenfassung zur Stichprobe" : "Sample summary"}:{" "}
-                    {language === "de" ? "Negativpreis-Anteil" : "Negative-price share"}{" "}
-                    <span className="font-medium text-slate-700 dark:text-slate-300">
-                      {pctFormatter.format(revenueModel.marketContext.negativePriceSharePct)}%
-                    </span>
-                    . {revenueModel.marketReference.redispatchSourceLabel}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-5 max-w-4xl rounded-2xl border border-dashed border-slate-300/70 bg-white/50 px-4 py-3 text-sm text-slate-500 dark:border-slate-600/45 dark:bg-slate-950/35 dark:text-slate-400">
-                {revenueModelLoadError
-                  ? language === "de"
-                    ? "Preisbasis derzeit nicht verfügbar."
-                    : "Price basis unavailable right now."
-                  : language === "de"
-                    ? "Preisbasis derzeit ohne Daten."
-                    : "Price basis has no data yet."}
-              </div>
-            )}
-          </section>
 
           <p className="text-[10px] text-slate-400 dark:text-slate-600">{t.technicalDisclaimer}</p>
         </div>
