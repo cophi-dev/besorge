@@ -534,3 +534,25 @@ export function computeStitchedPracticalInitialSocMwh(params: {
   return (Math.min(100, Math.max(0, prevEndSocPct)) / 100) * cap;
 }
 
+/** Stored energy (MWh) at the end of a practical dispatch walk. */
+export function computeEndPracticalSocMwh(
+  slots: OptimalCapacitySlotInput[],
+  capacityMwh: number,
+  options?: PowerConstrainedSimulationOptions
+): number {
+  const cap = Math.max(0, capacityMwh);
+  if (cap <= 0 || slots.length === 0) {
+    return 0;
+  }
+  const series = simulatePracticalDispatchAtCapacity(slots, cap, {
+    resetDailyByBerlin: options?.resetDailyByBerlin ?? false,
+    initialSocMwh: options?.initialSocMwh ?? 0,
+    maxPowerMw: options?.maxPowerMw,
+  });
+  const last = series[series.length - 1];
+  if (last === undefined) {
+    return 0;
+  }
+  return (Math.min(100, Math.max(0, last.socPct)) / 100) * cap;
+}
+

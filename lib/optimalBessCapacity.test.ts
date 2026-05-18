@@ -5,6 +5,7 @@ import {
   computeCoverageAtCapacityMwh,
   computeOptimalSurplusDeficitCapacityMwh,
   computePracticalDailyCycleCapacityMwh,
+  computeEndPracticalSocMwh,
   computeStitchedPracticalInitialSocMwh,
   simulateAdjustedNetMwAtCapacity,
   simulatePracticalDispatchAtCapacity,
@@ -162,6 +163,18 @@ describe("computeCoverageAtCapacityMwh", () => {
     expect(result.absorbedSurplusEnergyMwh).toBeCloseTo(50, 6);
     expect(result.absorbedSurplusShare).toBeCloseTo(0.5, 6);
     expect(result.servedDeficitEnergyMwh).toBeCloseTo(50, 6);
+  });
+});
+
+describe("computeEndPracticalSocMwh", () => {
+  it("returns end stored energy after a walk", () => {
+    const slots = [
+      { totalGenerationMw: 1400, loadMw: 1000 },
+      { totalGenerationMw: 600, loadMw: 1000 },
+    ];
+    const end = computeEndPracticalSocMwh(slots, 100, { initialSocMwh: 50 });
+    const manual = simulatePracticalDispatchAtCapacity(slots, 100, { initialSocMwh: 50 });
+    expect(end).toBeCloseTo((manual[manual.length - 1]!.socPct / 100) * 100, 6);
   });
 });
 

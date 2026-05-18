@@ -67,6 +67,7 @@ import {
   computeLogicalBessRecommendation,
   computeCoverageAtCapacityMwh,
   computePracticalDailyCycleCapacityMwh,
+  computeEndPracticalSocMwh,
   computeStitchedPracticalInitialSocMwh,
   borderCoupledBatteryChargeMw,
   simulateAdjustedNetMwAtCapacity,
@@ -353,6 +354,10 @@ function isoWeekKeyToStartKey(weekKey: string): string {
   const mondayWeek1 = new Date(Date.UTC(year, 0, 4 - (jan4Iso - 1)));
   mondayWeek1.setUTCDate(mondayWeek1.getUTCDate() + (week - 1) * 7);
   return mondayWeek1.toISOString().slice(0, 10);
+}
+
+function previousIsoWeekKey(weekKey: string): string {
+  return dateKeyToIsoWeekKey(addBerlinCalendarDays(isoWeekKeyToStartKey(weekKey), -7));
 }
 
 function shiftMonthKey(monthKey: string, delta: number): string {
@@ -991,6 +996,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const [previousDaySlots, setPreviousDaySlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
   /** Berlin day D−2 slots; used only in day mode with carry-in to seed D−1’s starting SoC instead of forcing 0%. */
   const [dayBeforePreviousSlots, setDayBeforePreviousSlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
+  /** Prior ISO week slots; week mode warm-starts SoC via a 12M-balanced simulation on this window. */
+  const [previousWeekSlots, setPreviousWeekSlots] = useState<GermanyDispatchSlotsResponse["slots"]>([]);
   /**
    * Modeled end-of-day SOC (MWh) for the last Berlin day the user actually viewed, used when stepping
    * the date forward by one day — matches the chart the user saw instead of re-deriving from API-only chains.
@@ -1153,18 +1160,50 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     onBriefingStoryWindowChange(currentBriefingStoryWindow);
   }, [currentBriefingStoryWindow, onBriefingStoryWindowChange]);
 
-  /** Loads D−1 and D−2 for carry-in maths only — intentionally not keyed on the reset checkbox to avoid reloading the chart. */
+  /** Loads trail windows for SoC carry-in (D−1/D−2 in day mode, prior week in week mode). */
   useEffect(() => {
     const controller = new AbortController();
     const loadTrail = async () => {
+      if (selectorMode === "week") {
+        try {
+          const prevWeek = previousIsoWeekKey(selectedWeek);
+          const resp = await fetch(`/api/market/de/energy-flow?week=${prevWeek}`, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          if (!resp.ok) {
+            throw new Error(`energy flow prior week ${resp.status}`);
+          }
+          const parsed = germanyEnergyFlowApiSchema.safeParse(await resp.json());
+          if (!parsed.success) {
+            throw new Error("prior week schema");
+          }
+          if (!controller.signal.aborted) {
+            setPreviousWeekSlots(parsed.data.slots);
+            setPreviousDaySlots([]);
+            setDayBeforePreviousSlots([]);
+          }
+        } catch {
+          if (!controller.signal.aborted) {
+            setPreviousWeekSlots([]);
+            setPreviousDaySlots([]);
+            setDayBeforePreviousSlots([]);
+          }
+        }
+        return;
+      }
       if (selectorMode !== "day") {
         if (!controller.signal.aborted) {
+          setPreviousWeekSlots([]);
           setPreviousDaySlots([]);
           setDayBeforePreviousSlots([]);
         }
         return;
       }
       try {
+        if (!controller.signal.aborted) {
+          setPreviousWeekSlots([]);
+        }
         const previousDate = addBerlinCalendarDays(selectedDate, -1);
         const prevResp = await fetch(`/api/market/de/energy-flow?date=${previousDate}`, {
           cache: "no-store",
@@ -1211,7 +1250,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     };
     void loadTrail();
     return () => controller.abort();
-  }, [selectorMode, selectedDate]);
+  }, [selectorMode, selectedDate, selectedWeek]);
 
   useLayoutEffect(() => {
     const resetChanged = prevDayModeResetAtStartRef.current !== dayModeResetAtStart;
@@ -1961,6 +2000,25 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       Number.isFinite(balanced.recommendedPowerMw)
     );
   }, [selectorMode, hasCustomSimulatedCapacity, recommendation]);
+
+  const twelveMonthBalancedSizing = useMemo(() => {
+    if (!recommendation) {
+      return null;
+    }
+    const balanced = recommendation.tiers.find((entry) => entry.label === "balanced");
+    if (
+      !balanced ||
+      balanced.recommendedEnergyMwh <= 0 ||
+      balanced.recommendedPowerMw <= 0 ||
+      !Number.isFinite(balanced.recommendedPowerMw)
+    ) {
+      return null;
+    }
+    return {
+      energyMwh: balanced.recommendedEnergyMwh,
+      powerMw: balanced.recommendedPowerMw,
+    };
+  }, [recommendation]);
   const effectivePracticalCapacityMwh = hasCustomSimulatedCapacity
     ? customSimulatedCapacityMwh
     : autoSimulatedBaselineMwh;
@@ -2031,12 +2089,24 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
 
   const estimatedInitialFleetSocMwh = useMemo(() => {
     if (
-      selectorMode !== "day" ||
-      dayModeResetAtStart ||
       fleetEnergyCapacityMwh === null ||
       fleetEnergyCapacityMwh <= 0 ||
       fleetPowerMw === null ||
       fleetPowerMw <= 0
+    ) {
+      return 0;
+    }
+    if (selectorMode === "week" && previousWeekSlots.length > 0) {
+      const endMwh = computeEndPracticalSocMwh(previousWeekSlots, fleetEnergyCapacityMwh, {
+        initialSocMwh: 0,
+        maxPowerMw: fleetPowerMw,
+        resetDailyByBerlin: false,
+      });
+      return Math.min(fleetEnergyCapacityMwh, Math.max(0, endMwh));
+    }
+    if (
+      selectorMode !== "day" ||
+      dayModeResetAtStart
     ) {
       return 0;
     }
@@ -2075,6 +2145,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     selectorMode,
     dayModeResetAtStart,
     fleetNavigateInitialMwh,
+    previousWeekSlots,
     previousDaySlots,
     dayBeforePreviousSlots,
     fleetEnergyCapacityMwh,
@@ -2108,7 +2179,22 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   ]);
 
   const estimatedInitialSocMwh = useMemo(() => {
-    if (selectorMode !== "day" || dayModeResetAtStart || effectivePracticalCapacityMwh <= 0) {
+    if (effectivePracticalCapacityMwh <= 0) {
+      return 0;
+    }
+    if (selectorMode === "week" && previousWeekSlots.length > 0 && twelveMonthBalancedSizing !== null) {
+      const endMwh = computeEndPracticalSocMwh(
+        previousWeekSlots,
+        twelveMonthBalancedSizing.energyMwh,
+        {
+          initialSocMwh: 0,
+          maxPowerMw: twelveMonthBalancedSizing.powerMw,
+          resetDailyByBerlin: false,
+        }
+      );
+      return Math.min(effectivePracticalCapacityMwh, Math.max(0, endMwh));
+    }
+    if (selectorMode !== "day" || dayModeResetAtStart) {
       return 0;
     }
     if (practicalNavigateInitialMwh !== null && Number.isFinite(practicalNavigateInitialMwh)) {
@@ -2125,6 +2211,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     dayModeResetAtStart,
     practicalNavigateInitialMwh,
     effectivePracticalCapacityMwh,
+    previousWeekSlots,
+    twelveMonthBalancedSizing,
     previousDaySlots,
     dayBeforePreviousSlots,
     practicalDispatchBalancedPowerMw,
