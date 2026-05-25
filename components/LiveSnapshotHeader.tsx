@@ -252,7 +252,7 @@ export function LiveSnapshotHeader({
                 </div>
               ) : (
                 <>
-                  <p className="mt-3 text-[1.9rem] font-bold tracking-tight text-slate-900 dark:text-white md:text-[2rem]">
+                  <p className="mt-3 text-[1.65rem] font-bold tracking-tight text-slate-900 dark:text-white sm:text-[1.9rem] md:text-[2rem]">
                     <KpiValue flash={genFlash}>
                       {generationGw !== null ? `${gwFormatter.format(generationGw)} GW` : labels.unavailable}
                     </KpiValue>
@@ -281,7 +281,7 @@ export function LiveSnapshotHeader({
                 <Skeleton className="h-9 w-[min(100%,7rem)]" />
               </div>
             ) : (
-              <p className="mt-3 text-[1.9rem] font-bold tracking-tight text-slate-900 dark:text-white md:text-[2rem]">
+              <p className="mt-3 text-[1.65rem] font-bold tracking-tight text-slate-900 dark:text-white sm:text-[1.9rem] md:text-[2rem]">
                 <KpiValue flash={demandFlash}>
                   {demandGw !== null ? `${gwFormatter.format(demandGw)} GW` : labels.unavailable}
                 </KpiValue>
@@ -315,7 +315,7 @@ export function LiveSnapshotHeader({
               </div>
             ) : (
               <>
-                <p className={`mt-3 text-[1.95rem] font-bold tracking-tight md:text-[2.05rem] ${netTone}`}>
+                <p className={`mt-3 text-[1.65rem] font-bold tracking-tight sm:text-[1.95rem] md:text-[2.05rem] ${netTone}`}>
                   <KpiValue flash={netFlash} className={netTone}>
                     {netPositionGw !== null ? (
                       <>
@@ -351,7 +351,7 @@ export function LiveSnapshotHeader({
                   </div>
                 ) : (
                   <>
-                    <p className="mt-3 line-clamp-2 text-xl font-bold text-violet-900 dark:text-violet-100 md:text-[1.45rem]">
+                    <p className="mt-3 line-clamp-2 text-lg font-bold text-violet-900 dark:text-violet-100 sm:text-xl md:text-[1.45rem]">
                       {fleetLabel}
                     </p>
                     <p className="mt-2 space-y-0.5 text-[11px] leading-snug text-slate-600 dark:text-slate-400">

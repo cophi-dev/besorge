@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  ChevronLeft,
-  ChevronRight,
-  Maximize2,
-  X,
-} from "lucide-react";
+import { Maximize2, X } from "lucide-react";
 import {
   type ReactNode,
   useEffect,
@@ -16,7 +11,6 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { motion } from "framer-motion";
 import {
   Bar,
   CartesianGrid,
@@ -49,11 +43,6 @@ import {
 } from "@/lib/indicativeEconomicsDisplay";
 import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
 import { energyFlowSelectorStateFromStoryWindow } from "@/lib/briefingStoryWindow";
-import {
-  BERLIN_CUSTOM_RANGE_MAX_DAYS,
-  berlinDateKeySchema,
-  germanyEnergyFlowPeriodSchema,
-} from "@/lib/germanyEnergyFlowPeriod";
 import { createLogger } from "@/lib/debug";
 import type { GermanyDispatchSlotsResponse } from "@/lib/energyChartsApi";
 import { buildGermanyPerspectiveFallback } from "@/lib/germanyPerspectiveLlm";
@@ -76,506 +65,68 @@ import {
   type ChartFleetSocSnapshot,
   type ChartRowTailForFleetMode,
 } from "@/lib/chartFleetSocSnapshot";
-import { BerlinDayCalendarButton } from "@/components/briefing/BerlinDayCalendarButton";
-import { BerlinDateRangeCalendarButton } from "@/components/briefing/BerlinDateRangeCalendarButton";
-import { BerlinMonthCalendarButton } from "@/components/briefing/BerlinMonthCalendarButton";
-import { BerlinWeekCalendarButton } from "@/components/briefing/BerlinWeekCalendarButton";
 import { Button } from "@/components/ui/button";
 
+import { CompactDetailStat, PerspectiveNarrativeBody } from "@/components/germany-day-energy-flow/CompactDetailStat";
+import {
+  CROSS_BORDER_EXPORT_FILL,
+  CROSS_BORDER_IMPORT_FILL,
+  energyFormatter,
+  EVENING_HOUR_END,
+  EVENING_HOUR_START,
+  euroCurrencyFormatter,
+  integerFormatter,
+  monthLabelFormatter,
+  OBSERVED_CURTAILMENT_FILL,
+  pctFormatter,
+  priceFormatter,
+  QUARTER_HOUR_H,
+  SIM_CHART_CHARGE_FILL,
+  SIM_CHART_DISCHARGE_FILL,
+  SIM_CHART_NET_STROKE,
+  SIM_CHART_SOC_STROKE,
+  timeFormatterMultiDay,
+  timeFormatterSingleDay,
+  WORKSPACE_LIVE_SNAPSHOT_ENABLED,
+} from "@/components/germany-day-energy-flow/constants";
+import {
+  berlinTodayKey,
+  formatTimeRangeCenterLabel,
+  previousIsoWeekKey,
+  priorWindowMatchingSpan,
+  resolveSeedDateKey,
+  shiftMonthKey,
+} from "@/components/germany-day-energy-flow/dateHelpers";
+import {
+  formatCurrencyCompact,
+  formatEnergyFromMwh,
+  formatPowerFromMw,
+  formatSignedEnergyFromMwh,
+  formatSignedMw,
+  parseCapacityGwhInput,
+} from "@/components/germany-day-energy-flow/formatters";
+import { GermanyFlowPeriodSelector } from "@/components/germany-day-energy-flow/GermanyFlowPeriodSelector";
+import { LegendDot } from "@/components/germany-day-energy-flow/LegendDot";
+import { ObservedStressSection } from "@/components/germany-day-energy-flow/ObservedStressSection";
+import {
+  bessRecommendationApiSchema,
+  germanyEnergyFlowApiSchema,
+  revenueModelApiSchema,
+  type BessRecommendation,
+  type RevenueModelPayload,
+} from "@/components/germany-day-energy-flow/schemas";
+import { evaluateBessScenario } from "@/components/germany-day-energy-flow/scenarioEvaluation";
+import { SimBenefitsSection } from "@/components/germany-day-energy-flow/SimBenefitsSection";
+import type {
+  BorderTradeTotals,
+  ChartRow,
+  GermanyDayEnergyFlowProps,
+  SelectorMode,
+} from "@/components/germany-day-energy-flow/types";
+
+export type { GermanyDayEnergyFlowProps } from "@/components/germany-day-energy-flow/types";
+
 const log = createLogger("germany-day-energy-flow");
-
-const EVENING_HOUR_START = 17;
-const EVENING_HOUR_END = 21;
-const QUARTER_HOUR_H = 0.25;
-
-/** LLM live snapshot (STORY DES TAGES) — off while structural KPIs + charts carry the page. */
-const WORKSPACE_LIVE_SNAPSHOT_ENABLED = false;
-
-/**
- * Simulated chart palette: net (structural MW) vs BESS charge bars must not share the same hue.
- * Net = bright teal line (thin); charge = indigo bars; discharge = orange; curtailment = pink; SoC = green.
- */
-const SIM_CHART_NET_STROKE = "#2DD4BF"; // teal-400 — reads as “net / balance” line
-const SIM_CHART_SOC_STROKE = "#22C173";
-const SIM_CHART_CHARGE_FILL = "#6366F1"; // indigo-500 — clearly separate from net + SoC
-const SIM_CHART_DISCHARGE_FILL = "#F97316"; // orange-500
-const OBSERVED_CURTAILMENT_FILL = "#EC4899"; // pink-500 — auxiliary charge opportunity, not net
-const CROSS_BORDER_IMPORT_FILL = "#EF4444"; // red-500
-const CROSS_BORDER_EXPORT_FILL = "#0EA5E9"; // sky-500
-
-const timeFormatterSingleDay = new Intl.DateTimeFormat("de-DE", {
-  timeZone: "Europe/Berlin",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-const timeFormatterMultiDay = new Intl.DateTimeFormat("de-DE", {
-  timeZone: "Europe/Berlin",
-  day: "2-digit",
-  month: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-const integerFormatter = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
-const pctFormatter = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
-const energyFormatter = new Intl.NumberFormat("de-DE", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
-const powerFormatter = new Intl.NumberFormat("de-DE", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
-const euroCurrencyFormatter = new Intl.NumberFormat("de-DE", {
-  style: "currency",
-  currency: "EUR",
-  maximumFractionDigits: 0,
-});
-const priceFormatter = new Intl.NumberFormat("de-DE", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
-
-const germanyDispatchSlotSchema = z.object({
-  timestampIso: z.string(),
-  hourBerlin: z.number(),
-  residualLoadMw: z.number(),
-  loadMw: z.number(),
-  totalGenerationMw: z.number(),
-  renewableGenerationMw: z.number().nullable(),
-  crossBorderElectricityTradingMw: z.number().nullable().optional().default(null),
-  curtailmentMw: z.number().nullable().optional().default(null),
-});
-
-const germanyEnergyFlowApiSchema = z.object({
-  dateBerlin: z.string(),
-  samplePoints: z.number(),
-  pointFractionOfDay: z.number(),
-  source: z.literal("energy-charts.total_power"),
-  slots: z.array(germanyDispatchSlotSchema),
-  curtailmentStatus: z
-    .enum(["loaded", "unavailable_not_configured", "unavailable_upstream"])
-    .optional()
-    .default("unavailable_upstream"),
-  period: germanyEnergyFlowPeriodSchema.optional(),
-  rangeStartBerlin: z.string().optional(),
-  rangeEndBerlin: z.string().optional(),
-});
-
-const bessRecommendationTierSchema = z.object({
-  label: z.enum(["aggressive", "balanced", "conservative"]),
-  percentile: z.number(),
-  recommendedEnergyMwh: z.number(),
-  recommendedPowerMw: z.number(),
-});
-
-const bessRecommendationApiSchema = z.object({
-  lookbackDays: z.number(),
-  rangeStartBerlin: z.string(),
-  rangeEndBerlin: z.string(),
-  observedDays: z.number(),
-  dailyEnergyP95Mwh: z.number(),
-  dailyPowerP95Mw: z.number(),
-  continuousWindowRequiredEnergyMwh: z.number(),
-  tiers: z.array(bessRecommendationTierSchema),
-  impactAtBalancedTier: z
-    .object({
-      absorbedSurplusShare: z.number(),
-      servedDeficitShare: z.number(),
-      totalSurplusEnergyMwh: z.number(),
-      totalDeficitEnergyMwh: z.number(),
-    })
-    .nullable(),
-  indicativeEconomicsAtBalancedTier: z
-    .object({
-      capexEur: z.number(),
-      annualRevenueEur: z.number(),
-      annualOperatingCostsEur: z.number(),
-      annualNetCashflowEur: z.number(),
-      paybackYears: z.number(),
-    })
-    .nullable(),
-});
-
-const revenueMarketContextSchema = z.object({
-  sampledSlots: z.number().int().nonnegative(),
-  sampleStartIso: z.string(),
-  sampleEndIso: z.string(),
-  averageLowPriceEurPerMwh: z.number(),
-  averageHighPriceEurPerMwh: z.number(),
-  averageMiddayPriceEurPerMwh: z.number(),
-  averageEveningPriceEurPerMwh: z.number(),
-  eveningPeakPremiumEurPerMwh: z.number(),
-  negativePriceSharePct: z.number().min(0).max(100),
-});
-
-const revenueMarketReferenceSchema = z.object({
-  derivedSpotSpreadEurPerMwh: z.number().nonnegative(),
-  averageDailyCurtailmentOpportunityMwh: z.number().nonnegative(),
-  positiveRedispatchCostEurPerMwh: z.number().nonnegative(),
-  negativeRedispatchCostEurPerMwh: z.number(),
-  sampledDays: z.number().int().nonnegative(),
-  spotPriceStatus: z.enum(["live", "fallback_unavailable"]),
-  curtailmentStatus: z.enum(["loaded", "unavailable_not_configured", "unavailable_upstream"]),
-  priceSourceLabel: z.string().min(1),
-  redispatchSourceLabel: z.string().min(1),
-});
-
-const revenueModelApiSchema = z.object({
-  marketReference: revenueMarketReferenceSchema,
-  marketContext: revenueMarketContextSchema.nullable(),
-});
-
-type SelectorMode = "day" | "week" | "month" | "custom";
-type BessRecommendation = z.infer<typeof bessRecommendationApiSchema>;
-type RevenueModelPayload = z.infer<typeof revenueModelApiSchema>;
-
-const monthLabelFormatter = new Intl.DateTimeFormat("de-DE", {
-  timeZone: "Europe/Berlin",
-  month: "long",
-  year: "numeric",
-});
-
-const monthLabelFormatterEn = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Europe/Berlin",
-  month: "long",
-  year: "numeric",
-});
-
-function formatTimeRangeCenterLabel(options: {
-  language: "en" | "de";
-  selectorMode: SelectorMode;
-  selectedDate: string;
-  selectedWeek: string;
-  selectedMonth: string;
-  customRangeStart: string;
-  customRangeEnd: string;
-}): string {
-  const {
-    language,
-    selectorMode,
-    selectedDate,
-    selectedWeek,
-    selectedMonth,
-    customRangeStart,
-    customRangeEnd,
-  } = options;
-  const locale = language === "de" ? "de-DE" : "en-US";
-  if (selectorMode === "custom") {
-    const startLabel = new Intl.DateTimeFormat(locale, {
-      timeZone: "Europe/Berlin",
-      month: "short",
-      day: "numeric",
-      year: customRangeStart.slice(0, 4) === customRangeEnd.slice(0, 4) ? undefined : "numeric",
-    }).format(new Date(`${customRangeStart}T12:00:00.000Z`));
-    const endLabel = new Intl.DateTimeFormat(locale, {
-      timeZone: "Europe/Berlin",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(new Date(`${customRangeEnd}T12:00:00.000Z`));
-    if (language === "de") {
-      return customRangeStart === customRangeEnd
-        ? endLabel
-        : `${startLabel} – ${endLabel}`;
-    }
-    return customRangeStart === customRangeEnd ? endLabel : `${startLabel} – ${endLabel}`;
-  }
-  if (selectorMode === "day") {
-    return new Intl.DateTimeFormat(locale, {
-      timeZone: "Europe/Berlin",
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    }).format(new Date(`${selectedDate}T12:00:00.000Z`));
-  }
-  if (selectorMode === "week") {
-    const start = isoWeekKeyToBerlinStartKey(selectedWeek);
-    const end = addBerlinCalendarDays(start, 6);
-    const match = selectedWeek.match(/^\d{4}-W(\d{2})$/);
-    const weekNum = match ? Number(match[1]) : null;
-    const startLabel = new Intl.DateTimeFormat(locale, {
-      timeZone: "Europe/Berlin",
-      month: "short",
-      day: "numeric",
-    }).format(new Date(`${start}T12:00:00.000Z`));
-    const endLabel = new Intl.DateTimeFormat(locale, {
-      timeZone: "Europe/Berlin",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(new Date(`${end}T12:00:00.000Z`));
-    if (language === "de") {
-      return weekNum
-        ? `Kalenderwoche ${weekNum} · ${startLabel} – ${endLabel}`
-        : `${startLabel} – ${endLabel}`;
-    }
-    return weekNum ? `Week ${weekNum} · ${startLabel} – ${endLabel}` : `${startLabel} – ${endLabel}`;
-  }
-  const date = new Date(`${selectedMonth}-01T00:00:00.000Z`);
-  return (language === "de" ? monthLabelFormatter : monthLabelFormatterEn).format(date);
-}
-
-function berlinTodayKey(): string {
-  return formatBerlinDateKeyFromUtcDate(new Date());
-}
-
-function resolveSeedDateKey(seed: string | null | undefined): string {
-  if (seed && berlinDateKeySchema.safeParse(seed).success) {
-    return seed;
-  }
-  return berlinTodayKey();
-}
-
-function previousIsoWeekKey(weekKey: string): string {
-  return berlinDateKeyToIsoWeekKey(addBerlinCalendarDays(isoWeekKeyToBerlinStartKey(weekKey), -7));
-}
-
-/** Berlin window immediately before `start` with the same inclusive span as `start`–`end`. */
-function priorWindowMatchingSpan(start: string, end: string): { warmupStart: string; warmupEnd: string } {
-  const spanDays = Math.max(1, countBerlinCalendarDaysInclusive(start, end));
-  const warmupEnd = addBerlinCalendarDays(start, -1);
-  const warmupStart = addBerlinCalendarDays(warmupEnd, -(spanDays - 1));
-  return { warmupStart, warmupEnd };
-}
-
-function shiftMonthKey(monthKey: string, delta: number): string {
-  const [year, month] = monthKey.split("-").map(Number);
-  const base = new Date(Date.UTC(year, month - 1, 1));
-  base.setUTCMonth(base.getUTCMonth() + delta);
-  return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-type ChartRow = GermanyDispatchSlotsResponse["slots"][number] & {
-  timeLabel: string;
-  /** Domestic generation − load (positive = surplus MW, negative = deficit). */
-  netBalanceMw: number;
-  netAfterPracticalBessMw: number;
-  observedCrossBorderMw: number | null;
-  simulatedCrossBorderMw: number | null;
-  observedImportMw: number;
-  observedExportSignedMw: number;
-  simulatedImportMw: number;
-  simulatedExportSignedMw: number;
-  curtailmentDisplayMw: number;
-  inferredFleetSocPct: number;
-  estimatedFleetSocPct: number;
-  simulatedPracticalSocPct: number;
-  practicalChargeSignedMw: number;
-  practicalChargeMw: number;
-  practicalDischargeMw: number;
-  /** Fleet-capacity heuristic (same series as estimated SoC line). */
-  fleetChargeSignedMw: number;
-  fleetChargeMw: number;
-  fleetDischargeMw: number;
-};
-
-export type GermanyDayEnergyFlowProps = {
-  fleetCapacityGwh?: number | null;
-  fleetPowerGw?: number | null;
-  language: "en" | "de";
-  isRefreshing?: boolean;
-  lastUpdatedIso?: string | null;
-  onRefresh?: () => void;
-  onShare?: () => void;
-  shareBusy?: boolean;
-  /** Fires when the plotted SoC series updates so the live header can match the dashed chart line. */
-  onChartFleetSocSnapshot?: (snapshot: ChartFleetSocSnapshot | null) => void;
-  /** Optional LLM-generated impact blurb for simulated mode; placeholder until wired. */
-  simulationAiInsight?: string | null;
-  /** Server-rendered series for the seeded Berlin day (skips first-load spinner when keys match). */
-  initialEnergyFlow?: GermanyDispatchSlotsResponse | null;
-  /** Berlin `YYYY-MM-DD` for `initialEnergyFlow`. */
-  initialBerlinDateKey?: string | null;
-  /** Optional deep-link / share params (`?date=`, `?week=`, `?month=`, `?start=&end=`). */
-  seedStoryWindow?: BriefingStoryWindow | null;
-  /** @deprecated Use `seedStoryWindow` — kept for tests that only pass a day. */
-  seedDateKey?: string | null;
-  /** Sync the active chart window back to the URL. */
-  onStoryWindowUrlChange?: (window: BriefingStoryWindow) => void;
-  /**
-   * Which window the homepage hero story should narrate — aligned with the chart
-   * selector (day / ISO week / calendar month). Does not replace `onStoryWindowUrlChange`.
-   */
-  onBriefingStoryWindowChange?: (window: BriefingStoryWindow) => void;
-  /** Story window rendered inline with the chart area. */
-  briefingStoryWindow?: BriefingStoryWindow | null;
-  /** Bumped when the user refreshes the live briefing. */
-  briefingStoryRefreshNonce?: number;
-  /** Start in simulated-BESS view (e.g. `?sim=1` for morning export screenshots). */
-  initialSimulatedNet?: boolean;
-  /** Sync simulated mode to the URL or parent so it survives remounts when the date changes. */
-  onSimulatedModeChange?: (simulated: boolean) => void;
-};
-
-function LegendDot({
-  color,
-  label,
-  hint,
-}: {
-  color: string;
-  label: string;
-  hint?: string;
-}) {
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1 text-[10px] text-slate-600 dark:text-slate-300"
-      title={hint}
-    >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
-      {label}
-    </span>
-  );
-}
-
-function ObservedStressMetric({
-  label,
-  value,
-  detail,
-  tone = "neutral",
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  tone?: "surplus" | "deficit" | "warning" | "neutral";
-}) {
-  const valueToneClass =
-    tone === "surplus"
-      ? "text-emerald-700 dark:text-emerald-300"
-      : tone === "deficit"
-        ? "text-rose-700 dark:text-rose-300"
-        : tone === "warning"
-          ? "text-amber-800 dark:text-amber-200"
-          : "text-slate-950 dark:text-white";
-
-  return (
-    <div className="min-w-0 px-1.5 text-center">
-      <p className="text-[8px] font-semibold uppercase leading-tight tracking-[0.07em] text-slate-700/85 dark:text-slate-300/85">
-        {label}
-      </p>
-      <p className={`mt-0.5 text-base font-black tabular-nums leading-none sm:text-lg ${valueToneClass}`}>
-        {value}
-      </p>
-      {detail ? (
-        <p className="mt-0.5 text-[9px] leading-snug text-slate-600 dark:text-slate-400">{detail}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function CompactDetailStat({
-  label,
-  value,
-  subtitle,
-  detail,
-}: {
-  label: string;
-  value: string;
-  subtitle?: string;
-  detail?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-3 shadow-sm dark:border-slate-600/45 dark:bg-slate-950/55">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-        {label}
-      </p>
-      <p className="mt-1 text-base font-extrabold leading-tight text-slate-900 tabular-nums dark:text-white md:text-[1.1rem]">
-        {value}
-      </p>
-      {subtitle ? (
-        <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-slate-400">{subtitle}</p>
-      ) : null}
-      {detail ? (
-        <p className="mt-2 text-[11px] leading-snug text-slate-600 dark:text-slate-400">{detail}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function splitPerspectiveNarrative(text: string): string[] {
-  const paragraphs = text
-    .split(/\n\s*\n/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  if (paragraphs.length > 1) {
-    return paragraphs;
-  }
-  const single = paragraphs[0] ?? text.trim();
-  if (single.length < 240) {
-    return [single];
-  }
-  const sentences =
-    single.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((entry) => entry.trim()).filter(Boolean) ?? [single];
-  if (sentences.length <= 2) {
-    return [single];
-  }
-  const mid = Math.ceil(sentences.length / 2);
-  return [sentences.slice(0, mid).join(" "), sentences.slice(mid).join(" ")];
-}
-
-function PerspectiveNarrativeBody({ text }: { text: string }) {
-  const paragraphs = splitPerspectiveNarrative(text);
-  return (
-    <div className="mt-4 space-y-3.5 border-t border-border/50 pt-4 dark:border-slate-600/35">
-      {paragraphs.map((paragraph, index) => (
-        <p
-          key={`${index}-${paragraph.slice(0, 24)}`}
-          className={
-            index === 0
-              ? "text-[15px] font-medium leading-[1.65] tracking-tight text-slate-800 dark:text-slate-100"
-              : "text-sm leading-[1.7] text-slate-600 dark:text-slate-300"
-          }
-        >
-          {paragraph}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function formatSignedMw(n: number): string {
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${integerFormatter.format(n)} MW`;
-}
-
-function formatEnergyFromMwh(mwh: number): string {
-  const gwh = mwh / 1_000;
-  if (Math.abs(gwh) >= 1) {
-    return `${energyFormatter.format(gwh)} GWh`;
-  }
-  return `${integerFormatter.format(mwh)} MWh`;
-}
-
-function formatPowerFromMw(mw: number): string {
-  if (!Number.isFinite(mw) || mw <= 0) {
-    return "0 MW";
-  }
-  if (mw >= 1000) {
-    return `${energyFormatter.format(mw / 1000)} GW`;
-  }
-  return `${powerFormatter.format(mw)} MW`;
-}
-
-function formatSignedEnergyFromMwh(mwh: number): string {
-  const sign = mwh > 0 ? "+" : mwh < 0 ? "−" : "";
-  return `${sign}${formatEnergyFromMwh(Math.abs(mwh))}`;
-}
-
-function parseCapacityGwhInput(value: string): number | null {
-  const normalized = value.trim().replace(/,/g, ".");
-  if (!normalized) {
-    return null;
-  }
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-  return parsed * 1_000;
-}
 
 type AbsorptionTotals = {
   grossSurplusEnergyMwh: number;
@@ -593,268 +144,6 @@ type CoverageTotals = Pick<
   | "totalChargeOpportunityEnergyMwh"
   | "totalDeficitEnergyMwh"
 >;
-
-type BorderTradeTotals = {
-  observedImportEnergyMwh: number;
-  observedExportEnergyMwh: number;
-  simulatedImportEnergyMwh: number;
-  simulatedExportEnergyMwh: number;
-  importDeltaEnergyMwh: number;
-  exportDeltaEnergyMwh: number;
-};
-
-type ScenarioImpactSnapshot = {
-  coverage: ReturnType<typeof computeCoverageAtCapacityMwh>;
-  absorbedCurtailmentEnergyMwh: number;
-  remainingCurtailmentEnergyMwh: number;
-  peakReductionMw: number;
-  gridImpactReductionPct: number | null;
-  observedImportEnergyMwh: number | null;
-  simulatedImportEnergyMwh: number | null;
-  importReductionEnergyMwh: number | null;
-  bessRevenueTodayEur: number | null;
-  avoidedRedispatchCostsEur: number | null;
-  avoidedCurtailmentValueEur: number | null;
-  /**
-   * Charge-side economic proxy: same €/MWh weighting as `missedOpportunityEur`, applied to absorbed
-   * surplus energy. Scales with fleet size when extra capacity banks more surplus (unlike discharge-only
-   * spread on `bessRevenueTodayEur`, which plateaus once structural deficits are fully served).
-   */
-  chargeOpportunityValueEur: number | null;
-  totalValueCreatedEur: number | null;
-  missedOpportunityEur: number | null;
-  curtailedRecoveredToLoadEnergyMwh: number;
-  gridReliefScore: number | null;
-};
-
-const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
-
-function formatCurrencyCompact(value: number | null, language: "de" | "en" = "de"): string {
-  if (value === null || !Number.isFinite(value)) {
-    return "—";
-  }
-  const locale = language === "de" ? "de-DE" : "en-GB";
-  if (Math.abs(value) >= 100_000) {
-    return new Intl.NumberFormat(locale, {
-      style: "currency",
-      currency: "EUR",
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(value);
-  }
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(Math.round(value));
-}
-
-function computeOpportunityValuePerMwh(
-  marketReference: RevenueModelPayload["marketReference"] | null,
-  totalChargeOpportunityEnergyMwh: number,
-  totalCurtailmentEnergyMwh: number
-): number | null {
-  const spreadEurPerMwh =
-    marketReference !== null && marketReference.derivedSpotSpreadEurPerMwh > 0
-      ? marketReference.derivedSpotSpreadEurPerMwh
-      : null;
-  const redispatchEurPerMwh =
-    marketReference !== null && marketReference.positiveRedispatchCostEurPerMwh > 0
-      ? marketReference.positiveRedispatchCostEurPerMwh
-      : null;
-  const curtailedShareOfOpportunity =
-    totalChargeOpportunityEnergyMwh > 1e-9
-      ? totalCurtailmentEnergyMwh / totalChargeOpportunityEnergyMwh
-      : 0;
-  const opportunityValuePerMwh =
-    (spreadEurPerMwh ?? 0) + (redispatchEurPerMwh ?? 0) * curtailedShareOfOpportunity;
-  return opportunityValuePerMwh > 0 ? opportunityValuePerMwh : null;
-}
-
-function computeGridReliefScore(input: {
-  curtailedAvoidedShare: number | null;
-  dampingPct: number | null;
-  peakReductionShare: number | null;
-  importReductionShare: number | null;
-}): number | null {
-  const parts = [
-    input.curtailedAvoidedShare !== null ? { value: clamp01(input.curtailedAvoidedShare), weight: 0.32 } : null,
-    input.dampingPct !== null ? { value: clamp01(input.dampingPct / 100), weight: 0.33 } : null,
-    input.peakReductionShare !== null ? { value: clamp01(input.peakReductionShare), weight: 0.2 } : null,
-    input.importReductionShare !== null ? { value: clamp01(input.importReductionShare), weight: 0.15 } : null,
-  ].filter((part): part is { value: number; weight: number } => part !== null);
-
-  if (parts.length === 0) {
-    return null;
-  }
-
-  const totalWeight = parts.reduce((sum, part) => sum + part.weight, 0);
-  const weighted = parts.reduce((sum, part) => sum + part.value * part.weight, 0);
-  return Math.round((weighted / totalWeight) * 100);
-}
-
-function evaluateBessScenario(params: {
-  slots: GermanyDispatchSlotsResponse["slots"];
-  capacityMwh: number;
-  maxPowerMw: number | null;
-  initialSocMwh: number;
-  resetDailyByBerlin: boolean;
-  marketReference: RevenueModelPayload["marketReference"] | null;
-}): ScenarioImpactSnapshot {
-  const { slots, capacityMwh, maxPowerMw, initialSocMwh, resetDailyByBerlin, marketReference } = params;
-
-  const coverage = computeCoverageAtCapacityMwh(slots, capacityMwh, {
-    maxPowerMw,
-    initialSocMwh,
-    resetDailyByBerlin,
-  });
-
-  const dispatchSeries =
-    capacityMwh > 0
-      ? simulatePracticalDispatchAtCapacity(slots, capacityMwh, {
-          maxPowerMw,
-          initialSocMwh,
-          resetDailyByBerlin,
-        })
-      : [];
-  const adjustedNetSeries =
-    capacityMwh > 0
-      ? simulateAdjustedNetMwAtCapacity(slots, capacityMwh, {
-          maxPowerMw,
-          initialSocMwh,
-          resetDailyByBerlin,
-        })
-      : [];
-
-  let absorbedCurtailmentEnergyMwh = 0;
-  let peakAbsNetMw = 0;
-  let peakAbsAdjustedNetMw = 0;
-  let baselineAbsMwh = 0;
-  let adjustedAbsMwh = 0;
-  let hasObservedCrossBorder = false;
-  let observedImportEnergyMwh = 0;
-  let simulatedImportEnergyMwh = 0;
-
-  for (let i = 0; i < slots.length; i += 1) {
-    const slot = slots[i]!;
-    const structuralSurplusMwh = Math.max(0, slot.totalGenerationMw - slot.loadMw) * QUARTER_HOUR_H;
-    const curtailedMwh = Math.max(0, slot.curtailmentMw ?? 0) * QUARTER_HOUR_H;
-    const chargeMwh = (dispatchSeries[i]?.chargeMw ?? 0) * QUARTER_HOUR_H;
-    const totalChargeOpportunityMwh = structuralSurplusMwh + curtailedMwh;
-    if (chargeMwh > 0 && totalChargeOpportunityMwh > 0 && curtailedMwh > 0) {
-      absorbedCurtailmentEnergyMwh += Math.min(
-        curtailedMwh,
-        chargeMwh * (curtailedMwh / totalChargeOpportunityMwh)
-      );
-    }
-
-    const netMw = slot.totalGenerationMw - slot.loadMw;
-    baselineAbsMwh += Math.abs(netMw) * QUARTER_HOUR_H;
-    adjustedAbsMwh += Math.abs(adjustedNetSeries[i] ?? netMw) * QUARTER_HOUR_H;
-    peakAbsNetMw = Math.max(peakAbsNetMw, Math.abs(netMw));
-    peakAbsAdjustedNetMw = Math.max(
-      peakAbsAdjustedNetMw,
-      Math.abs(adjustedNetSeries[i] ?? netMw)
-    );
-
-    if (slot.crossBorderElectricityTradingMw !== null && slot.crossBorderElectricityTradingMw !== undefined) {
-      hasObservedCrossBorder = true;
-      const observedCrossBorderMw = slot.crossBorderElectricityTradingMw;
-      const practicalChargeMw = dispatchSeries[i]?.chargeMw ?? 0;
-      const practicalDischargeMw = dispatchSeries[i]?.dischargeMw ?? 0;
-      const borderCoupledChargeMw = borderCoupledBatteryChargeMw(slot, practicalChargeMw);
-      observedImportEnergyMwh += Math.max(0, observedCrossBorderMw) * QUARTER_HOUR_H;
-      simulatedImportEnergyMwh +=
-        Math.max(0, observedCrossBorderMw + borderCoupledChargeMw - practicalDischargeMw) *
-        QUARTER_HOUR_H;
-    }
-  }
-
-  const remainingCurtailmentEnergyMwh = Math.max(0, coverage.totalCurtailmentEnergyMwh - absorbedCurtailmentEnergyMwh);
-  const peakReductionMw = Math.max(0, peakAbsNetMw - peakAbsAdjustedNetMw);
-  const gridImpactReductionPct =
-    baselineAbsMwh > 0
-      ? Math.min(100, Math.max(0, (1 - adjustedAbsMwh / baselineAbsMwh) * 100))
-      : null;
-  const importReductionEnergyMwh = hasObservedCrossBorder
-    ? Math.max(0, observedImportEnergyMwh - simulatedImportEnergyMwh)
-    : null;
-
-  const spreadEurPerMwh =
-    marketReference !== null && marketReference.derivedSpotSpreadEurPerMwh > 0
-      ? marketReference.derivedSpotSpreadEurPerMwh
-      : null;
-  const redispatchEurPerMwh =
-    marketReference !== null && marketReference.positiveRedispatchCostEurPerMwh > 0
-      ? marketReference.positiveRedispatchCostEurPerMwh
-      : null;
-
-  const curtailedRecoveredToLoadEnergyMwh = Math.min(
-    absorbedCurtailmentEnergyMwh,
-    coverage.servedDeficitEnergyMwh
-  );
-  const bessRevenueTodayEur =
-    spreadEurPerMwh !== null
-      ? Math.max(0, coverage.servedDeficitEnergyMwh - curtailedRecoveredToLoadEnergyMwh) * spreadEurPerMwh
-      : null;
-  const avoidedCurtailmentValueEur =
-    spreadEurPerMwh !== null ? curtailedRecoveredToLoadEnergyMwh * spreadEurPerMwh : null;
-  const avoidedRedispatchCostsEur =
-    redispatchEurPerMwh !== null ? absorbedCurtailmentEnergyMwh * redispatchEurPerMwh : null;
-
-  const opportunityValuePerMwh = computeOpportunityValuePerMwh(
-    marketReference,
-    coverage.totalChargeOpportunityEnergyMwh,
-    coverage.totalCurtailmentEnergyMwh
-  );
-  const chargeOpportunityValueEur =
-    opportunityValuePerMwh !== null
-      ? coverage.absorbedSurplusEnergyMwh * opportunityValuePerMwh
-      : null;
-  const missedOpportunityEur =
-    opportunityValuePerMwh !== null
-      ? Math.max(0, coverage.totalChargeOpportunityEnergyMwh - coverage.absorbedSurplusEnergyMwh) *
-        opportunityValuePerMwh
-      : null;
-  const totalValueCreatedEur =
-    bessRevenueTodayEur !== null &&
-    avoidedCurtailmentValueEur !== null &&
-    avoidedRedispatchCostsEur !== null
-      ? bessRevenueTodayEur + avoidedCurtailmentValueEur + avoidedRedispatchCostsEur
-      : null;
-
-  const gridReliefScore = computeGridReliefScore({
-    curtailedAvoidedShare:
-      coverage.totalCurtailmentEnergyMwh > 1e-9
-        ? absorbedCurtailmentEnergyMwh / coverage.totalCurtailmentEnergyMwh
-        : null,
-    dampingPct: coverage.totalChargeOpportunityEnergyMwh > 0 ? gridImpactReductionPct : null,
-    peakReductionShare: peakAbsNetMw > 0 ? peakReductionMw / peakAbsNetMw : null,
-    importReductionShare:
-      hasObservedCrossBorder && observedImportEnergyMwh > 1e-9 && importReductionEnergyMwh !== null
-        ? importReductionEnergyMwh / observedImportEnergyMwh
-        : null,
-  });
-
-  return {
-    coverage,
-    absorbedCurtailmentEnergyMwh,
-    remainingCurtailmentEnergyMwh,
-    peakReductionMw,
-    gridImpactReductionPct,
-    observedImportEnergyMwh: hasObservedCrossBorder ? observedImportEnergyMwh : null,
-    simulatedImportEnergyMwh: hasObservedCrossBorder ? simulatedImportEnergyMwh : null,
-    importReductionEnergyMwh,
-    bessRevenueTodayEur,
-    avoidedRedispatchCostsEur,
-    avoidedCurtailmentValueEur,
-    chargeOpportunityValueEur,
-    totalValueCreatedEur,
-    missedOpportunityEur,
-    curtailedRecoveredToLoadEnergyMwh,
-    gridReliefScore,
-  };
-}
 
 export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const {
@@ -2093,8 +1382,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const resetCustomSimulatedCapacity = () => {
     setCustomSimulatedCapacityGwhApplied("");
     setCustomSimulatedCapacityGwhDraft("");
-    setCapacityOptimizeNote(null);
-    setLastOptimizedCapacityMwh(null);
   };
   const usesTwelveMonthAutoSizing = useMemo(() => {
     if (selectorMode !== "day" || hasCustomSimulatedCapacity || !recommendation) {
@@ -2790,8 +2077,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     customRangeStart,
     customRangeEnd,
   });
-  const timeRangeNavButtonClass =
-    "inline-flex size-11 shrink-0 items-center justify-center rounded-xl border-2 border-slate-200/90 bg-white text-slate-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-600/55 dark:bg-slate-900/90 dark:text-slate-100 dark:hover:border-sky-500/45 dark:hover:bg-sky-950/45";
 
   const simulatedCapacityGwhLabel =
     effectivePracticalCapacityMwh > 0
@@ -2965,7 +2250,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           <div
             className={
               chartRenderCompact
-                ? "flex max-w-full flex-nowrap items-center gap-x-2 gap-y-0 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:max-w-none lg:flex-wrap lg:justify-end lg:gap-y-1.5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
+                ? "flex max-w-full flex-wrap items-center gap-x-2 gap-y-1.5 lg:flex-nowrap lg:justify-end lg:gap-y-1.5"
                 : "flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-2.5 lg:justify-end"
             }
           >
@@ -3463,317 +2748,217 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           )
         : t.simBenefitsRedispatchUnavailable;
 
-    const simBenefitsOverview = (() => {
-      const obsNetMwh = windowNetStructuralBalanceGwh * 1_000;
-      const { baselineAbsMwh, adjustedAbsMwh } = netSwingTotalsMwh;
-      const gridReliefPct = modeledScenario?.gridImpactReductionPct ?? null;
-      const servedDeficitPct =
-        modeledScenario !== null ? modeledScenario.coverage.servedDeficitShare * 100 : null;
-      const missedChargePct =
-        simChargeSharePct !== null ? Math.max(0, 100 - simChargeSharePct) : null;
-      const endSocMwh = storedPracticalEndMwh;
-      const showSimLead =
-        modeledScenario !== null &&
-        ((gridReliefPct !== null && gridReliefPct > 0.05) ||
-          (importSavedMwh !== null && importSavedMwh > 1e-6) ||
-          (simChargeSharePct !== null && simChargeSharePct > 0.05));
+    const obsNetMwhForSim = windowNetStructuralBalanceGwh * 1_000;
+    const gridReliefPctForSim = modeledScenario?.gridImpactReductionPct ?? null;
+    const servedDeficitPctForSim =
+      modeledScenario !== null ? modeledScenario.coverage.servedDeficitShare * 100 : null;
+    const missedChargePctForSim =
+      simChargeSharePct !== null ? Math.max(0, 100 - simChargeSharePct) : null;
+    const showSimLeadForSim =
+      modeledScenario !== null &&
+      ((gridReliefPctForSim !== null && gridReliefPctForSim > 0.05) ||
+        (importSavedMwh !== null && importSavedMwh > 1e-6) ||
+        (simChargeSharePct !== null && simChargeSharePct > 0.05));
+    const simAuxLine =
+      curtailmentKpiValue !== "—" ||
+      formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language) !== "—"
+        ? [
+            curtailmentKpiValue !== "—"
+              ? `${t.simBenefitsCurtailmentLabel}: ${curtailmentKpiValue}${curtailmentKpiDetail ? ` · ${curtailmentKpiDetail}` : ""}`
+              : null,
+            formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language) !== "—"
+              ? `${t.simBenefitsRedispatchLabel}: ${formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language)}${redispatchKpiDetail ? ` · ${redispatchKpiDetail}` : ""}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : null;
+    const simEconomicsLine = indicativeValuePresentation?.perMwhValue
+      ? `${t.simBenefitsEconomicsLine(indicativeValuePresentation.perMwhValue)}${
+          modeledScenario?.totalValueCreatedEur !== null &&
+          modeledScenario?.totalValueCreatedEur !== undefined
+            ? ` · ${formatCurrencyCompact(modeledScenario.totalValueCreatedEur, language)} ${
+                language === "de"
+                  ? "gesamt (Spread + Abregelung + Redispatch)"
+                  : "total (spread + curtailment + redispatch)"
+              }`
+            : ""
+        }`
+      : null;
+    const simBenefitsOverview = (
+      <SimBenefitsSection
+        selectorLabel={selectorLabel}
+        capacitySuffix={simulatedCapacityGwhLabel}
+        heroLabel={t.simBenefitsHeroLabel}
+        heroValue={gridReliefPctForSim !== null ? `−${pctFormatter.format(gridReliefPctForSim)}%` : "—"}
+        heroDetail={t.simBenefitsHeroDetail}
+        swingCompareLine={t.simBenefitsSwingCompare(
+          formatEnergyFromMwh(netSwingTotalsMwh.baselineAbsMwh),
+          formatEnergyFromMwh(netSwingTotalsMwh.adjustedAbsMwh)
+        )}
+        netBalanceNote={t.simBenefitsNetBalanceNote(
+          formatSignedEnergyFromMwh(obsNetMwhForSim),
+          storedPracticalEndMwh !== null ? formatEnergyFromMwh(storedPracticalEndMwh) : "—"
+        )}
+        showLead={showSimLeadForSim}
+        leadEyebrow={t.simBenefitsEyebrow}
+        leadText={t.simBenefitsLead}
+        impactEyebrow={t.simBenefitsImpactEyebrow}
+        metrics={[
+          {
+            label: t.simBenefitsChargeLabel,
+            value:
+              simChargeSharePct !== null ? `${pctFormatter.format(simChargeSharePct)}%` : "—",
+            detail:
+              simChargeDeltaPp !== null && simChargeDeltaPp > 0.05
+                ? t.simBenefitsChargeDetail(pctFormatter.format(simChargeDeltaPp))
+                : t.simBenefitsChargeDetailFallback,
+            tone: "surplus",
+          },
+          {
+            label: t.simBenefitsDeficitServedLabel,
+            value:
+              servedDeficitPctForSim !== null
+                ? `${pctFormatter.format(servedDeficitPctForSim)}%`
+                : "—",
+            detail: t.simBenefitsDeficitServedDetail,
+            tone: "surplus",
+          },
+          {
+            label: t.simBenefitsImportLabel,
+            value:
+              importSavedMwh !== null && importSavedMwh > 1e-6
+                ? `+${formatEnergyFromMwh(importSavedMwh)}`
+                : borderTradeTotals !== null
+                  ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)
+                  : "—",
+            detail: t.simBenefitsImportSavedDetail,
+            tone: importSavedMwh !== null && importSavedMwh > 1e-6 ? "surplus" : "neutral",
+          },
+          {
+            label: t.simBenefitsMissedChargeLabel,
+            value:
+              missedChargePctForSim !== null
+                ? `${pctFormatter.format(missedChargePctForSim)}%`
+                : "—",
+            detail: t.simBenefitsMissedChargeDetail,
+            tone: "warning",
+          },
+        ]}
+        auxLine={simAuxLine}
+        auxFootnote={showAuxSourcesFootnote ? t.simBenefitsAuxSourcesFootnote : null}
+        economicsLine={simEconomicsLine}
+        disclaimer={t.simBenefitsDisclaimer}
+      />
+    );
 
-      return (
-        <section
-          aria-labelledby="sim-benefits-heading"
-          className="rounded-xl border border-emerald-300/55 bg-gradient-to-b from-emerald-50/90 to-white px-3 py-3 shadow-sm dark:border-emerald-500/30 dark:from-emerald-950/30 dark:to-slate-950/85 md:px-4 md:py-4"
-        >
-          <div className="border-b border-border/45 pb-4 text-center dark:border-slate-600/35">
-            <p className="text-[11px] tabular-nums text-slate-600 dark:text-slate-300">
-              {selectorLabel}
-              {simulatedCapacityGwhLabel ? ` · ${simulatedCapacityGwhLabel}` : ""}
-            </p>
-            <p
-              id="sim-benefits-heading"
-              className="mt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 dark:text-slate-400"
-            >
-              {t.simBenefitsHeroLabel}
-            </p>
-            <p
-              className="mt-1 text-4xl font-black tabular-nums leading-none tracking-tight text-emerald-600 sm:text-5xl dark:text-emerald-300"
-              aria-label={`${t.simBenefitsHeroLabel}: ${gridReliefPct !== null ? `${pctFormatter.format(gridReliefPct)}%` : "—"}`}
-            >
-              {gridReliefPct !== null ? `−${pctFormatter.format(gridReliefPct)}%` : "—"}
-            </p>
-            <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">{t.simBenefitsHeroDetail}</p>
-            <p className="mt-2 text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
-              {t.simBenefitsSwingCompare(
-                formatEnergyFromMwh(baselineAbsMwh),
-                formatEnergyFromMwh(adjustedAbsMwh)
-              )}
-            </p>
-            <p className="mx-auto mt-2 max-w-2xl text-[10px] leading-snug text-slate-500 dark:text-slate-400">
-              {t.simBenefitsNetBalanceNote(
-                formatSignedEnergyFromMwh(obsNetMwh),
-                endSocMwh !== null ? formatEnergyFromMwh(endSocMwh) : "—"
-              )}
-            </p>
-          </div>
-
-          {showSimLead ? (
-            <div className="mt-3 space-y-1 text-center">
-              <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-800 dark:text-emerald-200">
-                {t.simBenefitsEyebrow}
-              </p>
-              <p className="mx-auto max-w-2xl text-[11px] font-medium leading-snug text-emerald-950 dark:text-emerald-100">
-                {t.simBenefitsLead}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="mt-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <p className="mb-2 text-center text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
-              {t.simBenefitsImpactEyebrow}
-            </p>
-            <div className="grid min-w-[520px] grid-cols-4 divide-x divide-border/60 dark:divide-slate-600/40">
-              <ObservedStressMetric
-                label={t.simBenefitsChargeLabel}
-                value={
-                  simChargeSharePct !== null
-                    ? `${pctFormatter.format(simChargeSharePct)}%`
-                    : "—"
-                }
-                detail={
-                  simChargeDeltaPp !== null && simChargeDeltaPp > 0.05
-                    ? t.simBenefitsChargeDetail(pctFormatter.format(simChargeDeltaPp))
-                    : t.simBenefitsChargeDetailFallback
-                }
-                tone="surplus"
-              />
-              <ObservedStressMetric
-                label={t.simBenefitsDeficitServedLabel}
-                value={
-                  servedDeficitPct !== null
-                    ? `${pctFormatter.format(servedDeficitPct)}%`
-                    : "—"
-                }
-                detail={t.simBenefitsDeficitServedDetail}
-                tone="surplus"
-              />
-              <ObservedStressMetric
-                label={t.simBenefitsImportLabel}
-                value={
-                  importSavedMwh !== null && importSavedMwh > 1e-6
-                    ? `+${formatEnergyFromMwh(importSavedMwh)}`
-                    : borderTradeTotals !== null
-                      ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)
-                      : "—"
-                }
-                detail={t.simBenefitsImportSavedDetail}
-                tone={
-                  importSavedMwh !== null && importSavedMwh > 1e-6
-                    ? "surplus"
-                    : "neutral"
-                }
-              />
-              <ObservedStressMetric
-                label={t.simBenefitsMissedChargeLabel}
-                value={
-                  missedChargePct !== null
-                    ? `${pctFormatter.format(missedChargePct)}%`
-                    : "—"
-                }
-                detail={t.simBenefitsMissedChargeDetail}
-                tone="warning"
-              />
-            </div>
-          </div>
-
-          {(curtailmentKpiValue !== "—" ||
-            formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language) !== "—") ? (
-            <p className="mt-2.5 text-center text-[10px] tabular-nums text-slate-600 dark:text-slate-400">
-              {curtailmentKpiValue !== "—"
-                ? `${t.simBenefitsCurtailmentLabel}: ${curtailmentKpiValue}${curtailmentKpiDetail ? ` · ${curtailmentKpiDetail}` : ""}`
-                : null}
-              {curtailmentKpiValue !== "—" &&
-              formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language) !== "—"
-                ? " · "
-                : null}
-              {formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language) !== "—"
-                ? `${t.simBenefitsRedispatchLabel}: ${formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language)}${redispatchKpiDetail ? ` · ${redispatchKpiDetail}` : ""}`
-                : null}
-            </p>
-          ) : null}
-
-          {showAuxSourcesFootnote ? (
-            <p className="mt-2 text-center text-[9px] leading-snug text-slate-400 dark:text-slate-500">
-              {t.simBenefitsAuxSourcesFootnote}
-            </p>
-          ) : null}
-
-          {indicativeValuePresentation?.perMwhValue ? (
-            <p className="mt-2 text-center text-[10px] text-slate-600 dark:text-slate-400">
-              {t.simBenefitsEconomicsLine(indicativeValuePresentation.perMwhValue)}
-              {modeledScenario?.totalValueCreatedEur !== null &&
-              modeledScenario?.totalValueCreatedEur !== undefined
-                ? ` · ${formatCurrencyCompact(modeledScenario.totalValueCreatedEur, language)} ${language === "de" ? "gesamt (Spread + Abregelung + Redispatch)" : "total (spread + curtailment + redispatch)"}`
-                : ""}
-            </p>
-          ) : null}
-          <p className="mt-1 text-center text-[9px] text-slate-400 dark:text-slate-500">{t.simBenefitsDisclaimer}</p>
-        </section>
-      );
-    })();
-
-    const workspaceContextStrip = (() => {
-      const netMwh = windowNetStructuralBalanceGwh * 1_000;
-      const netSign =
-        netMwh > 1e-6 ? "surplus" : netMwh < -1e-6 ? "deficit" : "balanced";
-      const netValueClass =
-        netSign === "surplus"
-          ? "text-emerald-600 dark:text-emerald-300"
-          : netSign === "deficit"
-            ? "text-rose-600 dark:text-rose-300"
-            : "text-slate-700 dark:text-slate-200";
-      const netBadgeClass =
-        netSign === "surplus"
-          ? "border-emerald-300/80 bg-emerald-50 text-emerald-900 dark:border-emerald-400/35 dark:bg-emerald-500/15 dark:text-emerald-100"
-          : netSign === "deficit"
-            ? "border-rose-300/80 bg-rose-50 text-rose-900 dark:border-rose-400/35 dark:bg-rose-500/15 dark:text-rose-100"
-            : "border-slate-300/80 bg-slate-50 text-slate-800 dark:border-slate-500/35 dark:bg-slate-500/15 dark:text-slate-100";
-      const netBadgeLabel =
-        netSign === "surplus"
-          ? t.observedStressNetSurplusBadge
-          : netSign === "deficit"
-            ? t.observedStressNetDeficitBadge
-            : t.observedStressNetBalancedBadge;
-      const netHint =
-        netSign === "surplus"
-          ? t.observedStressNetSurplusHint
-          : netSign === "deficit"
-            ? t.observedStressNetDeficitHint
-            : t.observedStressNetBalancedHint;
-      const sectionBorderClass =
-        netSign === "surplus"
-          ? "border-emerald-300/55 dark:border-emerald-500/30"
-          : netSign === "deficit"
-            ? "border-rose-300/55 dark:border-rose-500/30"
-            : "border-slate-300/55 dark:border-slate-600/40";
-      const sectionBgClass =
-        netSign === "surplus"
-          ? "from-emerald-50/90 dark:from-emerald-950/30"
-          : netSign === "deficit"
-            ? "from-rose-50/90 dark:from-rose-950/30"
-            : "from-slate-50/90 dark:from-slate-900/40";
-
-      const hasSurplus = grossStructuralSurplusMwh > 1e-9;
-      const hasDeficit = grossStructuralDeficitMwh > 1e-9;
-      const hasImports =
-        borderTradeTotals !== null && borderTradeTotals.observedImportEnergyMwh > 1e-9;
-      const hasCurtailment = totalCurtailmentMwh > 1e-9;
-      const showParadoxLead = hasSurplus && hasImports && hasCurtailment;
-      const importValue = hasImports
-        ? formatEnergyFromMwh(borderTradeTotals.observedImportEnergyMwh)
-        : borderTradeTotals !== null
-          ? formatEnergyFromMwh(0)
-          : "—";
-      const importDetail = hasImports
-        ? t.observedStressImportDetail
-        : borderTradeTotals !== null
-          ? t.observedStressImportDetail
-          : t.observedStressImportUnavailable;
-      const curtailmentValue =
-        hasCurtailment
-          ? formatEnergyFromMwh(totalCurtailmentMwh)
-          : flow?.curtailmentStatus === "loaded"
-            ? formatEnergyFromMwh(0)
-            : "—";
-      const curtailmentDetail =
-        hasCurtailment || flow?.curtailmentStatus === "loaded"
-          ? t.observedStressCurtailmentDetail
-          : curtailmentStatusHint;
-
-      return (
-        <section
-          aria-labelledby="observed-stress-heading"
-          className={`rounded-xl border bg-gradient-to-b to-white px-3 py-3 shadow-sm dark:to-slate-950/85 md:px-4 md:py-4 ${sectionBorderClass} ${sectionBgClass}`}
-        >
-          <div className="border-b border-border/45 pb-4 text-center dark:border-slate-600/35">
-            <p className="text-[11px] tabular-nums text-slate-600 dark:text-slate-300">{selectorLabel}</p>
-            <p
-              id="observed-stress-heading"
-              className="mt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 dark:text-slate-400"
-            >
-              {t.observedStressNetLabel}
-            </p>
-            <p
-              className={`mt-1 text-4xl font-black tabular-nums leading-none tracking-tight sm:text-5xl ${netValueClass}`}
-              aria-label={`${t.observedStressNetLabel}: ${formatSignedEnergyFromMwh(netMwh)}`}
-            >
-              {formatSignedEnergyFromMwh(netMwh)}
-            </p>
-            <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2">
-              <span
-                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${netBadgeClass}`}
-              >
-                {netBadgeLabel}
-              </span>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400">{netHint}</span>
-            </div>
-          </div>
-
-          {showParadoxLead ? (
-            <div className="mt-3 space-y-1 text-center">
-              <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-amber-800 dark:text-amber-200">
-                {t.observedStressEyebrow}
-              </p>
-              <p className="mx-auto max-w-2xl text-[11px] font-medium leading-snug text-amber-950 dark:text-amber-100">
-                {t.observedStressLead}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="mt-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <p className="mb-2 text-center text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
-              {t.observedStressParadoxEyebrow}
-            </p>
-            <div className="grid min-w-[520px] grid-cols-4 divide-x divide-border/60 dark:divide-slate-600/40">
-              <ObservedStressMetric
-                label={t.observedStressSurplusLabel}
-                value={
-                  hasSurplus
-                    ? `+${formatEnergyFromMwh(grossStructuralSurplusMwh)}`
-                    : formatEnergyFromMwh(0)
-                }
-                detail={t.observedStressSurplusDetail}
-                tone="surplus"
-              />
-              <ObservedStressMetric
-                label={t.observedStressImportLabel}
-                value={importValue}
-                detail={importDetail}
-                tone="warning"
-              />
-              <ObservedStressMetric
-                label={t.observedStressCurtailmentLabel}
-                value={curtailmentValue}
-                detail={curtailmentDetail}
-                tone="warning"
-              />
-              <ObservedStressMetric
-                label={t.observedStressDeficitLabel}
-                value={
-                  hasDeficit
-                    ? `−${formatEnergyFromMwh(grossStructuralDeficitMwh)}`
-                    : formatEnergyFromMwh(0)
-                }
-                detail={t.observedStressDeficitDetail}
-                tone="deficit"
-              />
-            </div>
-          </div>
-
-          <p className="mt-2 text-center text-[9px] text-slate-400 dark:text-slate-500">
-            {t.observedStressDisclaimer}
-          </p>
-        </section>
-      );
-    })();
+    const netMwhForObserved = windowNetStructuralBalanceGwh * 1_000;
+    const netSignForObserved =
+      netMwhForObserved > 1e-6 ? "surplus" : netMwhForObserved < -1e-6 ? "deficit" : "balanced";
+    const hasSurplusForObserved = grossStructuralSurplusMwh > 1e-9;
+    const hasDeficitForObserved = grossStructuralDeficitMwh > 1e-9;
+    const hasImportsForObserved =
+      borderTradeTotals !== null && borderTradeTotals.observedImportEnergyMwh > 1e-9;
+    const hasCurtailmentForObserved = totalCurtailmentMwh > 1e-9;
+    const workspaceContextStrip = (
+      <ObservedStressSection
+        selectorLabel={selectorLabel}
+        netBalanceLabel={t.observedStressNetLabel}
+        netBalanceValue={formatSignedEnergyFromMwh(netMwhForObserved)}
+        netValueClass={
+          netSignForObserved === "surplus"
+            ? "text-emerald-600 dark:text-emerald-300"
+            : netSignForObserved === "deficit"
+              ? "text-rose-600 dark:text-rose-300"
+              : "text-slate-700 dark:text-slate-200"
+        }
+        netBadgeClass={
+          netSignForObserved === "surplus"
+            ? "border-emerald-300/80 bg-emerald-50 text-emerald-900 dark:border-emerald-400/35 dark:bg-emerald-500/15 dark:text-emerald-100"
+            : netSignForObserved === "deficit"
+              ? "border-rose-300/80 bg-rose-50 text-rose-900 dark:border-rose-400/35 dark:bg-rose-500/15 dark:text-rose-100"
+              : "border-slate-300/80 bg-slate-50 text-slate-800 dark:border-slate-500/35 dark:bg-slate-500/15 dark:text-slate-100"
+        }
+        netBadgeLabel={
+          netSignForObserved === "surplus"
+            ? t.observedStressNetSurplusBadge
+            : netSignForObserved === "deficit"
+              ? t.observedStressNetDeficitBadge
+              : t.observedStressNetBalancedBadge
+        }
+        netHint={
+          netSignForObserved === "surplus"
+            ? t.observedStressNetSurplusHint
+            : netSignForObserved === "deficit"
+              ? t.observedStressNetDeficitHint
+              : t.observedStressNetBalancedHint
+        }
+        sectionBorderClass={
+          netSignForObserved === "surplus"
+            ? "border-emerald-300/55 dark:border-emerald-500/30"
+            : netSignForObserved === "deficit"
+              ? "border-rose-300/55 dark:border-rose-500/30"
+              : "border-slate-300/55 dark:border-slate-600/40"
+        }
+        sectionBgClass={
+          netSignForObserved === "surplus"
+            ? "from-emerald-50/90 dark:from-emerald-950/30"
+            : netSignForObserved === "deficit"
+              ? "from-rose-50/90 dark:from-rose-950/30"
+              : "from-slate-50/90 dark:from-slate-900/40"
+        }
+        showParadoxLead={hasSurplusForObserved && hasImportsForObserved && hasCurtailmentForObserved}
+        paradoxEyebrow={t.observedStressEyebrow}
+        paradoxLead={t.observedStressLead}
+        metricsEyebrow={t.observedStressParadoxEyebrow}
+        metrics={[
+          {
+            label: t.observedStressSurplusLabel,
+            value: hasSurplusForObserved
+              ? `+${formatEnergyFromMwh(grossStructuralSurplusMwh)}`
+              : formatEnergyFromMwh(0),
+            detail: t.observedStressSurplusDetail,
+            tone: "surplus",
+          },
+          {
+            label: t.observedStressImportLabel,
+            value: hasImportsForObserved
+              ? formatEnergyFromMwh(borderTradeTotals!.observedImportEnergyMwh)
+              : borderTradeTotals !== null
+                ? formatEnergyFromMwh(0)
+                : "—",
+            detail: hasImportsForObserved
+              ? t.observedStressImportDetail
+              : borderTradeTotals !== null
+                ? t.observedStressImportDetail
+                : t.observedStressImportUnavailable,
+            tone: "warning",
+          },
+          {
+            label: t.observedStressCurtailmentLabel,
+            value: hasCurtailmentForObserved
+              ? formatEnergyFromMwh(totalCurtailmentMwh)
+              : flow?.curtailmentStatus === "loaded"
+                ? formatEnergyFromMwh(0)
+                : "—",
+            detail:
+              hasCurtailmentForObserved || flow?.curtailmentStatus === "loaded"
+                ? t.observedStressCurtailmentDetail
+                : curtailmentStatusHint,
+            tone: "warning",
+          },
+          {
+            label: t.observedStressDeficitLabel,
+            value: hasDeficitForObserved
+              ? `−${formatEnergyFromMwh(grossStructuralDeficitMwh)}`
+              : formatEnergyFromMwh(0),
+            detail: t.observedStressDeficitDetail,
+            tone: "deficit",
+          },
+        ]}
+        disclaimer={t.observedStressDisclaimer}
+      />
+    );
 
     const renderTwelveMonthBalancedSection = () => {
       if (isRecommendationLoading) {
@@ -3835,139 +3020,44 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     <>
       <div className="min-w-0 space-y-4">
         <div className="rounded-2xl border border-border/75 bg-card/70 p-4 shadow-sm md:p-5 dark:border-white/[0.06] dark:bg-[rgba(10,16,28,0.76)]">
-          <div className="flex flex-col gap-3 border-b border-border/55 pb-4 dark:border-slate-600/35">
-            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <h2 className="text-xl font-semibold leading-tight tracking-tight text-slate-950 md:text-2xl dark:text-white [font-family:var(--font-heading)]">
-                  {t.profileTitle}
-                </h2>
-                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{coverageSummaryLine}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-end">
-                {lastUpdatedIso ? (
-                  <span className="inline-flex items-center rounded-full border border-border/70 bg-background/55 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-slate-600/40 dark:bg-slate-950/35 dark:text-slate-300">
-                    {language === "de" ? "Live" : "Live"} ·{" "}
-                    {timeFormatterSingleDay.format(new Date(lastUpdatedIso))}
-                  </span>
-                ) : null}
-                {onRefresh ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-full px-3 text-[11px]"
-                    disabled={isRefreshing}
-                    onClick={onRefresh}
-                  >
-                    {language === "de" ? "Aktualisieren" : "Refresh"}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <motion.div
-                className="flex min-h-9 w-full overflow-x-auto rounded-full border border-border/70 bg-muted/40 p-1 [-ms-overflow-style:none] [scrollbar-width:none] dark:border-slate-600/45 dark:bg-slate-950/50 [&::-webkit-scrollbar]:hidden"
-                role="tablist"
-                aria-label={t.timeframeLabelShort}
-              >
-                      {(
-                        [
-                          { mode: "day", label: t.dayMode },
-                          { mode: "week", label: t.weekMode },
-                          { mode: "month", label: t.monthMode },
-                          { mode: "custom", label: t.customMode },
-                        ] as const
-                      ).map((option) => (
-                        <button
-                          key={option.mode}
-                          type="button"
-                          role="tab"
-                          aria-selected={selectorMode === option.mode}
-                          onClick={() => setSelectorMode(option.mode)}
-                          className={`min-h-9 min-w-[4.5rem] flex-1 rounded-full px-3 py-1.5 text-xs font-bold tracking-tight transition sm:text-sm ${
-                            selectorMode === option.mode
-                              ? "bg-background text-slate-950 shadow-sm ring-1 ring-border/70 dark:bg-slate-900 dark:text-white dark:ring-slate-600/50"
-                              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-              </motion.div>
-
-              <div className="flex w-full items-stretch gap-2 sm:gap-3">
-                <button
-                  type="button"
-                  onClick={handlePreviousWindow}
-                  className={timeRangeNavButtonClass}
-                  aria-label={t.previousRange}
-                >
-                  <ChevronLeft className="size-5" aria-hidden />
-                </button>
-
-                <div className="min-w-0 flex-1">
-                  {selectorMode === "day" ? (
-                    <BerlinDayCalendarButton
-                      value={selectedDate}
-                      max={todayKey}
-                      onChange={setSelectedDate}
-                      language={language}
-                      prominent
-                    />
-                  ) : selectorMode === "custom" ? (
-                    <BerlinDateRangeCalendarButton
-                      start={customRangeStart}
-                      end={customRangeEnd}
-                      max={todayKey}
-                      onChange={({ start, end }) => {
-                        const spanDays = countBerlinCalendarDaysInclusive(start, end);
-                        if (spanDays > BERLIN_CUSTOM_RANGE_MAX_DAYS) {
-                          setCustomRangeStart(
-                            addBerlinCalendarDays(end, -(BERLIN_CUSTOM_RANGE_MAX_DAYS - 1))
-                          );
-                          setCustomRangeEnd(end);
-                          return;
-                        }
-                        setCustomRangeStart(start);
-                        setCustomRangeEnd(end);
-                      }}
-                      language={language}
-                      prominent
-                    />
-                  ) : selectorMode === "week" ? (
-                    <BerlinWeekCalendarButton
-                      value={selectedWeek}
-                      max={currentWeekKey}
-                      onChange={setSelectedWeek}
-                      label={timeRangeCenterLabel}
-                      language={language}
-                      prominent
-                    />
-                  ) : (
-                    <BerlinMonthCalendarButton
-                      value={selectedMonth}
-                      max={currentMonthKey}
-                      onChange={setSelectedMonth}
-                      label={timeRangeCenterLabel}
-                      language={language}
-                      prominent
-                    />
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  disabled={nextDisabled}
-                  onClick={handleNextWindow}
-                  className={timeRangeNavButtonClass}
-                  aria-label={t.nextRange}
-                >
-                  <ChevronRight className="size-5" aria-hidden />
-                </button>
-              </div>
-            </div>
-          </div>
+          <GermanyFlowPeriodSelector
+            language={language}
+            profileTitle={t.profileTitle}
+            coverageSummaryLine={coverageSummaryLine}
+            lastUpdatedIso={lastUpdatedIso}
+            isRefreshing={isRefreshing}
+            onRefresh={onRefresh}
+            selectorMode={selectorMode}
+            onSelectorModeChange={setSelectorMode}
+            selectedDate={selectedDate}
+            onSelectedDateChange={setSelectedDate}
+            selectedWeek={selectedWeek}
+            onSelectedWeekChange={setSelectedWeek}
+            selectedMonth={selectedMonth}
+            onSelectedMonthChange={setSelectedMonth}
+            customRangeStart={customRangeStart}
+            customRangeEnd={customRangeEnd}
+            onCustomRangeChange={(start, end) => {
+              setCustomRangeStart(start);
+              setCustomRangeEnd(end);
+            }}
+            todayKey={todayKey}
+            currentWeekKey={currentWeekKey}
+            currentMonthKey={currentMonthKey}
+            timeRangeCenterLabel={timeRangeCenterLabel}
+            onPreviousWindow={handlePreviousWindow}
+            onNextWindow={handleNextWindow}
+            nextDisabled={nextDisabled}
+            labels={{
+              timeframeLabelShort: t.timeframeLabelShort,
+              dayMode: t.dayMode,
+              weekMode: t.weekMode,
+              monthMode: t.monthMode,
+              customMode: t.customMode,
+              previousRange: t.previousRange,
+              nextRange: t.nextRange,
+            }}
+          />
 
           <div className="space-y-4 pt-4">
             {workspaceContextStrip}

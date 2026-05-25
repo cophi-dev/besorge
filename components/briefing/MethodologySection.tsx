@@ -50,7 +50,7 @@ export function MethodologySection({ language }: MethodologySectionProps) {
         };
 
   return (
-    <section className="border-t border-border/50 pt-8 md:pt-10">
+    <section id="methodology" className="border-t border-border/50 pt-8 md:pt-10">
       <details className="group rounded-xl border border-border/70 bg-card/50 shadow-sm backdrop-blur-sm dark:bg-card/30">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 text-left md:px-5 md:py-4">
           <div>

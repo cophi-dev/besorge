@@ -128,9 +128,9 @@ export function SiteShell({ children }: SiteShellProps) {
           - Tight, single-row balance: brand · language/theme controls.
         */}
         <header
-          className="fixed inset-x-0 top-0 z-[1200] border-b border-border/45 bg-background/85 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_10px_30px_-18px_rgba(2,6,23,0.55)] dark:border-white/[0.06] dark:bg-[rgba(7,11,20,0.72)] dark:supports-[backdrop-filter]:bg-[rgba(7,11,20,0.55)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05)_inset,0_14px_36px_-20px_rgba(0,0,0,0.85)]"
+          className="fixed inset-x-0 top-0 z-[1200] border-b border-border/45 bg-background/85 pt-[env(safe-area-inset-top,0px)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_10px_30px_-18px_rgba(2,6,23,0.55)] dark:border-white/[0.06] dark:bg-[rgba(7,11,20,0.72)] dark:supports-[backdrop-filter]:bg-[rgba(7,11,20,0.55)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05)_inset,0_14px_36px_-20px_rgba(0,0,0,0.85)]"
         >
-          <nav className="relative mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-5 lg:h-[68px] lg:px-12">
+          <nav className="relative mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-2 px-4 sm:h-16 sm:gap-4 sm:px-5 lg:h-[68px] lg:px-12">
             {/* Brand — logo + wordmark + tagline, baseline-aligned */}
             <Link
               href="/"
@@ -142,7 +142,7 @@ export function SiteShell({ children }: SiteShellProps) {
                 className="shrink-0 transition-transform duration-300 ease-out group-hover:scale-[1.04] shadow-[0_10px_28px_-8px_rgba(16,185,129,0.45)]"
               />
               <div className="flex min-w-0 items-baseline gap-2.5">
-                <span className="truncate text-[17px] font-medium leading-none tracking-[0.18em] text-foreground [font-family:var(--font-heading)]">
+                <span className="truncate text-[15px] font-medium leading-none tracking-[0.16em] text-foreground sm:text-[17px] sm:tracking-[0.18em] [font-family:var(--font-heading)]">
                   SpeicherPilot
                 </span>
                 <span
@@ -170,7 +170,7 @@ export function SiteShell({ children }: SiteShellProps) {
                       key={code}
                       type="button"
                       onClick={() => setLanguage(code)}
-                      className={`rounded-full px-2.5 py-1 text-[10.5px] font-semibold tracking-[0.08em] uppercase transition-colors ${
+                      className={`rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] uppercase transition-colors sm:px-2.5 ${
                         active
                           ? "bg-foreground text-background shadow-[0_1px_0_0_rgba(255,255,255,0.35)_inset]"
                           : "text-muted-foreground hover:text-foreground"
@@ -229,7 +229,9 @@ export function SiteShell({ children }: SiteShellProps) {
           </nav>
         </header>
 
-        <main className="pt-16 lg:pt-[68px]">{children}</main>
+        <main className="pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-[calc(68px+env(safe-area-inset-top,0px))]">
+          {children}
+        </main>
         <BessAiChatOverlay
           open={chatOpen}
           onClose={() => {
@@ -242,7 +244,7 @@ export function SiteShell({ children }: SiteShellProps) {
           seedPrompt={chatSeedPrompt}
         />
 
-        <footer className="border-t border-border/40 bg-card/40 backdrop-blur-sm">
+        <footer className="border-t border-border/40 bg-card/40 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-sm">
           <div className="mx-auto grid max-w-7xl gap-6 px-5 py-8 text-sm text-muted-foreground md:grid-cols-3 md:gap-8 md:px-8 lg:px-12">
             <div>
               <p className="text-xs font-semibold tracking-[0.2em] text-foreground uppercase">
@@ -300,13 +302,13 @@ export function SiteShell({ children }: SiteShellProps) {
                   ? "BESS-Planung & Einsatzsimulation"
                   : "BESS Planning & Dispatch Simulator"}
               </p>
-              <div className="mt-4 flex flex-col items-end gap-3">
+              <div className="mt-4 flex flex-col items-start gap-3 md:items-end">
                 {process.env.NEXT_PUBLIC_X_SITE_HANDLE ? (
                   <a
                     href={`https://x.com/${process.env.NEXT_PUBLIC_X_SITE_HANDLE.replace(/^@/, "")}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-end gap-2 text-sm font-medium text-foreground/90 transition hover:text-emerald-400"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-foreground/90 transition hover:text-emerald-400 md:justify-end"
                   >
                     <XLogo className="size-4 shrink-0" />
                     {language === "de" ? "SpeicherPilot auf X" : "SpeicherPilot on X"}
@@ -316,7 +318,7 @@ export function SiteShell({ children }: SiteShellProps) {
                   href="https://x.com/pphhiillliipppp"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-end gap-2 text-sm font-medium text-foreground/90 transition hover:text-emerald-400"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-foreground/90 transition hover:text-emerald-400 md:justify-end"
                   aria-label={language === "de" ? "@pphhiillliipppp auf X" : "@pphhiillliipppp on X"}
                 >
                   <XLogo className="size-4 shrink-0" />

@@ -175,15 +175,15 @@ export default function BessAiChatOverlay({
 
   return (
     <div className="fixed inset-0 z-[1300] overscroll-none bg-slate-950/45 backdrop-blur-md">
-      <div className="flex h-full w-full touch-pan-y items-center justify-center p-3 sm:p-6">
-        <div className="flex h-[min(860px,100%)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-300/65 bg-[#f9f8f6] shadow-[0_30px_80px_rgba(15,23,42,0.24)] dark:border-slate-500/35 dark:bg-slate-950">
-        <div className="flex items-start justify-between border-b border-slate-300/60 bg-white/80 px-5 py-4 dark:border-slate-500/35 dark:bg-slate-900/65 sm:px-7 sm:py-5">
-          <div>
+      <div className="flex h-[100dvh] max-h-[100dvh] w-full touch-pan-y items-stretch justify-center p-2 pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)] sm:items-center sm:p-6">
+        <div className="flex min-h-0 w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-300/65 bg-[#f9f8f6] shadow-[0_30px_80px_rgba(15,23,42,0.24)] sm:h-[min(860px,100%)] sm:rounded-3xl dark:border-slate-500/35 dark:bg-slate-950">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-300/60 bg-white/80 px-4 py-3 dark:border-slate-500/35 dark:bg-slate-900/65 sm:px-7 sm:py-5">
+          <div className="min-w-0 flex-1 pr-2">
             <p className="inline-flex items-center gap-2 text-xs tracking-[0.16em] text-primary uppercase dark:text-emerald-200">
               <Sparkles className="h-3.5 w-3.5" />
               SpeicherPilot Chat
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
+            <h2 className="mt-2 text-lg font-semibold leading-snug text-slate-900 dark:text-white sm:text-xl">
               {language === "de" ? "BESS-Entscheidungen mit mehr Klarheit" : "BESS decisions with more clarity"}
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
@@ -202,14 +202,14 @@ export default function BessAiChatOverlay({
           </button>
         </div>
 
-        <div className="border-b border-slate-300/50 bg-white/70 px-5 py-4 dark:border-slate-500/35 dark:bg-slate-900/45 sm:px-7">
-          <div className="flex flex-wrap gap-2.5">
+        <div className="shrink-0 border-b border-slate-300/50 bg-white/70 px-4 py-3 dark:border-slate-500/35 dark:bg-slate-900/45 sm:px-7 sm:py-4">
+          <div className="flex flex-wrap gap-2">
             {suggestions.map((suggestion) => (
               <button
                 key={suggestion}
                 type="button"
                 onClick={() => applySuggestion(suggestion)}
-                className="rounded-full border border-slate-300/70 bg-white px-3.5 py-2 text-xs text-slate-700 transition hover:border-primary/50 hover:text-primary dark:border-slate-500/50 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-emerald-200/50 dark:hover:text-emerald-100"
+                className="min-h-10 rounded-full border border-slate-300/70 bg-white px-3 py-2 text-left text-xs text-slate-700 transition hover:border-primary/50 hover:text-primary dark:border-slate-500/50 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-emerald-200/50 dark:hover:text-emerald-100 sm:px-3.5 sm:text-center"
               >
                 {suggestion}
               </button>
@@ -245,12 +245,12 @@ export default function BessAiChatOverlay({
 
         <form
           onSubmit={onSubmit}
-          className="border-t border-slate-300/60 bg-white/85 px-4 pt-4 pb-[max(0.8rem,env(safe-area-inset-bottom))] dark:border-slate-500/35 dark:bg-slate-900/70 md:px-7 md:pt-5 md:pb-5"
+          className="shrink-0 border-t border-slate-300/60 bg-white/85 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-500/35 dark:bg-slate-900/70 sm:px-7 sm:pt-4 sm:pb-5"
         >
           <label htmlFor="bess-chat-input" className="sr-only">
             {language === "de" ? "BESS-Frage stellen" : "Ask a BESS question"}
           </label>
-          <div className="flex items-end gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
             <input
               ref={inputRef}
               id="bess-chat-input"
@@ -261,15 +261,15 @@ export default function BessAiChatOverlay({
               }}
               placeholder={
                 language === "de"
-                  ? "Stellen Sie eine Frage zu Auslegung, Risiken, Vermarktung oder zur nächsten besten Entscheidung..."
-                  : "Ask about sizing, risks, market timing, or the next best decision..."
+                  ? "Frage zu Auslegung, Risiken oder nächster Entscheidung…"
+                  : "Ask about sizing, risks, or your next decision…"
               }
-              className="flex-1 rounded-2xl border border-slate-300/70 bg-white px-5 py-4 text-base text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-primary/50 focus:shadow-[0_0_0_4px_rgba(13,148,136,0.11)] dark:border-slate-500/50 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400"
+              className="min-h-12 flex-1 rounded-2xl border border-slate-300/70 bg-white px-4 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-primary/50 focus:shadow-[0_0_0_4px_rgba(13,148,136,0.11)] dark:border-slate-500/50 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400 sm:px-5 sm:py-4"
             />
             <button
               type="submit"
               disabled={sending || input.trim().length === 0}
-              className="inline-flex h-14 items-center gap-2 rounded-2xl bg-primary px-6 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,118,110,0.35)] transition hover:-translate-y-0.5 hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,118,110,0.35)] transition hover:-translate-y-0.5 hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-60 sm:h-14 sm:w-auto sm:px-6"
             >
               {language === "de" ? "Senden" : "Send"}
               <ArrowUpRight className="h-4 w-4" />

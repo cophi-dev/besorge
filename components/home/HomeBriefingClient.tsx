@@ -7,6 +7,7 @@ import { ChevronDown } from "lucide-react";
 import { z } from "zod";
 
 import { MethodologySection } from "@/components/briefing/MethodologySection";
+import { BriefingSectionNav } from "@/components/home/BriefingSectionNav";
 import { LiveSnapshotHeader } from "@/components/LiveSnapshotHeader";
 import { useLanguage } from "@/components/language-context";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -400,7 +401,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
       className="scroll-mt-20 md:scroll-mt-24 mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 pb-16 pt-5 md:gap-8 md:px-8 md:pb-20 lg:px-12"
     >
       {isLiveDataLoading && initial.market === null ? (
-        <div className="pointer-events-none fixed top-16 left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-md">
+        <div className="pointer-events-none fixed top-[calc(3.5rem+env(safe-area-inset-top,0px))] left-1/2 z-[1200] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-md sm:top-[calc(4rem+env(safe-area-inset-top,0px))] lg:top-[calc(68px+env(safe-area-inset-top,0px))]">
           <p className="text-xs text-muted-foreground">
             {language === "de"
               ? "Energy-Charts & Snapshot werden geladen…"
@@ -415,6 +416,9 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         </div>
       ) : null}
 
+      <BriefingSectionNav language={language} />
+
+      <section id="briefing-live">
       <LiveSnapshotHeader
         language={language}
         isLoading={isLiveDataLoading}
@@ -427,6 +431,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         fleetSocMoment={fleetSocMoment}
         updatedAtIso={market?.realtimeSystem.timestampIso ?? null}
       />
+      </section>
 
       <section id="overview" className="border-t border-border/50 pt-8 md:pt-10">
         <GermanyFlowStoryBridge
@@ -461,9 +466,11 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         </GermanyFlowStoryBridge>
       </section>
 
-      <MethodologySection language={language} />
+      <section id="methodology">
+        <MethodologySection language={language} />
+      </section>
 
-      <section className="border-t border-border/50 pt-8 md:pt-10">
+      <section id="fleet-map" className="border-t border-border/50 pt-8 md:pt-10">
         <details
           open
           className="group rounded-xl border border-border/60 bg-card/40 p-3 backdrop-blur-sm dark:bg-card/25"

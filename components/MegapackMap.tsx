@@ -353,7 +353,7 @@ export default function MegapackMap({ compact = false }: { compact?: boolean }) 
           ref={mapInstanceRef}
           center={DEFAULT_CENTER}
           zoom={DEFAULT_ZOOM}
-          className={isFullscreen ? "h-screen w-screen" : "h-[460px] w-full"}
+          className={isFullscreen ? "h-screen w-screen" : compact ? "h-[min(58vw,280px)] min-h-[220px] w-full sm:h-[340px] md:h-[460px]" : "h-[min(72vw,460px)] min-h-[260px] w-full sm:h-[460px]"}
           scrollWheelZoom={!compact}
           doubleClickZoom={!compact}
         >
