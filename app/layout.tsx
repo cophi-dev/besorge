@@ -4,6 +4,7 @@ import "./globals.css";
 import { SiteShell } from "@/components/site-shell";
 import { ThemeInitScript } from "@/components/ThemeInitScript";
 import { getPublicSiteOrigin } from "@/lib/publicSiteUrl";
+import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -64,6 +65,7 @@ export default function RootLayout({
       <body className="min-h-full bg-background text-foreground">
         <ThemeInitScript />
         <SiteShell>{children}</SiteShell>
+        <Analytics />
       </body>
     </html>
   );
