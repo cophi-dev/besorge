@@ -37,10 +37,7 @@ import {
   computeEconomics,
   defaultEconomicsAssumptions,
 } from "@/lib/bessEconomics";
-import {
-  formatPaybackYears,
-  presentIndicativeEurTotal,
-} from "@/lib/indicativeEconomicsDisplay";
+import { formatPaybackYears } from "@/lib/indicativeEconomicsDisplay";
 import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
 import { energyFlowSelectorStateFromStoryWindow } from "@/lib/briefingStoryWindow";
 import { createLogger } from "@/lib/debug";
@@ -117,6 +114,7 @@ import {
 } from "@/components/germany-day-energy-flow/schemas";
 import { evaluateBessScenario } from "@/components/germany-day-energy-flow/scenarioEvaluation";
 import { SimBenefitsSection } from "@/components/germany-day-energy-flow/SimBenefitsSection";
+import { SimulatedFlowPngButton } from "@/components/germany-day-energy-flow/SimulatedFlowPngButton";
 import type {
   BorderTradeTotals,
   ChartRow,
@@ -127,6 +125,8 @@ import type {
 export type { GermanyDayEnergyFlowProps } from "@/components/germany-day-energy-flow/types";
 
 const log = createLogger("germany-day-energy-flow");
+
+export const GERMANY_SIM_FLOW_CAPTURE_ID = "speicherpilot-germany-sim-capture";
 
 type AbsorptionTotals = {
   grossSurplusEnergyMwh: number;
@@ -1942,12 +1942,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           ? monthLabelFormatter.format(new Date(`${selectedMonth}-01T00:00:00.000Z`))
           : `${customRangeStart} – ${customRangeEnd}`;
   const balancedRecommendation = recommendationByTier?.balanced ?? null;
-  const economicsReferenceCapacityMwh =
-    autoSimulatedBaselineMwh > 0
-      ? autoSimulatedBaselineMwh
-      : balancedRecommendation && balancedRecommendation.recommendedEnergyMwh > 0
-        ? balancedRecommendation.recommendedEnergyMwh
-        : null;
   const marketReference = revenueModel?.marketReference ?? null;
 
   useEffect(() => {
@@ -2115,14 +2109,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     recommendation && Number.isFinite(recommendation.continuousWindowRequiredEnergyMwh)
       ? formatEnergyFromMwh(recommendation.continuousWindowRequiredEnergyMwh)
       : "—";
-  const flowWindowDays =
-    flow !== null
-      ? countBerlinCalendarDaysInclusive(
-          flow.rangeStartBerlin ?? flow.dateBerlin,
-          flow.rangeEndBerlin ?? flow.dateBerlin
-        )
-      : 1;
-
   const currentFleetScenario =
     flow?.slots.length &&
     fleetEnergyCapacityMwh !== null &&
@@ -2631,6 +2617,13 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     </div>
   );
 
+  const simCaptureDateKey =
+    flow?.rangeStartBerlin &&
+    flow?.rangeEndBerlin &&
+    flow.rangeStartBerlin !== flow.rangeEndBerlin
+      ? `${flow.rangeStartBerlin}_${flow.rangeEndBerlin}`
+      : (flow?.dateBerlin ?? "germany");
+
   const renderDualFlowChartsBlock = (afterSimulatedChart?: ReactNode) => (
     <div
       id="speicherpilot-germany-flow-capture"
@@ -2645,6 +2638,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               size="icon"
               className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
               aria-label={t.chartFullscreenExpand}
+              data-export-ignore
               onClick={() => {
                 setFlowChartFullscreenMode("observed");
                 onSimulatedModeChange?.(false);
@@ -2656,42 +2650,40 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           ),
         })}
         {renderSimulatedCapacityOverridePanel()}
-        {renderFlowChartSection("simulated", {
-          chartActions: (
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
-              aria-label={t.chartFullscreenExpand}
-              onClick={() => {
-                setFlowChartFullscreenMode("simulated");
-                onSimulatedModeChange?.(true);
-                setFlowChartFullscreenOpen(true);
-              }}
-            >
-              <Maximize2 className="size-4" aria-hidden />
-            </Button>
-          ),
-        })}
-        {afterSimulatedChart}
+        <div id={GERMANY_SIM_FLOW_CAPTURE_ID} className="flex min-w-0 flex-col gap-3">
+          {renderFlowChartSection("simulated", {
+            chartActions: (
+              <div className="flex shrink-0 items-start gap-2" data-export-ignore>
+                <SimulatedFlowPngButton
+                  language={language}
+                  captureElementId={GERMANY_SIM_FLOW_CAPTURE_ID}
+                  dateBerlin={simCaptureDateKey}
+                  disabled={!flow?.slots.length || modeledScenario === null}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 shrink-0 rounded-full border-border/70 bg-background/80 shadow-sm dark:bg-slate-950/60"
+                  aria-label={t.chartFullscreenExpand}
+                  onClick={() => {
+                    setFlowChartFullscreenMode("simulated");
+                    onSimulatedModeChange?.(true);
+                    setFlowChartFullscreenOpen(true);
+                  }}
+                >
+                  <Maximize2 className="size-4" aria-hidden />
+                </Button>
+              </div>
+            ),
+          })}
+          {afterSimulatedChart}
+        </div>
       </div>
     </div>
   );
 
   const renderDashboard = () => {
-    const indicativeValuePresentation =
-      modeledScenario !== null
-        ? presentIndicativeEurTotal({
-            language,
-            valueEur: modeledScenario.totalValueCreatedEur,
-            windowDays: flowWindowDays,
-            absorbedMwh: modeledScenario.coverage.absorbedSurplusEnergyMwh,
-            capacityMwh: effectivePracticalCapacityMwh,
-            referenceCapacityMwh: economicsReferenceCapacityMwh,
-          })
-        : null;
-
     const simChargeSharePct =
       modeledScenario !== null
         ? modeledScenario.coverage.absorbedSurplusShare * 100
@@ -2709,82 +2701,17 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     const totalCurtailmentMwh =
       modeledScenario?.coverage.totalCurtailmentEnergyMwh ??
       slotStructuralTotalsForKpis.totalCurtailmentEnergyMwh;
-    const absorbedCurtailmentMwh = modeledScenario?.absorbedCurtailmentEnergyMwh ?? null;
-    const curtailmentAbsorbedSharePct =
-      totalCurtailmentMwh > 1e-9 && absorbedCurtailmentMwh !== null
-        ? (absorbedCurtailmentMwh / totalCurtailmentMwh) * 100
-        : null;
     const curtailmentStatusHint =
       flow?.curtailmentStatus === "loaded"
         ? t.curtailmentStatusConfigured
         : flow?.curtailmentStatus === "unavailable_not_configured"
           ? t.curtailmentStatusMissingConfig
           : t.curtailmentStatusUpstream;
-    const peakCurtailmentMw = flow.slots.reduce(
-      (max, slot) => Math.max(max, Math.max(0, slot.curtailmentMw ?? 0)),
-      0
-    );
-    const showAuxSourcesFootnote =
-      flow?.curtailmentStatus === "loaded" ||
-      (marketReference !== null && marketReference.positiveRedispatchCostEurPerMwh > 0);
-    const curtailmentKpiValue =
-      absorbedCurtailmentMwh !== null && totalCurtailmentMwh > 1e-9 && curtailmentAbsorbedSharePct !== null
-        ? `${pctFormatter.format(curtailmentAbsorbedSharePct)}%`
-        : totalCurtailmentMwh > 1e-9
-          ? "0%"
-          : "—";
-    const curtailmentKpiDetail =
-      totalCurtailmentMwh > 1e-9 && absorbedCurtailmentMwh !== null
-        ? t.simBenefitsCurtailmentDetail(
-            formatPowerFromMw(peakCurtailmentMw),
-            formatEnergyFromMwh(absorbedCurtailmentMwh),
-            formatEnergyFromMwh(totalCurtailmentMwh)
-          )
-        : curtailmentStatusHint;
-    const redispatchKpiDetail =
-      marketReference !== null && marketReference.positiveRedispatchCostEurPerMwh > 0
-        ? t.simBenefitsRedispatchDetail(
-            priceFormatter.format(marketReference.positiveRedispatchCostEurPerMwh)
-          )
-        : t.simBenefitsRedispatchUnavailable;
-
-    const obsNetMwhForSim = windowNetStructuralBalanceGwh * 1_000;
     const gridReliefPctForSim = modeledScenario?.gridImpactReductionPct ?? null;
     const servedDeficitPctForSim =
       modeledScenario !== null ? modeledScenario.coverage.servedDeficitShare * 100 : null;
     const missedChargePctForSim =
       simChargeSharePct !== null ? Math.max(0, 100 - simChargeSharePct) : null;
-    const showSimLeadForSim =
-      modeledScenario !== null &&
-      ((gridReliefPctForSim !== null && gridReliefPctForSim > 0.05) ||
-        (importSavedMwh !== null && importSavedMwh > 1e-6) ||
-        (simChargeSharePct !== null && simChargeSharePct > 0.05));
-    const simAuxLine =
-      curtailmentKpiValue !== "—" ||
-      formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language) !== "—"
-        ? [
-            curtailmentKpiValue !== "—"
-              ? `${t.simBenefitsCurtailmentLabel}: ${curtailmentKpiValue}${curtailmentKpiDetail ? ` · ${curtailmentKpiDetail}` : ""}`
-              : null,
-            formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language) !== "—"
-              ? `${t.simBenefitsRedispatchLabel}: ${formatCurrencyCompact(modeledScenario?.avoidedRedispatchCostsEur ?? null, language)}${redispatchKpiDetail ? ` · ${redispatchKpiDetail}` : ""}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")
-        : null;
-    const simEconomicsLine = indicativeValuePresentation?.perMwhValue
-      ? `${t.simBenefitsEconomicsLine(indicativeValuePresentation.perMwhValue)}${
-          modeledScenario?.totalValueCreatedEur !== null &&
-          modeledScenario?.totalValueCreatedEur !== undefined
-            ? ` · ${formatCurrencyCompact(modeledScenario.totalValueCreatedEur, language)} ${
-                language === "de"
-                  ? "gesamt (Spread + Abregelung + Redispatch)"
-                  : "total (spread + curtailment + redispatch)"
-              }`
-            : ""
-        }`
-      : null;
     const simBenefitsOverview = (
       <SimBenefitsSection
         selectorLabel={selectorLabel}
@@ -2792,17 +2719,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         heroLabel={t.simBenefitsHeroLabel}
         heroValue={gridReliefPctForSim !== null ? `−${pctFormatter.format(gridReliefPctForSim)}%` : "—"}
         heroDetail={t.simBenefitsHeroDetail}
-        swingCompareLine={t.simBenefitsSwingCompare(
-          formatEnergyFromMwh(netSwingTotalsMwh.baselineAbsMwh),
-          formatEnergyFromMwh(netSwingTotalsMwh.adjustedAbsMwh)
-        )}
-        netBalanceNote={t.simBenefitsNetBalanceNote(
-          formatSignedEnergyFromMwh(obsNetMwhForSim),
-          storedPracticalEndMwh !== null ? formatEnergyFromMwh(storedPracticalEndMwh) : "—"
-        )}
-        showLead={showSimLeadForSim}
-        leadEyebrow={t.simBenefitsEyebrow}
-        leadText={t.simBenefitsLead}
         impactEyebrow={t.simBenefitsImpactEyebrow}
         metrics={[
           {
@@ -2845,10 +2761,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
             tone: "warning",
           },
         ]}
-        auxLine={simAuxLine}
-        auxFootnote={showAuxSourcesFootnote ? t.simBenefitsAuxSourcesFootnote : null}
-        economicsLine={simEconomicsLine}
-        disclaimer={t.simBenefitsDisclaimer}
       />
     );
 

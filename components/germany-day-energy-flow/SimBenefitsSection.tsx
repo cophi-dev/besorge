@@ -7,17 +7,8 @@ type SimBenefitsSectionProps = {
   heroLabel: string;
   heroValue: string;
   heroDetail: string;
-  swingCompareLine: string;
-  netBalanceNote: string;
-  showLead: boolean;
-  leadEyebrow: string;
-  leadText: string;
   impactEyebrow: string;
   metrics: [ObservedStressMetricItem, ObservedStressMetricItem, ObservedStressMetricItem, ObservedStressMetricItem];
-  auxLine?: string | null;
-  auxFootnote?: string | null;
-  economicsLine?: string | null;
-  disclaimer: string;
 };
 
 export function SimBenefitsSection({
@@ -26,17 +17,8 @@ export function SimBenefitsSection({
   heroLabel,
   heroValue,
   heroDetail,
-  swingCompareLine,
-  netBalanceNote,
-  showLead,
-  leadEyebrow,
-  leadText,
   impactEyebrow,
   metrics,
-  auxLine,
-  auxFootnote,
-  economicsLine,
-  disclaimer,
 }: SimBenefitsSectionProps) {
   return (
     <section
@@ -61,22 +43,7 @@ export function SimBenefitsSection({
           {heroValue}
         </p>
         <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">{heroDetail}</p>
-        <p className="mt-2 text-[10px] tabular-nums text-slate-500 dark:text-slate-400">{swingCompareLine}</p>
-        <p className="mx-auto mt-2 max-w-2xl text-[10px] leading-snug text-slate-500 dark:text-slate-400">
-          {netBalanceNote}
-        </p>
       </div>
-
-      {showLead ? (
-        <div className="mt-3 space-y-1 text-center">
-          <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-800 dark:text-emerald-200">
-            {leadEyebrow}
-          </p>
-          <p className="mx-auto max-w-2xl text-[11px] font-medium leading-snug text-emerald-950 dark:text-emerald-100">
-            {leadText}
-          </p>
-        </div>
-      ) : null}
 
       <div className="mt-3">
         <p className="mb-2 text-center text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
@@ -94,18 +61,6 @@ export function SimBenefitsSection({
           ))}
         </div>
       </div>
-
-      {auxLine ? (
-        <p className="mt-2.5 text-center text-[10px] tabular-nums text-slate-600 dark:text-slate-400">{auxLine}</p>
-      ) : null}
-      {auxFootnote ? (
-        <p className="mt-2 text-center text-[9px] leading-snug text-slate-400 dark:text-slate-500">{auxFootnote}</p>
-      ) : null}
-      {economicsLine ? (
-        <p className="mt-2 text-center text-[10px] text-slate-600 dark:text-slate-400">{economicsLine}</p>
-      ) : null}
-
-      <p className="mt-1 text-center text-[9px] text-slate-400 dark:text-slate-500">{disclaimer}</p>
     </section>
   );
 }
