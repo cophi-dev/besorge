@@ -42,7 +42,7 @@ import type { BriefingStoryWindow } from "@/lib/briefingStoryWindow";
 import { energyFlowSelectorStateFromStoryWindow } from "@/lib/briefingStoryWindow";
 import { createLogger } from "@/lib/debug";
 import type { GermanyDispatchSlotsResponse } from "@/lib/energyChartsApi";
-import { buildGermanyPerspectiveFallback } from "@/lib/germanyPerspectiveLlm";
+import { buildGermanyPerspectiveFallback, buildGermanyPerspectiveSummaryAndDetails, type GermanyPerspectivePayload } from "@/lib/germanyPerspectiveLlm";
 import {
   computeCyclingFleetSurplusAbsorption,
   computeNetSurplusFleetAbsorption,
@@ -64,7 +64,7 @@ import {
 } from "@/lib/chartFleetSocSnapshot";
 import { Button } from "@/components/ui/button";
 
-import { CompactDetailStat, PerspectiveNarrativeBody } from "@/components/germany-day-energy-flow/CompactDetailStat";
+import { CompactDetailStat, PerspectiveNarrativeBody, PerspectiveSummaryWithDetails } from "@/components/germany-day-energy-flow/CompactDetailStat";
 import {
   CROSS_BORDER_EXPORT_FILL,
   CROSS_BORDER_IMPORT_FILL,
@@ -805,6 +805,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           perspectiveLoading: "Jahresperspektive wird formuliert …",
           perspectiveSourceLlm: "LLM-Einordnung · indikatives Modell",
           perspectiveSourceFallback: "Regelbasierte Einordnung · indikatives Modell",
+          perspectiveDetailsToggle: "Details anzeigen",
           modeObserved: "Beobachtet",
           modeSimulated: "Simuliertes BESS",
           timeframeLabelShort: "Zeitraum",
@@ -1137,6 +1138,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           perspectiveLoading: "Formulating annual perspective …",
           perspectiveSourceLlm: "LLM narrative · indicative model",
           perspectiveSourceFallback: "Rule-based narrative · indicative model",
+          perspectiveDetailsToggle: "Show details",
           modeObserved: "Observed",
           modeSimulated: "Simulated BESS",
           timeframeLabelShort: "Period",
@@ -2930,6 +2932,25 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       const sourceLabel =
         perspectiveSource === "llm" ? t.perspectiveSourceLlm : t.perspectiveSourceFallback;
 
+      const fallbackPayload: GermanyPerspectivePayload = {
+        language,
+        lookbackLabel: `${recommendation.rangeStartBerlin}–${recommendation.rangeEndBerlin}`,
+        recommendedEnergyGwh: balancedRecommendation.recommendedEnergyMwh / 1_000,
+        recommendedPowerGw: balancedRecommendation.recommendedPowerMw / 1_000,
+        paybackYears: recommendation.indicativeEconomicsAtBalancedTier?.paybackYears ?? null,
+        absorbedSurplusSharePct: recommendation.impactAtBalancedTier
+          ? recommendation.impactAtBalancedTier.absorbedSurplusShare * 100
+          : null,
+        servedDeficitSharePct: recommendation.impactAtBalancedTier
+          ? recommendation.impactAtBalancedTier.servedDeficitShare * 100
+          : null,
+        annualRevenueEur: balancedRevenueTileValue,
+        peakSocGwh: recommendation.continuousWindowRequiredEnergyMwh / 1_000,
+        windowLabel: selectorLabel,
+      };
+
+      const useLlmNarrative = perspectiveNarrative && perspectiveSource === "llm";
+
       return (
         <section
           className="rounded-xl border border-border/70 bg-muted/20 px-4 py-4 dark:border-slate-600/45 dark:bg-slate-950/25"
@@ -2946,27 +2967,15 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
               {isPerspectiveLoading ? t.perspectiveLoading : sourceLabel}
             </p>
           </div>
-          <PerspectiveNarrativeBody
-            text={
-              perspectiveNarrative ??
-              buildGermanyPerspectiveFallback({
-                language,
-                lookbackLabel: `${recommendation.rangeStartBerlin}–${recommendation.rangeEndBerlin}`,
-                recommendedEnergyGwh: balancedRecommendation.recommendedEnergyMwh / 1_000,
-                recommendedPowerGw: balancedRecommendation.recommendedPowerMw / 1_000,
-                paybackYears: recommendation.indicativeEconomicsAtBalancedTier?.paybackYears ?? null,
-                absorbedSurplusSharePct: recommendation.impactAtBalancedTier
-                  ? recommendation.impactAtBalancedTier.absorbedSurplusShare * 100
-                  : null,
-                servedDeficitSharePct: recommendation.impactAtBalancedTier
-                  ? recommendation.impactAtBalancedTier.servedDeficitShare * 100
-                  : null,
-                annualRevenueEur: balancedRevenueTileValue,
-                peakSocGwh: recommendation.continuousWindowRequiredEnergyMwh / 1_000,
-                windowLabel: selectorLabel,
-              })
-            }
-          />
+          {useLlmNarrative ? (
+            <PerspectiveNarrativeBody text={perspectiveNarrative} />
+          ) : (
+            <PerspectiveSummaryWithDetails
+              summaryText={buildGermanyPerspectiveSummaryAndDetails(fallbackPayload).summary}
+              detailsText={buildGermanyPerspectiveSummaryAndDetails(fallbackPayload).details}
+              detailsLabel={t.perspectiveDetailsToggle}
+            />
+          )}
         </section>
       );
     };

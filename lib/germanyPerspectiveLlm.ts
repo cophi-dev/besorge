@@ -95,6 +95,98 @@ function formatEur(language: GermanyPerspectivePayload["language"], value: numbe
   }).format(Math.round(value));
 }
 
+export type GermanyPerspectiveSummaryAndDetails = {
+  summary: string;
+  details: string;
+};
+
+export function buildGermanyPerspectiveSummary(payload: GermanyPerspectivePayload): string {
+  const energy = formatGwh(payload.language, payload.recommendedEnergyGwh);
+  const power = formatGw(payload.language, payload.recommendedPowerGw);
+
+  const coveragePart =
+    payload.absorbedSurplusSharePct !== null
+      ? payload.language === "de"
+        ? `, deckt ca. ${Math.round(payload.absorbedSurplusSharePct)} % der Ladechance`
+        : `, covers ~${Math.round(payload.absorbedSurplusSharePct)}% of charge opportunity`
+      : "";
+
+  const paybackPart =
+    payload.paybackYears !== null
+      ? payload.language === "de"
+        ? `, rechnet sich in ca. ${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(payload.paybackYears)} Jahren`
+        : `, pays back in ~${new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 }).format(payload.paybackYears)} years`
+      : "";
+
+  if (payload.language === "de") {
+    return `Empfohlen: ${energy} GWh bei ${power} GW${coveragePart}${paybackPart}.`;
+  }
+
+  return `Recommended: ${energy} GWh at ${power} GW${coveragePart}${paybackPart}.`;
+}
+
+export function buildGermanyPerspectiveDetails(payload: GermanyPerspectivePayload): string {
+  const energy = formatGwh(payload.language, payload.recommendedEnergyGwh);
+  const power = formatGw(payload.language, payload.recommendedPowerGw);
+  const payback =
+    payload.paybackYears !== null
+      ? payload.language === "de"
+        ? `${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(payload.paybackYears)} Jahre`
+        : `${new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 }).format(payload.paybackYears)} years`
+      : null;
+  const coverage =
+    payload.absorbedSurplusSharePct !== null && payload.servedDeficitSharePct !== null
+      ? payload.language === "de"
+        ? `Abdeckung: ${Math.round(payload.absorbedSurplusSharePct)} % Ladechance, ${Math.round(payload.servedDeficitSharePct)} % Defizit.`
+        : `Coverage: ${Math.round(payload.absorbedSurplusSharePct)}% charge opportunity, ${Math.round(payload.servedDeficitSharePct)}% deficit.`
+      : null;
+  const revenue =
+    payload.annualRevenueEur !== null
+      ? payload.language === "de"
+        ? `Indikativer Jahreserlös ${formatEur(payload.language, payload.annualRevenueEur)}.`
+        : `Indicative annual revenue ${formatEur(payload.language, payload.annualRevenueEur)}.`
+      : null;
+  const windowCompare =
+    payload.windowOptimizedCapacityGwh !== undefined && payload.windowLabel
+      ? payload.language === "de"
+        ? `Fenstergröße für ${payload.windowLabel}: ${formatGwh(payload.language, payload.windowOptimizedCapacityGwh)} GWh.`
+        : `Window size for ${payload.windowLabel}: ${formatGwh(payload.language, payload.windowOptimizedCapacityGwh)} GWh.`
+      : null;
+
+  if (payload.language === "de") {
+    return [
+      `Balanced-Größe (P90 der Kalendertage): ${energy} GWh, ${power} GW.`,
+      coverage,
+      revenue,
+      payback ? `Amortisation (CAPEX-Annahmen): ~${payback}.` : null,
+      windowCompare,
+      "Illustratives Modell — keine Beschaffungsempfehlung.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return [
+    `Balanced size (P90 across calendar days): ${energy} GWh, ${power} GW.`,
+    coverage,
+    revenue,
+    payback ? `Payback (capex assumptions): ~${payback}.` : null,
+    windowCompare,
+    "Illustrative model — not procurement advice.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function buildGermanyPerspectiveSummaryAndDetails(
+  payload: GermanyPerspectivePayload
+): GermanyPerspectiveSummaryAndDetails {
+  return {
+    summary: buildGermanyPerspectiveSummary(payload),
+    details: buildGermanyPerspectiveDetails(payload),
+  };
+}
+
 export function buildGermanyPerspectiveFallback(payload: GermanyPerspectivePayload): string {
   const energy = formatGwh(payload.language, payload.recommendedEnergyGwh);
   const power = formatGw(payload.language, payload.recommendedPowerGw);

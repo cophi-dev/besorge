@@ -67,3 +67,29 @@ export function PerspectiveNarrativeBody({ text }: { text: string }) {
     </div>
   );
 }
+
+export function PerspectiveSummaryWithDetails({
+  summaryText,
+  detailsText,
+  detailsLabel,
+}: {
+  summaryText: string;
+  detailsText: string;
+  detailsLabel: string;
+}) {
+  return (
+    <div className="mt-4 space-y-3 border-t border-border/50 pt-4 dark:border-slate-600/35">
+      <p className="text-[15px] font-medium leading-[1.65] text-slate-800 dark:text-slate-100">
+        {summaryText}
+      </p>
+      <details className="group">
+        <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+          {detailsLabel}
+        </summary>
+        <p className="mt-2 text-sm leading-[1.7] text-slate-600 dark:text-slate-300">
+          {detailsText}
+        </p>
+      </details>
+    </div>
+  );
+}
