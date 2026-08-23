@@ -12,34 +12,40 @@ export function HeroValueProp({ language }: HeroValuePropProps) {
       ? {
           tagline: "Für TGA-Planer, Stadtwerke & Energie-Ingenieure",
           headline:
-            "Batteriespeicher-Potenzial in Echtzeit sehen — Dimensionierung starten, ohne Anruf.",
+            "Batteriespeicher-Potenzial in Echtzeit sehen — selbst ausprobieren, kein Login nötig.",
           subline:
-            "Live-Daten aus Energy-Charts: Erkennen Sie Überschuss-/Defizit-Muster und lassen Sie eine transparente Greedy-Simulation Ihren Speicherbedarf abschätzen.",
+            "Live-Daten aus Energy-Charts: Erkennen Sie Überschuss- und Defizit-Muster und sehen Sie, wie viel davon ein Speicher abdecken könnte.",
           noticeLabel: "Kein",
           noticeItems: ["SCADA", "Handelsempfehlung", "Netzbetreiber-Interna"],
           ctaLabel: "So geht's",
           step1: "Live-Snapshot checken",
           step1Desc: "Aktuelle Erzeugung vs. Last in DE",
+          step1Href: "#briefing-live",
           step2: "Tagesprofil erkunden",
           step2Desc: "Überschuss-/Defizit-Fenster im Chart",
+          step2Href: "#overview",
           step3: "Speicher-Empfehlung mitnehmen",
-          step3Desc: "GWh-Sizing & Coverage-Anteil",
+          step3Desc: "GWh-Dimensionierung & Abdeckungsanteil",
+          step3Href: "#overview",
         }
       : {
           tagline: "For building-services planners, utilities & energy engineers",
           headline:
-            "See BESS potential in real time — start sizing without a call.",
+            "See BESS potential in real time — try the live view yourself, no login needed.",
           subline:
-            "Live data from Energy-Charts: spot surplus/deficit patterns and let a transparent greedy simulation estimate your storage need.",
+            "Live data from Energy-Charts: spot surplus and deficit patterns and see how much of them a storage system could cover.",
           noticeLabel: "Not",
           noticeItems: ["SCADA", "trading advice", "grid-operator internals"],
           ctaLabel: "How it works",
           step1: "Check the live snapshot",
           step1Desc: "Current generation vs. load in DE",
+          step1Href: "#briefing-live",
           step2: "Explore the day profile",
           step2Desc: "Surplus/deficit windows in the chart",
+          step2Href: "#overview",
           step3: "Take away a sizing estimate",
-          step3Desc: "GWh capacity & coverage share",
+          step3Desc: "GWh capacity & share that storage could cover",
+          step3Href: "#overview",
         };
 
   return (
@@ -75,18 +81,21 @@ export function HeroValueProp({ language }: HeroValuePropProps) {
           icon={<Zap className="size-4" />}
           title={t.step1}
           desc={t.step1Desc}
+          href={t.step1Href}
         />
         <StepCard
           number={2}
           icon={<LineChart className="size-4" />}
           title={t.step2}
           desc={t.step2Desc}
+          href={t.step2Href}
         />
         <StepCard
           number={3}
           icon={<Battery className="size-4" />}
           title={t.step3}
           desc={t.step3Desc}
+          href={t.step3Href}
         />
       </div>
 
@@ -100,14 +109,30 @@ function StepCard({
   icon,
   title,
   desc,
+  href,
 }: {
   number: number;
   icon: React.ReactNode;
   title: string;
   desc: string;
+  href: string;
 }) {
+  const handleClick = () => {
+    const target = document.querySelector(href);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-border/50 bg-white/70 px-3 py-3 shadow-sm dark:border-white/[0.06] dark:bg-slate-800/50">
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        handleClick();
+      }}
+      className="flex items-start gap-3 rounded-xl border border-border/50 bg-white/70 px-3 py-3 shadow-sm transition-all hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 dark:border-white/[0.06] dark:bg-slate-800/50 dark:hover:border-emerald-500/40 dark:focus:ring-offset-slate-900"
+    >
       <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
         <span className="text-xs font-bold">{number}</span>
       </div>
@@ -120,7 +145,7 @@ function StepCard({
           {desc}
         </p>
       </div>
-    </div>
+    </a>
   );
 }
 
@@ -132,7 +157,7 @@ function IoSummary({ language }: { language: "en" | "de" }) {
           inputLabel: "Input",
           inputText: "Öffentliche Viertelstunden-Daten (Energy-Charts, Netztransparenz)",
           outputLabel: "Output",
-          outputText: "GWh-Dimensionierung, Coverage-%, simulierte Speicher-Trajektorie",
+          outputText: "GWh-Dimensionierung, Abdeckungsanteil (%), simulierte Speicher-Kurve",
           tryLabel: "Ausprobieren",
           tryText: "Scrollen Sie zum Live-Snapshot — kein Login, keine E-Mail",
         }
@@ -141,7 +166,7 @@ function IoSummary({ language }: { language: "en" | "de" }) {
           inputLabel: "Input",
           inputText: "Public quarter-hour data (Energy-Charts, Netztransparenz)",
           outputLabel: "Output",
-          outputText: "GWh sizing, coverage %, simulated storage trajectory",
+          outputText: "GWh sizing, share of surplus/deficit covered (%), simulated storage curve",
           tryLabel: "Try it",
           tryText: "Scroll to the live snapshot — no login, no email",
         };
