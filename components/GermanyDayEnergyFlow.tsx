@@ -2026,6 +2026,56 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     balancedRevenueTileValue,
   ]);
 
+
+  const currentFleetScenario = useMemo(() => {
+    if (
+      !flow?.slots.length ||
+      fleetEnergyCapacityMwh === null ||
+      fleetEnergyCapacityMwh <= 0 ||
+      fleetPowerMw === null ||
+      fleetPowerMw <= 0
+    ) {
+      return null;
+    }
+    return evaluateBessScenario({
+      slots: flow.slots,
+      capacityMwh: fleetEnergyCapacityMwh,
+      maxPowerMw: fleetPowerMw,
+      initialSocMwh: estimatedInitialFleetSocMwh,
+      resetDailyByBerlin: visualizationResetDailyByBerlin,
+      marketReference,
+    });
+  }, [
+    flow?.slots,
+    fleetEnergyCapacityMwh,
+    fleetPowerMw,
+    estimatedInitialFleetSocMwh,
+    visualizationResetDailyByBerlin,
+    marketReference,
+  ]);
+
+  const modeledScenario = useMemo(() => {
+    if (!flow?.slots.length || effectivePracticalCapacityMwh <= 0) {
+      return null;
+    }
+    const result = evaluateBessScenario({
+      slots: flow.slots,
+      capacityMwh: effectivePracticalCapacityMwh,
+      maxPowerMw: practicalDispatchBalancedPowerMw,
+      initialSocMwh: estimatedInitialSocMwh,
+      resetDailyByBerlin: visualizationResetDailyByBerlin,
+      marketReference,
+    });
+    return result;
+  }, [
+    flow?.slots,
+    effectivePracticalCapacityMwh,
+    practicalDispatchBalancedPowerMw,
+    estimatedInitialSocMwh,
+    visualizationResetDailyByBerlin,
+    marketReference,
+  ]);
+
   if (isFlowLoading) {
     return (
       <article className="scroll-mt-8 space-y-5 rounded-2xl border-2 border-border/60 bg-card p-5 shadow-md md:p-6 dark:border-slate-500/40 dark:bg-slate-900/70 dark:shadow-black/35">
@@ -2117,56 +2167,9 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     recommendation && Number.isFinite(recommendation.continuousWindowRequiredEnergyMwh)
       ? formatEnergyFromMwh(recommendation.continuousWindowRequiredEnergyMwh)
       : "—";
-  const currentFleetScenario = useMemo(() => {
-    if (
-      !flow?.slots.length ||
-      fleetEnergyCapacityMwh === null ||
-      fleetEnergyCapacityMwh <= 0 ||
-      fleetPowerMw === null ||
-      fleetPowerMw <= 0
-    ) {
-      return null;
-    }
-    return evaluateBessScenario({
-      slots: flow.slots,
-      capacityMwh: fleetEnergyCapacityMwh,
-      maxPowerMw: fleetPowerMw,
-      initialSocMwh: estimatedInitialFleetSocMwh,
-      resetDailyByBerlin: visualizationResetDailyByBerlin,
-      marketReference,
-    });
-  }, [
-    flow?.slots,
-    fleetEnergyCapacityMwh,
-    fleetPowerMw,
-    estimatedInitialFleetSocMwh,
-    visualizationResetDailyByBerlin,
-    marketReference,
-  ]);
 
-  const modeledScenario = useMemo(() => {
-    if (!flow?.slots.length || effectivePracticalCapacityMwh <= 0) {
-      return null;
-    }
-    const result = evaluateBessScenario({
-      slots: flow.slots,
-      capacityMwh: effectivePracticalCapacityMwh,
-      maxPowerMw: practicalDispatchBalancedPowerMw,
-      initialSocMwh: estimatedInitialSocMwh,
-      resetDailyByBerlin: visualizationResetDailyByBerlin,
-      marketReference,
-    });
-    return result;
-  }, [
-    flow?.slots,
-    effectivePracticalCapacityMwh,
-    practicalDispatchBalancedPowerMw,
-    estimatedInitialSocMwh,
-    visualizationResetDailyByBerlin,
-    marketReference,
-  ]);
 
-  const slotStructuralTotalsForKpis = computeCoverageAtCapacityMwh(flow.slots, 0, {
+  const slotStructuralTotalsForKpis = computeCoverageAtCapacityMwh(flow?.slots ?? [], 0, {
     maxPowerMw: 1,
     initialSocMwh: 0,
     resetDailyByBerlin: visualizationResetDailyByBerlin,
