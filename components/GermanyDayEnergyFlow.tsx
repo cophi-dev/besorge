@@ -754,7 +754,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           simBenefitsMissedChargeDetail: "Rest trotz Kapazitätsgrenze",
           simBenefitsDeficitServedLabel: "Defizit gedeckt",
           simBenefitsDeficitServedDetail: "Aus Speicher geliefert",
-          simBenefitsNoDeficitDetail: "Kein Defizit in diesem Fenster",
+          simBenefitsSurplusAbsorbedLabel: "Überschuss aufgenommen",
+          simBenefitsSurplusAbsorbedDetail: "Ins BESS eingespeichert",
+          simBenefitsCurtailmentAbsorbedLabel: "Abregelung vermieden",
+          simBenefitsCurtailmentAbsorbedDetail: "Redispatch-Potenzial",
           simBenefitsLead:
             "Modelliertes BESS glättet Schwankungen, nutzt Ladechance und reduziert Importbedarf im selben Fenster.",
           simBenefitsPeakLabel: "Peak-Reduktion",
@@ -847,7 +850,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           simulatedCapacityModeAuto12m: "Automatik · 12M balanced",
           simulatedCapacityModeCustom: "Manuell gesetzt",
           simulatedCapacityPowerBadge: (power: string) => `Leistungslimit: ${power}`,
-          windowOptimalCapacityLabel: (capacity: string) => `Fenster-Optimum: ${capacity}`,
           simulatedCapacityControlEyebrow: "Kapazität überschreiben",
           simulatedCapacityControlTitle: "Simulierte BESS-Kapazität anpassen",
           simulatedCapacityInputLabel: "Kapazität (GWh)",
@@ -1083,7 +1085,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           simBenefitsMissedChargeDetail: "Remainder despite capacity cap",
           simBenefitsDeficitServedLabel: "Deficit served",
           simBenefitsDeficitServedDetail: "Delivered from storage",
-          simBenefitsNoDeficitDetail: "No deficit in this window",
+          simBenefitsSurplusAbsorbedLabel: "Surplus absorbed",
+          simBenefitsSurplusAbsorbedDetail: "Stored in BESS",
+          simBenefitsCurtailmentAbsorbedLabel: "Curtailment avoided",
+          simBenefitsCurtailmentAbsorbedDetail: "Redispatch potential",
           simBenefitsLead:
             "Modeled BESS smooths swings, uses charge opportunity, and cuts import need in the same window.",
           simBenefitsPeakLabel: "Peak reduction",
@@ -1177,7 +1182,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           simulatedCapacityModeAuto12m: "Auto · 12M balanced",
           simulatedCapacityModeCustom: "Manual override",
           simulatedCapacityPowerBadge: (power: string) => `Power cap: ${power}`,
-          windowOptimalCapacityLabel: (capacity: string) => `Window optimum: ${capacity}`,
           simulatedCapacityControlEyebrow: "Capacity override",
           simulatedCapacityControlTitle: "Adjust simulated BESS capacity",
           simulatedCapacityInputLabel: "Capacity (GWh)",
@@ -2091,11 +2095,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   const simulatedCapacityBadgeText = simulatedCapacityGwhLabel
     ? t.simulatedCapacityBadgeLabel(simulatedCapacityGwhLabel)
     : t.capacityBadgeUnavailable;
-  const windowBalancedCapacityMwh = selectedWindowRecommendation?.balanced?.recommendedEnergyMwh ?? null;
-  const windowBalancedCapacityGwhLabel =
-    windowBalancedCapacityMwh !== null && windowBalancedCapacityMwh > 0
-      ? `${energyFormatter.format(windowBalancedCapacityMwh / 1_000)} GWh`
-      : null;
 
   const coverageSummaryLine = t.coverage(flow.samplePoints, coveragePct, flow.dateBerlin, isMultiDayFlow);
 
@@ -2223,17 +2222,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
                   {practicalDispatchBalancedPowerMw !== null ? (
                     <span className="inline-flex items-center rounded-full border border-slate-200/85 bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600/55 dark:bg-slate-950/70 dark:text-slate-200">
                       {t.simulatedCapacityPowerBadge(formatPowerFromMw(practicalDispatchBalancedPowerMw))}
-                    </span>
-                  ) : null}
-                  {usesTwelveMonthAutoSizing &&
-                  windowBalancedCapacityGwhLabel !== null &&
-                  windowBalancedCapacityMwh !== null &&
-                  effectivePracticalCapacityMwh > 0 &&
-                  Math.abs(windowBalancedCapacityMwh - effectivePracticalCapacityMwh) /
-                    effectivePracticalCapacityMwh >
-                    0.05 ? (
-                    <span className="inline-flex items-center rounded-full border border-sky-200/85 bg-sky-50/90 px-2.5 py-1 text-[11px] font-medium text-sky-800 dark:border-sky-500/40 dark:bg-sky-950/60 dark:text-sky-200">
-                      {t.windowOptimalCapacityLabel(windowBalancedCapacityGwhLabel)}
                     </span>
                   ) : null}
                 </div>
@@ -2708,15 +2696,6 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       modeledScenario !== null
         ? modeledScenario.coverage.absorbedSurplusShare * 100
         : null;
-    const fleetChargeSharePct =
-      currentFleetScenario !== null ? currentFleetScenario.coverage.absorbedSurplusShare * 100 : null;
-
-    const simChargeDeltaPp =
-      simChargeSharePct !== null && fleetChargeSharePct !== null
-        ? simChargeSharePct - fleetChargeSharePct
-        : null;
-    const importSavedMwh =
-      borderTradeTotals !== null ? -borderTradeTotals.importDeltaEnergyMwh : null;
 
     const totalCurtailmentMwh =
       modeledScenario?.coverage.totalCurtailmentEnergyMwh ??
@@ -2730,12 +2709,80 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
     const gridReliefPctForSim = modeledScenario?.gridImpactReductionPct ?? null;
     const hasDeficitToServe =
       modeledScenario !== null && modeledScenario.coverage.totalDeficitEnergyMwh > 1e-9;
+    const hasSurplusToAbsorb =
+      modeledScenario !== null && modeledScenario.coverage.totalChargeOpportunityEnergyMwh > 1e-9;
     const servedDeficitPctForSim =
       modeledScenario !== null && hasDeficitToServe
         ? modeledScenario.coverage.servedDeficitShare * 100
         : null;
-    const missedChargePctForSim =
-      simChargeSharePct !== null ? Math.max(0, 100 - simChargeSharePct) : null;
+    const absorbedSurplusMwh =
+      modeledScenario !== null ? modeledScenario.coverage.absorbedSurplusEnergyMwh : null;
+    const absorbedCurtailmentMwh =
+      modeledScenario !== null ? modeledScenario.absorbedCurtailmentEnergyMwh : null;
+
+    const simBenefitsMetrics: Array<{
+      label: string;
+      value: string;
+      detail: string;
+      tone: "surplus" | "warning" | "neutral";
+    }> = hasSurplusToAbsorb && !hasDeficitToServe
+      ? [
+          {
+            label: t.simBenefitsSurplusAbsorbedLabel,
+            value:
+              absorbedSurplusMwh !== null && absorbedSurplusMwh > 1e-6
+                ? formatEnergyFromMwh(absorbedSurplusMwh)
+                : "—",
+            detail: t.simBenefitsSurplusAbsorbedDetail,
+            tone: "surplus",
+          },
+          {
+            label: t.simBenefitsChargeLabel,
+            value:
+              simChargeSharePct !== null ? `${pctFormatter.format(simChargeSharePct)}%` : "—",
+            detail: t.simBenefitsChargeDetailFallback,
+            tone: "surplus",
+          },
+          ...(absorbedCurtailmentMwh !== null && absorbedCurtailmentMwh > 1e-6
+            ? [
+                {
+                  label: t.simBenefitsCurtailmentAbsorbedLabel,
+                  value: formatEnergyFromMwh(absorbedCurtailmentMwh),
+                  detail: t.simBenefitsCurtailmentAbsorbedDetail,
+                  tone: "surplus" as const,
+                },
+              ]
+            : []),
+        ]
+      : hasDeficitToServe
+        ? [
+            {
+              label: t.simBenefitsDeficitServedLabel,
+              value:
+                servedDeficitPctForSim !== null
+                  ? `${pctFormatter.format(servedDeficitPctForSim)}%`
+                  : "—",
+              detail: t.simBenefitsDeficitServedDetail,
+              tone: "surplus",
+            },
+            {
+              label: t.simBenefitsChargeLabel,
+              value:
+                simChargeSharePct !== null ? `${pctFormatter.format(simChargeSharePct)}%` : "—",
+              detail: t.simBenefitsChargeDetailFallback,
+              tone: "surplus",
+            },
+          ]
+        : [
+            {
+              label: t.simBenefitsChargeLabel,
+              value:
+                simChargeSharePct !== null ? `${pctFormatter.format(simChargeSharePct)}%` : "—",
+              detail: t.simBenefitsChargeDetailFallback,
+              tone: "surplus",
+            },
+          ];
+
     const simBenefitsOverview = (
       <SimBenefitsSection
         selectorLabel={selectorLabel}
@@ -2744,49 +2791,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         heroValue={gridReliefPctForSim !== null ? `−${pctFormatter.format(gridReliefPctForSim)}%` : "—"}
         heroDetail={t.simBenefitsHeroDetail}
         impactEyebrow={t.simBenefitsImpactEyebrow}
-        metrics={[
-          {
-            label: t.simBenefitsChargeLabel,
-            value:
-              simChargeSharePct !== null ? `${pctFormatter.format(simChargeSharePct)}%` : "—",
-            detail:
-              simChargeDeltaPp !== null && simChargeDeltaPp > 0.05
-                ? t.simBenefitsChargeDetail(pctFormatter.format(simChargeDeltaPp))
-                : t.simBenefitsChargeDetailFallback,
-            tone: "surplus",
-          },
-          {
-            label: t.simBenefitsDeficitServedLabel,
-            value:
-              servedDeficitPctForSim !== null
-                ? `${pctFormatter.format(servedDeficitPctForSim)}%`
-                : "—",
-            detail: hasDeficitToServe
-              ? t.simBenefitsDeficitServedDetail
-              : t.simBenefitsNoDeficitDetail,
-            tone: hasDeficitToServe ? "surplus" : "neutral",
-          },
-          {
-            label: t.simBenefitsImportLabel,
-            value:
-              importSavedMwh !== null && importSavedMwh > 1e-6
-                ? `+${formatEnergyFromMwh(importSavedMwh)}`
-                : borderTradeTotals !== null
-                  ? formatSignedEnergyFromMwh(borderTradeTotals.importDeltaEnergyMwh)
-                  : "—",
-            detail: t.simBenefitsImportSavedDetail,
-            tone: importSavedMwh !== null && importSavedMwh > 1e-6 ? "surplus" : "neutral",
-          },
-          {
-            label: t.simBenefitsMissedChargeLabel,
-            value:
-              missedChargePctForSim !== null
-                ? `${pctFormatter.format(missedChargePctForSim)}%`
-                : "—",
-            detail: t.simBenefitsMissedChargeDetail,
-            tone: "warning",
-          },
-        ]}
+        metrics={simBenefitsMetrics}
       />
     );
 
