@@ -2027,53 +2027,33 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   ]);
 
 
-  const currentFleetScenario = useMemo(() => {
-    if (
-      !flow?.slots?.length ||
-      fleetEnergyCapacityMwh === null ||
-      fleetEnergyCapacityMwh <= 0 ||
-      fleetPowerMw === null ||
-      fleetPowerMw <= 0
-    ) {
-      return null;
-    }
-    return evaluateBessScenario({
-      slots: flow.slots,
-      capacityMwh: fleetEnergyCapacityMwh,
-      maxPowerMw: fleetPowerMw,
-      initialSocMwh: estimatedInitialFleetSocMwh,
-      resetDailyByBerlin: visualizationResetDailyByBerlin,
-      marketReference,
-    });
-  }, [
-    flow,
-    fleetEnergyCapacityMwh,
-    fleetPowerMw,
-    estimatedInitialFleetSocMwh,
-    visualizationResetDailyByBerlin,
-    marketReference,
-  ]);
+  const currentFleetScenario =
+    flow?.slots?.length &&
+    fleetEnergyCapacityMwh !== null &&
+    fleetEnergyCapacityMwh > 0 &&
+    fleetPowerMw !== null &&
+    fleetPowerMw > 0
+      ? evaluateBessScenario({
+          slots: flow.slots,
+          capacityMwh: fleetEnergyCapacityMwh,
+          maxPowerMw: fleetPowerMw,
+          initialSocMwh: estimatedInitialFleetSocMwh,
+          resetDailyByBerlin: visualizationResetDailyByBerlin,
+          marketReference,
+        })
+      : null;
 
-  const modeledScenario = useMemo(() => {
-    if (!flow?.slots?.length || effectivePracticalCapacityMwh <= 0) {
-      return null;
-    }
-    return evaluateBessScenario({
-      slots: flow.slots,
-      capacityMwh: effectivePracticalCapacityMwh,
-      maxPowerMw: practicalDispatchBalancedPowerMw,
-      initialSocMwh: estimatedInitialSocMwh,
-      resetDailyByBerlin: visualizationResetDailyByBerlin,
-      marketReference,
-    });
-  }, [
-    flow,
-    effectivePracticalCapacityMwh,
-    practicalDispatchBalancedPowerMw,
-    estimatedInitialSocMwh,
-    visualizationResetDailyByBerlin,
-    marketReference,
-  ]);
+  const modeledScenario =
+    flow?.slots?.length && effectivePracticalCapacityMwh > 0
+      ? evaluateBessScenario({
+          slots: flow.slots,
+          capacityMwh: effectivePracticalCapacityMwh,
+          maxPowerMw: practicalDispatchBalancedPowerMw,
+          initialSocMwh: estimatedInitialSocMwh,
+          resetDailyByBerlin: visualizationResetDailyByBerlin,
+          marketReference,
+        })
+      : null;
 
   if (isFlowLoading) {
     return (
