@@ -29,22 +29,22 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(siteOrigin),
   title: {
-    default: "SpeicherPilot - BESS Planning & Dispatch Simulator",
+    default: "SpeicherPilot — Batteriespeicher live verstehen",
     template: "%s | SpeicherPilot",
   },
   description:
-    "Germany day-ahead energy briefing: Energy-Charts quarter-hours, BESS heuristics, fleet signals — Fraunhofer ISE data.",
+    "Live-Daten aus Energy-Charts: Tägliches Stromprofil für Deutschland, Speicher-Simulation und Marktüberblick — Fraunhofer-ISE-Daten.",
   openGraph: {
-    title: "SpeicherPilot - BESS Planning & Dispatch Simulator",
-    description: "Energy-Charts-powered Germany daily profile, BESS simulation, and market snapshot.",
+    title: "SpeicherPilot — Batteriespeicher live verstehen",
+    description: "Live-Stromprofil für Deutschland, Speicher-Simulation und Marktüberblick — Energy-Charts-Daten.",
     type: "website",
     url: siteOrigin,
     siteName: "SpeicherPilot",
   },
   twitter: {
     card: "summary_large_image",
-    title: "SpeicherPilot - BESS Planning & Dispatch Simulator",
-    description: "Germany energy transition signals — daily.",
+    title: "SpeicherPilot — Batteriespeicher live verstehen",
+    description: "Energiewende-Signale für Deutschland — täglich aktuell.",
     ...(xSiteHandle ? { site: `@${xSiteHandle}` as const } : {}),
     ...(xCreatorHandle ? { creator: `@${xCreatorHandle}` as const } : {}),
   },

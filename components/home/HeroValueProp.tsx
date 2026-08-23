@@ -25,7 +25,7 @@ export function HeroValueProp({ language }: HeroValuePropProps) {
           step2Desc: "Überschuss-/Defizit-Fenster im Chart",
           step2Href: "#overview",
           step3: "Speicher-Empfehlung mitnehmen",
-          step3Desc: "GWh-Dimensionierung & Abdeckungsanteil",
+          step3Desc: "Speichergröße & abgedeckter Anteil",
           step3Href: "#overview",
         }
       : {
@@ -157,7 +157,7 @@ function IoSummary({ language }: { language: "en" | "de" }) {
           inputLabel: "Input",
           inputText: "Öffentliche Viertelstunden-Daten (Energy-Charts, Netztransparenz)",
           outputLabel: "Output",
-          outputText: "GWh-Dimensionierung, Abdeckungsanteil (%), simulierte Speicher-Kurve",
+          outputText: "Speichergröße (GWh), abgedeckter Anteil (%), simulierte Speicher-Kurve",
           tryLabel: "Ausprobieren",
           tryText: "Scrollen Sie zum Live-Snapshot — kein Login, keine E-Mail",
         }
