@@ -222,7 +222,7 @@ export function LiveSnapshotHeader({
           </p>
           <p className="text-sm font-medium text-slate-900 dark:text-white md:text-base">
             {language === "de"
-              ? "Echtzeit-Spannung zwischen Erzeugung und Last — darunter das Fensterprofil zeigt, wie Speicher die Bilanz verschieben kann."
+              ? "Erzeugung vs. Last gerade jetzt — Überschuss oder Defizit. Darunter zeigt das Tagesprofil, wie Speicher die Bilanz verschieben kann."
               : "Live tension between generation and load — the day profile below shows how storage can reshape that balance."}
           </p>
         </div>

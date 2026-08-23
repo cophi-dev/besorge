@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "SpeicherPilot - BESS Planning & Dispatch Simulator";
+export const alt = "SpeicherPilot — Batteriespeicher live verstehen";
 
 export default function Image() {
   return new ImageResponse(
@@ -35,7 +35,7 @@ export default function Image() {
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 52, fontWeight: 700, letterSpacing: "0.08em" }}>SpeicherPilot</div>
             <div style={{ fontSize: 22, color: "#94a3b8", letterSpacing: "0.15em", textTransform: "uppercase" }}>
-              BESS Planning & Dispatch Simulator
+              Batteriespeicher live verstehen
             </div>
           </div>
         </div>
