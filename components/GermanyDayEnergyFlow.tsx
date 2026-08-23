@@ -2027,6 +2027,11 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   ]);
 
 
+  // In day mode, wait for 12M recommendation to load before computing scenario
+  // This prevents showing wrong values from fallback capacity during initial load
+  const shouldWaitForRecommendation =
+    selectorMode === "day" && !hasCustomSimulatedCapacity && isRecommendationLoading;
+
   const currentFleetScenario =
     flow?.slots?.length &&
     fleetEnergyCapacityMwh !== null &&
@@ -2044,7 +2049,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       : null;
 
   const modeledScenario =
-    flow?.slots?.length && effectivePracticalCapacityMwh > 0
+    flow?.slots?.length && effectivePracticalCapacityMwh > 0 && !shouldWaitForRecommendation
       ? evaluateBessScenario({
           slots: flow.slots,
           capacityMwh: effectivePracticalCapacityMwh,
