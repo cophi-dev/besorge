@@ -7,10 +7,11 @@ type BriefingSectionNavProps = {
 };
 
 const SECTIONS = [
+  { id: "hero", de: "Start", en: "Start" },
   { id: "briefing-live", de: "Live", en: "Live" },
   { id: "overview", de: "Profil", en: "Profile" },
-  { id: "methodology", de: "Methodik", en: "Methodology" },
   { id: "fleet-map", de: "Karte", en: "Map" },
+  { id: "methodology", de: "Methodik", en: "Methodology" },
 ] as const;
 
 export function BriefingSectionNav({ language }: BriefingSectionNavProps) {
