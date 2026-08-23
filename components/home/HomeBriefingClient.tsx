@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { MethodologySection } from "@/components/briefing/MethodologySection";
 import { BriefingSectionNav } from "@/components/home/BriefingSectionNav";
+import { HeroValueProp } from "@/components/home/HeroValueProp";
 import { LiveSnapshotHeader } from "@/components/LiveSnapshotHeader";
 import { useLanguage } from "@/components/language-context";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -416,6 +417,10 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         </div>
       ) : null}
 
+      <section id="hero" className="scroll-mt-20">
+        <HeroValueProp language={language} />
+      </section>
+
       <BriefingSectionNav language={language} />
 
       <section id="briefing-live">
@@ -466,9 +471,7 @@ export function HomeBriefingClient({ initial }: HomeBriefingClientProps) {
         </GermanyFlowStoryBridge>
       </section>
 
-      <section id="methodology">
-        <MethodologySection language={language} />
-      </section>
+      <MethodologySection language={language} />
 
       <section id="fleet-map" className="border-t border-border/50 pt-8 md:pt-10">
         <details
