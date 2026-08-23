@@ -2048,6 +2048,19 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         })
       : null;
 
+  // Debug: log the key values before computing modeledScenario
+  console.log("[DEBUG modeledScenario inputs]", {
+    hasSlots: !!flow?.slots?.length,
+    slotCount: flow?.slots?.length ?? 0,
+    effectivePracticalCapacityMwh,
+    shouldWaitForRecommendation,
+    isRecommendationLoading,
+    recommendationLoaded: recommendation !== null,
+    practicalDispatchBalancedPowerMw,
+    estimatedInitialSocMwh,
+    visualizationResetDailyByBerlin,
+  });
+
   const modeledScenario =
     flow?.slots?.length && effectivePracticalCapacityMwh > 0 && !shouldWaitForRecommendation
       ? evaluateBessScenario({
@@ -2059,6 +2072,18 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
           marketReference,
         })
       : null;
+
+  // Debug: log the result
+  if (modeledScenario) {
+    console.log("[DEBUG modeledScenario result]", {
+      gridImpactReductionPct: modeledScenario.gridImpactReductionPct,
+      absorbedSurplusEnergyMwh: modeledScenario.coverage.absorbedSurplusEnergyMwh,
+      absorbedSurplusShare: modeledScenario.coverage.absorbedSurplusShare,
+      totalChargeOpportunityEnergyMwh: modeledScenario.coverage.totalChargeOpportunityEnergyMwh,
+    });
+  } else {
+    console.log("[DEBUG modeledScenario result] null");
+  }
 
   if (isFlowLoading) {
     return (
