@@ -8,7 +8,7 @@ type SimBenefitsSectionProps = {
   heroValue: string;
   heroDetail: string;
   impactEyebrow: string;
-  metrics: [ObservedStressMetricItem, ObservedStressMetricItem, ObservedStressMetricItem, ObservedStressMetricItem];
+  metrics: ObservedStressMetricItem[];
 };
 
 export function SimBenefitsSection({
@@ -20,6 +20,12 @@ export function SimBenefitsSection({
   impactEyebrow,
   metrics,
 }: SimBenefitsSectionProps) {
+  const gridCols =
+    metrics.length === 2
+      ? "grid-cols-2 sm:grid-cols-2"
+      : metrics.length === 3
+        ? "grid-cols-3 sm:grid-cols-3"
+        : "grid-cols-2 sm:grid-cols-4";
   return (
     <section
       aria-labelledby="sim-benefits-heading"
@@ -49,7 +55,9 @@ export function SimBenefitsSection({
         <p className="mb-2 text-center text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
           {impactEyebrow}
         </p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-0 sm:divide-x sm:divide-border/60 dark:sm:divide-slate-600/40">
+        <div
+          className={`grid ${gridCols} gap-3 sm:gap-0 sm:divide-x sm:divide-border/60 dark:sm:divide-slate-600/40`}
+        >
           {metrics.map((metric) => (
             <ObservedStressMetric
               key={metric.label}
