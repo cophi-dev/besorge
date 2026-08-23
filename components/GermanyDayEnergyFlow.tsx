@@ -2029,7 +2029,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
 
   const currentFleetScenario = useMemo(() => {
     if (
-      !flow?.slots.length ||
+      !flow?.slots?.length ||
       fleetEnergyCapacityMwh === null ||
       fleetEnergyCapacityMwh <= 0 ||
       fleetPowerMw === null ||
@@ -2046,7 +2046,7 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       marketReference,
     });
   }, [
-    flow?.slots,
+    flow,
     fleetEnergyCapacityMwh,
     fleetPowerMw,
     estimatedInitialFleetSocMwh,
@@ -2055,10 +2055,10 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   ]);
 
   const modeledScenario = useMemo(() => {
-    if (!flow?.slots.length || effectivePracticalCapacityMwh <= 0) {
+    if (!flow?.slots?.length || effectivePracticalCapacityMwh <= 0) {
       return null;
     }
-    const result = evaluateBessScenario({
+    return evaluateBessScenario({
       slots: flow.slots,
       capacityMwh: effectivePracticalCapacityMwh,
       maxPowerMw: practicalDispatchBalancedPowerMw,
@@ -2066,9 +2066,8 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
       resetDailyByBerlin: visualizationResetDailyByBerlin,
       marketReference,
     });
-    return result;
   }, [
-    flow?.slots,
+    flow,
     effectivePracticalCapacityMwh,
     practicalDispatchBalancedPowerMw,
     estimatedInitialSocMwh,
