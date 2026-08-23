@@ -2048,42 +2048,21 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
         })
       : null;
 
-  // Debug: log the key values before computing modeledScenario
-  console.log("[DEBUG modeledScenario inputs]", {
-    hasSlots: !!flow?.slots?.length,
-    slotCount: flow?.slots?.length ?? 0,
-    effectivePracticalCapacityMwh,
-    shouldWaitForRecommendation,
-    isRecommendationLoading,
-    recommendationLoaded: recommendation !== null,
-    practicalDispatchBalancedPowerMw,
-    estimatedInitialSocMwh,
-    visualizationResetDailyByBerlin,
-  });
-
+  // For the first-view KPIs, use initialSocMwh=0 to show the BESS's potential
+  // to absorb surplus. The chart visualization uses estimatedInitialSocMwh for
+  // continuity with previous days, but the KPI scenario should assume empty start
+  // to demonstrate grid-relief capability on surplus days.
   const modeledScenario =
     flow?.slots?.length && effectivePracticalCapacityMwh > 0 && !shouldWaitForRecommendation
       ? evaluateBessScenario({
           slots: flow.slots,
           capacityMwh: effectivePracticalCapacityMwh,
           maxPowerMw: practicalDispatchBalancedPowerMw,
-          initialSocMwh: estimatedInitialSocMwh,
+          initialSocMwh: 0,
           resetDailyByBerlin: visualizationResetDailyByBerlin,
           marketReference,
         })
       : null;
-
-  // Debug: log the result
-  if (modeledScenario) {
-    console.log("[DEBUG modeledScenario result]", {
-      gridImpactReductionPct: modeledScenario.gridImpactReductionPct,
-      absorbedSurplusEnergyMwh: modeledScenario.coverage.absorbedSurplusEnergyMwh,
-      absorbedSurplusShare: modeledScenario.coverage.absorbedSurplusShare,
-      totalChargeOpportunityEnergyMwh: modeledScenario.coverage.totalChargeOpportunityEnergyMwh,
-    });
-  } else {
-    console.log("[DEBUG modeledScenario result] null");
-  }
 
   if (isFlowLoading) {
     return (
