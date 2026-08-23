@@ -2029,10 +2029,18 @@ export default function GermanyDayEnergyFlow(props: GermanyDayEnergyFlowProps) {
   ]);
 
 
-  // In day mode, wait for 12M recommendation to load before computing scenario
-  // This prevents showing wrong values from fallback capacity during initial load
+  // In day mode, we prefer to wait for the 12M recommendation before computing
+  // the scenario, to use the P90 balanced capacity rather than today's one-off
+  // practical capacity. However, if effectivePracticalCapacityMwh is already > 0
+  // (e.g., from practicalCapacity fallback or SSR), we compute the scenario anyway
+  // so the benefit tiles don't show em-dashes while the header shows a capacity.
+  // Once recommendation loads, autoSimulatedBaselineMwh updates and the scenario
+  // recomputes with the 12M value.
   const shouldWaitForRecommendation =
-    selectorMode === "day" && !hasCustomSimulatedCapacity && isRecommendationLoading;
+    selectorMode === "day" &&
+    !hasCustomSimulatedCapacity &&
+    isRecommendationLoading &&
+    effectivePracticalCapacityMwh <= 0;
 
   const currentFleetScenario =
     flow?.slots?.length &&
